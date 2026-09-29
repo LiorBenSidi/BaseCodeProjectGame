@@ -56,7 +56,7 @@ means having the access.
 | No lag compensation | Adds complexity; needed for fairness at high latency | Roadmap phase 2 |
 | Per-IP limits use the socket address | Behind a reverse proxy every client shares its IP. `X-Forwarded-For` is spoofable, so it is deliberately not trusted | A trusted proxy is configured |
 | JSON wire format is larger than binary | Debuggability first | Measured bandwidth problem |
-| GitHub Actions pinned to major tags, not commit SHAs | Dependabot keeps them current; SHA pinning is stricter | Before any deploy job is added |
+| GitHub Actions pinned to major tags (`@v4`), not commit SHAs | A moving major tag is always "young", so Dependabot's 30-day cooldown can hide a new major (this closed the CodeQL v3-to-v4 PR by itself). Major upgrades of actions are therefore done by hand when release notes announce a deprecation (CodeQL v3 ends Dec 2026). | Before any deploy job is added: pin actions to commit SHAs so Dependabot can propose exact, aged versions |
 
 ## Secrets
 None are required today. Never commit `.env*`. If a deploy step is added, secrets live in GitHub Actions

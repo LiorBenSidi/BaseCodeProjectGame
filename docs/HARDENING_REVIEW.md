@@ -23,6 +23,7 @@ severity and a status, and every fixed finding gets a test that fails without th
 | H-001 | Low | `POST/PUT/DELETE/PATCH/OPTIONS` to `/healthz` and `/readyz` returned `200` instead of `405`: the health paths were matched before the HTTP method was checked. | Fixed | `tests/integration/http.test.js` ("... on any path is 405 with Allow: GET, HEAD", dev and prod) |
 | H-002 | Low | `sanitizeName` used Unicode NFKC normalisation, which silently rewrote letters into different letters (script "A" became "A"), an undocumented behaviour. Switched to NFC; rule written into `docs/SPEC.md` section 6. | Fixed | `tests/security/input-validation.test.js` ("the 16 character limit counts code points, not UTF-16 units") |
 | H-003 | Low | `NO_HARDCODED_SECRET` in the policy checker only matched identifiers that *start* with a keyword, so `authtoken = "..."` was missed. | Fixed | `tests/unit/policy.test.js` (secret rule, identifier merely containing the word) |
+| H-004 | Info (CodeQL rated High) | CodeQL `js/incomplete-url-substring-sanitization` at `tests/unit/policy.test.js:409`: a unit test asserts that the comment-stripper leaves a sample `http://x.y` intact. No URL is validated or trusted. | Not a bug (alert #1 dismissed on GitHub as "Used in tests", 2026-09-29) | Test fixture only; never shipped |
 
 ## Checked and found clean
 _Fill in per review: what was examined and held up._
