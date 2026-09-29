@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Maturity rule: never propose a version younger than 30 days (supply-chain safety).
+    # Dependabot's own security updates are not delayed by this.
+    cooldown:
+      default-days: 30
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -12,3 +16,5 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 30
