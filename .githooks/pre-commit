@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Local pre-commit gate: fast checks only (policy lint, syntax, AGENTS.md guard). Mirrors CI's lint step.
+# Safety net, not the authority: CI re-runs everything and main is PR-only.
+# Emergency bypass: git commit --no-verify   (CI still gates the PR)
+set -e
+echo "[pre-commit] lint (policy + syntax + AGENTS.md guard)..."
+node scripts/check-policy.mjs
+node scripts/check-agents-md.mjs
+echo "[pre-commit] OK"

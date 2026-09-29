@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Local pre-push gate: the whole test suite runs before anything leaves your machine.
+# scripts/run-tests.mjs exits non-zero when it collects 0 tests (no false green).
+# Emergency bypass: git push --no-verify   (CI still gates the PR)
+set -e
+echo "[pre-push] lint + all test suites..."
+node scripts/check-policy.mjs
+node scripts/check-agents-md.mjs
+node scripts/run-tests.mjs all
+echo "[pre-push] OK"

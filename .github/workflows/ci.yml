@@ -1,0 +1,94 @@
+name: CI
+
+# Every PR and every push to main runs the full gate. Make `checks` and `build` REQUIRED status checks in
+# main's branch protection so nothing merges red.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: # also enables the on-demand stress job below
+
+# Least privilege: jobs get read-only repo access unless they explicitly ask for more.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# MASTER SWITCH: `gh variable set RUN_CI --body false` skips every job (skipped jobs report as passing,
+# so PRs are not deadlocked); unset or anything but 'false' means ON.
+
+jobs:
+  checks:
+    name: checks
+    if: vars.RUN_CI != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # fail closed: a hung job is a red job, never a silent pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install (lockfile only)
+        run: npm ci # fails if package-lock.json is missing or out of sync: reproducible installs
+      - name: Policy check (lint, syntax, security patterns)
+        run: npm run lint
+      - name: Dependency audit (known CVEs)
+        run: npm run audit:deps
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Security tests
+        run: npm run test:security
+      - name: Integration tests
+        run: npm run test:integration
+      - name: System tests
+        run: npm run test:system
+      - name: Coverage report
+        run: npm run coverage
+
+  build:
+    name: build
+    needs: checks
+    if: vars.RUN_CI != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Production smoke test (server serves the built client + health endpoint)
+        run: |
+          NODE_ENV=production PORT=3100 node src/server/index.js &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          curl --fail --silent --retry 10 --retry-delay 1 --retry-connrefused http://localhost:3100/healthz
+          curl --fail --silent http://localhost:3100/ | grep -q "Base Code Arena"
+          curl --silent --head http://localhost:3100/ | grep -i "content-security-policy"
+
+  # Manual only: load test against a live in-process server (see tests/stress).
+  stress:
+    name: stress (manual)
+    if: github.event_name == 'workflow_dispatch' && vars.RUN_CI != 'false'
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:stress
+
+  # NOTE: there is deliberately no deploy job. Base Code is a development preview, and a persistent
+  # WebSocket game server needs a host that keeps a Node process alive. When one is chosen, add a
+  # deploy job with `needs: [checks, build]` and `if: github.ref == 'refs/heads/main' && github.event_name == 'push'`
+  # so a pull request can NEVER deploy, tag images with the immutable commit SHA, and gate on /healthz.
