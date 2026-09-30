@@ -47,7 +47,41 @@ decision cite its ID.
 - Supersedes: (none)
 -->
 
-_No decisions recorded yet._
+### D-013 (G10, Q4) Combat slice acceptance
+- Status: decided
+- Date: 2026-09-30
+- Decision: Hit registration must be trustworthy, movement immediate, and the mechanic visible early. Verify the existing rifle before layering zones, bands and the throwable. Show server-confirmed body/head hitmarkers, damage or zone feedback, and a per-shot log containing the shot, resolved zone, applied damage and kill outcome.
+- Source: Owner's approved Hit-Location Damage, Damage Profiles & Throwables PRD.
+- Affects: docs/SPEC.md §15; future shared damage, GameRoom and client HUD tests.
+- Implementation status: approved, not implemented.
+
+### D-012 (G2, W9) One throwable now; abilities later
+- Status: decided
+- Date: 2026-09-30
+- Decision: Expand the one-rifle slice with one arcing, bouncing, fuse-detonated explosive throwable. Simulate it on the server; replicate its position/state in snapshots. Explosion damage falls off with distance and uses the same deterministic damage-application function as bullets. Abilities remain outside this slice.
+- Source: Owner's clarification and approved PRD.
+- Affects: docs/SPEC.md §15; future protocol, shared projectile, GameRoom and client work.
+- Open tuning: fuse, throw speed, blast radius/damage curve, ammunition/replenishment, and self-damage/cover rules.
+- Implementation status: approved, not implemented.
+
+### D-011 (W7) Per-weapon distance bands
+- Status: decided
+- Date: 2026-09-30
+- Decision: Use three to four data-defined range bands per weapon. The first rifle starts with three bands, stepping down twice. Multiply the band base damage by the hit-zone multiplier.
+- Source: Owner's clarification and approved PRD.
+- Affects: docs/SPEC.md §15; future shared combat-profile data and boundary tests.
+- Open tuning: rifle distance thresholds and base damage in each band.
+- Implementation status: approved, not implemented.
+
+### D-010 (G1, W6) Five server-resolved damage zones
+- Status: decided
+- Date: 2026-09-30
+- Decision: Head ×1.5, upper torso ×1.1, lower torso ×1.0, arms ×0.95, legs ×0.9. Store multipliers as tunable data. Resolve anatomical hit geometry server-side, never trust a client hit claim; use rewound geometry when lag compensation exists.
+- Source: Owner selected five zones and approved the PRD's starting multipliers. These are this game's tuning values, not a universal COD table.
+- Affects: docs/SPEC.md §15; future shared hit geometry/damage and GameRoom tests.
+- Implementation status: approved, not implemented.
+
+Earlier interview decisions D-001–D-009 are referenced in the conversation but have not yet been transcribed into this file. The question-coverage table above is the original interview checklist, not an implementation progress table.
 
 ## Open questions raised during work
 _Anything the assistant discovered it needed to ask that is not in the bank yet. Add it to the bank too._

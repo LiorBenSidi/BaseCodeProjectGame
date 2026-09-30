@@ -308,3 +308,35 @@ Each row is something the spec did not pin down. "Today" is what the code does n
 
 Not testable through the public surface, by design: room capacity of 16 (the per-IP cap of 8 is reached first), and spawn
 positions (random).
+
+---
+
+## 15. Approved combat extension — pending implementation (D-010–D-013)
+
+The current contracts in §§1–12 still describe the running baseline. This section records the owner's
+approved extension, not a claim that it is implemented. Resolve the remaining tuning decisions in
+`docs/DESIGN.md` before replacing those contracts and writing feature tests.
+
+- Five damage categories: head ×1.5, upper torso ×1.1, lower torso ×1.0, arms ×0.95, legs ×0.9.
+  Categories are not the same as collider count: both arms can have separate geometry but share one multiplier.
+  Hit geometry belongs to the deterministic core. Equal world poses and shot rays must produce equal zone
+  results regardless of the room's 30/60/120 Hz scheduling. This does not imply that moving-world trajectories
+  are automatically bit-identical across different step sizes.
+- Weapon data defines three to four distance bands; the first rifle has three bands. The base damage steps
+  down twice and is multiplied by the resolved zone multiplier. Distances and base values remain unapproved.
+- The server accepts fire/throw intent only. Hit identity, health and damage never come from a client claim.
+  Current baseline shots use current positions: lag compensation does not yet exist. When introduced, rewind
+  must include the anatomical hit geometry, not only the movement box.
+- One throwable: server-simulated launch arc, world collision, bounce, fuse, explosion and radial damage
+  falloff. Snapshot replication includes projectile identity, position and state. Damage application is shared
+  with bullets in the deterministic core. Abilities are explicitly deferred. Throwable tuning and inventory,
+  self-damage and blast-cover rules remain to be confirmed.
+- Accepted shots produce a server verdict even on a miss. The HUD distinguishes head/body confirmations
+  and shows damage/zone feedback plus a bounded per-shot log (shot, zone, applied damage, kill outcome).
+  Do not show speculative client hits as confirmed hits.
+- The 4096-byte limit in §7 is an **incoming client-message** limit, not an outbound snapshot budget.
+  New intent must remain within it; projectile snapshots and shot-result traffic need separate size/load tests.
+  Five zone categories do not require transmitting collider geometry each snapshot.
+- Verification order: existing rifle/obstruction/cooldown/death/respawn baseline, then zone and band-boundary
+  unit tests, hostile new-intent tests, deterministic projectile/collision/fuse tests, socket replication tests,
+  and real-browser feedback/throwing checks. Do not label current-position registration as lag-compensated.
