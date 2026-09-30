@@ -9,6 +9,7 @@ decision cite its ID.
 2. The assistant records the answer below as a **decision** with a date, then confirms it back to the owner.
 3. If the answer changes game rules, `docs/SPEC.md` is updated first, then tests, then code.
 4. A decision is only changed by a new dated entry that supersedes the old one (nothing is silently edited).
+5. A question the owner cannot answer yet is recorded as **parked**: a default, and a trigger for revisiting it. Parked items are not re-asked until the trigger fires.
 
 ## Status
 | Area | Questions asked | Decided | Open |
@@ -38,6 +39,7 @@ decision cite its ID.
 ## Decision log
 <!-- Newest first. Template:
 ### D-001 (G1) Time-to-kill
+- Status: decided | parked (default + revisit trigger)
 - Date: YYYY-MM-DD
 - Decision: ...
 - Why / options considered: ...

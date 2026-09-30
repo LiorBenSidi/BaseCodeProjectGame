@@ -5,6 +5,21 @@ mode, a few at a time, by topic), never guess an answer, and record each decisio
 Ask follow-ups whenever an answer opens a new question. More questions are always better than fewer.
 For each question offer 2-4 concrete options with a recommendation and its trade-off, plus "something else".
 
+## Interview order and tiers
+The bank is large on purpose, so it is asked in tiers, never as one list. Any question may be **parked**: the answer is
+recorded as parked with a sensible default and a trigger to revisit, and the interview moves on.
+
+| Tier | What | Questions |
+|---|---|---|
+| 1 - anchors (ask first) | The few answers that shape everything else | R2 (minimum lovable game), R1 (priorities), V1, V2, V4, V10, E5 (budget and time), T1 (browser-first) |
+| 2 - core design | What the game is and how it plays | G, M, W, MV, MP, S, A, UI |
+| 3 - supporting | Feel, social and progression | AU, C, N, SO, P, E (rest), V (rest) |
+| 4 - technical, legal, operations | Offer a recommended default and ask only "accept the default?" | AC, T (rest), Q, L, O, R (rest) |
+
+A few questions have no safe default and are always asked in full, even in tier 4: T5 (TypeScript), R3 (first milestone), R5 (worries), V11 (name).
+
+Before asking anything, check `docs/DESIGN.md`: never re-ask what is already decided or parked.
+
 ## V. Vision and audience
 - V1. In one sentence, what is this game? What should a player say about it after their first match?
 - V2. Who is it for: friends, a public audience, a class project, a portfolio piece, a business?
@@ -197,5 +212,5 @@ For each question offer 2-4 concrete options with a recommendation and its trade
 - R1. Rank these by importance to you: netcode quality, gameplay depth, visuals, content amount, security, launch speed.
 - R2. What is the smallest version you would be proud to show someone? (a "minimum lovable game")
 - R3. What is the first milestone date, and what must it include?
-- R4. Which of the ten roadmap phases (`docs/ROADMAP.md`) would you reorder, cut or add to?
+- R4. Which of the roadmap phases (`docs/ROADMAP.md`) would you reorder, cut or add to?
 - R5. What are you most worried about in this project?

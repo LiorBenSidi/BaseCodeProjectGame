@@ -17,12 +17,12 @@
 ```
 Dry:   PASS/FAIL - lint, AGENTS.md guard, N unit tests
 Live:  PASS/FAIL - integration N, security N, system N, stress N   |   NOT RUN locally: <reason>; CI: <status>
-Smoke: PASS against <url>   |   not applicable
+Smoke: PASS against the preview (never paste its URL)   |   not applicable
 ```
 
 ## Checklist
 - [ ] `docs/SPEC.md` updated first if behaviour changed (spec -> tests -> code)
-- [ ] `npm run verify` is green locally
+- [ ] Dry checks green locally; live checks green, or reported NOT RUN with CI as the check
 - [ ] Every new client message is validated in `src/server/protocol.js`
 - [ ] No `console.*` in server code, no `innerHTML` in client code
 - [ ] No secrets committed; new env vars documented in the README
