@@ -120,7 +120,7 @@ async function main() {
   const args = process.argv.slice(2);
   const originIdx = args.indexOf('--origin');
   const origin = originIdx >= 0 ? args[originIdx + 1] : undefined;
-  const baseUrl = args.find((a, i) => !a.startsWith('--') && i !== originIdx + 1);
+  const baseUrl = args.find((a, i) => !a.startsWith('--') && (originIdx < 0 || i !== originIdx + 1));
   if (!baseUrl || !/^https?:\/\//.test(baseUrl) || (originIdx >= 0 && !origin)) {
     process.stderr.write('usage: node scripts/smoke.mjs <http(s)://host[:port]> [--origin <origin>]\n');
     process.exit(2);
