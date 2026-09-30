@@ -12,7 +12,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const BEGIN = '<!-- OWNER-RULES:BEGIN';
 export const END = '<!-- OWNER-RULES:END -->';
 
-// Short, stable phrases, one per invariant. If an invariant is reworded on purpose, update it here in the same PR.
+// Short, stable phrases, one per invariant. If an invariant is reworded on purpose, update it here in the same PR,
+// and only with the owner's explicit approval (this file is one of the protected files listed in AGENTS.md).
 export const REQUIRED_PHRASES = [
   'The server is authoritative',
   'deterministic simulation core',
@@ -26,6 +27,8 @@ export const REQUIRED_PHRASES = [
   'Dry tests and live tests',
   'The author verifies',
   '"not run", never "passed"',
+  'Secrets and configuration',
+  'Protected files',
 ];
 
 // Returns an array of human-readable problems (empty when the file is fine).

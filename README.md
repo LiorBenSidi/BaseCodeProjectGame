@@ -10,7 +10,7 @@ client**, served from a single port. Built to be imported into Base Code and gro
 
 ## Quick start
 ```bash
-npm install          # first time: also generates package-lock.json (commit it; CI uses `npm ci`)
+npm ci               # installs the exact locked versions (use `npm install` only when a dependency is deliberately added)
 npm run dev          # http://localhost:3000  (PORT env var to change)
 ```
 Open it in two browser windows and press Play in each. Controls: WASD, Space, mouse, click to shoot, Tab
@@ -26,14 +26,14 @@ scoreboard, Esc to release the mouse.
 | `npm run test:dry` | fast, no server: lint + `AGENTS.md` guard + unit tests |
 | `npm run test:live` | real server: integration + security + system + stress |
 | `npm run smoke <url>` | live smoke check of a running server or preview URL |
-| `npm run verify` | lint + all tests (what CI and the pre-push hook run) |
+| `npm run verify` | lint + all tests: the local equivalent of CI (CI also runs `npm audit` and a production smoke check) |
 | `npm run coverage` | built-in coverage report |
 | `npm run audit:deps` | known-CVE scan of dependencies |
 
 ## Importing into Base Code
 1. Push this repository to GitHub (project root = repo root; Base Code does not support monorepo subfolders).
 2. In Base Code, connect the repository or paste its URL.
-3. Run `npm install` and `npm run dev` in its environment and open the preview.
+3. Run `npm ci` and `npm run dev` in its environment and open the preview. Then paste **Prompt 0**, and afterwards **Prompt 00** (the design interview), from `docs/BASE_CODE_PROMPTS.md`.
 
 Base Code is a **development preview**, not production hosting; see `docs/ROADMAP.md` phase 6.
 Base Code does not add Base44 entities or the SDK to an imported repository, so the project is self-contained.
@@ -45,7 +45,8 @@ src/server/   GameRoom (pure rules), protocol/security/rateLimit/config/logger/s
 src/client/   Three.js scene, input, prediction, HUD
 tests/        unit, integration, system, security, stress
 docs/         SPEC (the contract), ARCHITECTURE, TESTING, ROADMAP, adr/
-scripts/      check-policy.mjs, run-tests.mjs
+scripts/      check-policy.mjs, check-agents-md.mjs, run-tests.mjs, smoke.mjs, setup-hooks.sh
+.githooks/    optional local git hooks (enable with `npm run hooks` in a clone)
 .github/      CI, CodeQL, Dependabot, PR template
 ```
 

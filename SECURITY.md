@@ -42,7 +42,7 @@ means having the access.
 ## Automated defences
 | Layer | Tool | When |
 |---|---|---|
-| Lexical static analysis | `scripts/check-policy.mjs` | pre-commit, CI |
+| Lexical static analysis | `scripts/check-policy.mjs` | CI (and pre-commit if you run `npm run hooks` locally) |
 | Semantic static analysis (taint tracking) | CodeQL `security-extended` | every PR, weekly |
 | Dependency CVEs | `npm audit --audit-level=high`, Dependabot | CI, weekly |
 | Adversarial tests | `tests/security/` | pre-push, CI |
@@ -56,7 +56,7 @@ means having the access.
 | No lag compensation | Adds complexity; needed for fairness at high latency | Roadmap phase 2 |
 | Per-IP limits use the socket address | Behind a reverse proxy every client shares its IP. `X-Forwarded-For` is spoofable, so it is deliberately not trusted | A trusted proxy is configured |
 | JSON wire format is larger than binary | Debuggability first | Measured bandwidth problem |
-| GitHub Actions pinned to major tags (`@v4`), not commit SHAs | A moving major tag is always "young", so Dependabot's 30-day cooldown can hide a new major (this closed the CodeQL v3-to-v4 PR by itself). Major upgrades of actions are therefore done by hand when release notes announce a deprecation (CodeQL v3 ends Dec 2026). | Before any deploy job is added: pin actions to commit SHAs so Dependabot can propose exact, aged versions |
+| GitHub Actions pinned to major tags (such as `@v7`), not commit SHAs | A moving major tag is always "young", so Dependabot's 30-day cooldown can hide a new major (this closed the CodeQL v3-to-v4 PR by itself). Major upgrades of actions are therefore done by hand when release notes announce a deprecation (CodeQL v3 ends Dec 2026). | Before any deploy job is added: pin actions to commit SHAs so Dependabot can propose exact, aged versions |
 
 ## Secrets
 None are required today. Never commit `.env*`. If a deploy step is added, secrets live in GitHub Actions
@@ -66,7 +66,12 @@ was ever committed must be rotated, not merely deleted.
 ## Base Code preview: Host and Origin differ
 In the Base Code preview the sandboxed server sees an internal `Host` while the browser's `Origin` is the public
 preview address, so same-origin mode refuses the game's own WebSocket. The fix is to list that single exact origin
-in `ALLOWED_ORIGINS` for the preview environment only (the setup passes it through Compose). Never replace the check
+in `ALLOWED_ORIGINS` for the preview environment only (the environment setup must supply it at run time). Never replace the check
 with a wildcard, never trust `X-Forwarded-*` headers for this decision, and keep `ALLOWED_ORIGINS` empty in any
 environment whose page and socket share a host. Verified with `isAllowedOrigin`: mismatched hosts -> refused; listed
 origin -> accepted; other sites and wildcard entries -> refused.
+
+The preview origin must be **read from the runtime environment**, never committed as a literal: this repository is public, each
+Base Code branch has its own preview address, and a preview link may grant access to that running copy. One fixed value would
+also be wrong for every other branch, which is the temptation to reach for a wildcard. If the environment exposes no such value,
+the owner decides how to supply it.

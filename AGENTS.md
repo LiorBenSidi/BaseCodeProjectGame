@@ -26,18 +26,20 @@ region loses its markers or any of its invariants (see scripts/check-agents-md.m
 ## How to work
 - **Spec -> tests -> code.** Update `docs/SPEC.md`, write failing tests in the right `tests/<type>/`
   directory, then implement. Do not write the only tests for code you just wrote; have them derived from the spec.
-- Run `npm run verify` before declaring anything done. Report failures honestly; never comment out or
-  weaken a test to make it pass.
+- Before declaring anything done, run the dry checks and, where you can, the live checks (`npm run verify` runs both).
+  Report failures honestly; never comment out or weaken a test to make it pass.
 - **Dry tests and live tests.** Dry (`npm run test:dry`: lint, guard, unit) after every edit. Live (`npm run test:live`,
   and `npm run smoke <url>` against a running server or preview) before a PR and after any networking, config, header or
   environment change. First find out which you can actually run here. A live suite that did not run is "not run", never
   "passed"; if live tests cannot run, open the PR and let CI run them. Report `Dry: ... / Live: ... / Smoke: ...` in every
-  PR. Details and troubleshooting: `docs/LIVE_TESTING.md`.
+  PR, writing "the preview" and never its URL. Details and troubleshooting: `docs/LIVE_TESTING.md`.
 - **The author verifies.** Run dry and live yourself before saying done; CI is the second net, not the first. For a bug,
   write the test that fails for that bug first, confirm it fails for the right reason, then fix.
 - A refactor changes structure, not behaviour, and gets its own commit.
-- Do not add dependencies without asking; the project intentionally has three (`three`, `ws`, `vite`).
-- Do not commit, push, or open PRs unless asked. Never touch secrets.
+- Do not add dependencies without asking; the project intentionally has three (`three`, `ws`, `vite`); `docs/adr/0003` would add dev-only type packages later, after approval.
+- Never commit or push to `main` (it is protected). Base Code commits each change to your working branch automatically; open a pull request only when asked. If you find yourself on `main`, stop and ask the owner to create a branch.
+- **Secrets and configuration.** Never read, print or commit secret values. Non-secret configuration (for example `ALLOWED_ORIGINS`) is read from the runtime environment. Never write a preview URL into a committed file, commit message, PR description, issue or comment: this repository is public, every branch has its own preview address, and preview links may grant access.
+- **Protected files.** The owner region of `AGENTS.md`, everything in `scripts/`, `.github/`, `.githooks/` and the `scripts` section of `package.json` change only with the owner's explicit approval in the same conversation (the owner pasting a prompt that names the change counts as approval for that change only). Never weaken a check to get past it: no new `policy-allow` markers, no removed or skipped CI steps, no edited guard phrases, no loosened security control. If a check blocks you, stop and ask.
 
 ## Where things live
 | Task | Go to |

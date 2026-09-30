@@ -4,8 +4,8 @@ Every change is proven in two different ways. They catch different bugs, and **n
 
 | | **Dry tests** | **Live tests** |
 |---|---|---|
-| What runs | Code in isolation: no server, no ports, no network | A real running server with real HTTP and WebSocket traffic |
-| Commands | `npm run test:dry` = lint + policy + `AGENTS.md` guard + unit tests. Also `npm run build` and `npm audit`. | `npm run test:live` = integration + security + system + stress suites. `npm run smoke <url>` against a running server. Browser play-through. |
+| What runs | Code in isolation: no server and no ports (`npm audit` is the one network call) | A real running server with real HTTP and WebSocket traffic |
+| Commands | `npm run test:dry` = lint (policy checker + syntax) + `AGENTS.md` guard + unit tests. Also `npm run build` and `npm audit`. | `npm run test:live` = integration + security + system + stress suites. `npm run smoke <url>` against a running server. Browser play-through. |
 | Speed | Seconds | Tens of seconds to minutes |
 | Deterministic? | Yes (fake clocks, seeded randomness) | Mostly; timing-based checks use generous bounds |
 | Catches | Logic errors, spec violations, banned patterns, broken imports, secrets | Wiring bugs: wrong HTTP method order, origin policy, proxy/host mismatches, resource leaks, rate limits, real-socket behaviour |
@@ -21,7 +21,7 @@ Every change is proven in two different ways. They catch different bugs, and **n
 | Changing networking, protocol, security, config, headers | yes | yes | yes (local) | |
 | First run in a new environment, or after a proxy/host/origin change | yes | yes | **yes (that environment's URL)** | yes |
 | Changing gameplay, HUD, rendering or feel | yes | yes | | **yes** |
-| Before merging performance-sensitive work | yes | yes + `npm run test:stress` | | |
+| Before merging performance-sensitive work | yes | yes (`test:live` already includes stress; CI runs stress only on demand) | | |
 
 ## The assistant must know what it can actually run
 Before claiming anything, find out which kinds of test are possible **in the current environment**:
@@ -38,7 +38,7 @@ Before claiming anything, find out which kinds of test are possible **in the cur
 Dry:  PASS - lint, AGENTS.md guard, N unit tests
 Live: PASS - integration N, security N, system N, stress N        (or)
 Live: NOT RUN locally - <reason>; CI run: <link or status>
-Smoke: PASS against <url>                                          (or not applicable)
+Smoke: PASS against the preview (URL withheld: repo is public)     (or not applicable)
 Browser: <what was played through, what was not>
 ```
 Never write "all tests pass" unless both dry and live actually ran and passed. A live suite that did not run is
@@ -49,11 +49,11 @@ Never write "all tests pass" unless both dry and live actually ran and passed. A
 npm run dev                                   # in one terminal
 npm run smoke http://localhost:3000           # in another
 npm run smoke https://<preview-host>          # a hosted preview: same command, its own URL
-npm run smoke https://<preview-host> --origin https://<the-page-origin>
+npm run smoke -- https://<preview-host> --origin https://<the-page-origin>   # the extra -- hands the flag to the script, not to npm
 ```
 It performs GET requests and one short WebSocket session: health, readiness, the game page, then join -> welcome ->
 snapshot -> input acknowledged. A `403` on the WebSocket step means the server refused the page's `Origin`: set
-`ALLOWED_ORIGINS` to that exact origin for that environment (see `SECURITY.md`). It changes nothing on the server.
+`ALLOWED_ORIGINS` to that exact origin for that environment (see `SECURITY.md`). It changes no data: it briefly joins as a player named `smoke-NNNN` and leaves.
 
 ## Browser play-through (live, visual)
 Use this when a person or the assistant can drive a browser. Some embedded browsers refuse pointer lock; the game

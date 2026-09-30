@@ -271,3 +271,40 @@ Exports `RULES`, `stripComments(text)`, `scanSource(file, text)`.
   Another rule on the same line is still reported; a marker on a different line has no effect.
 - Multiple violations on one line produce multiple findings. Line numbers stay correct after multi-line block comments.
 - `stripComments(text)` keeps the line count identical to the input.
+
+---
+
+## 14. Open questions found by the independent test authors
+
+Each row is something the spec did not pin down. "Today" is what the code does now. **Resolve every row** (see Prompt 1 in
+`docs/BASE_CODE_PROMPTS.md`): decide, write the decision into the relevant section above, add a test, and mark the row
+`resolved (D-nnn)`. Rows marked (owner) change gameplay or security posture, so the owner decides.
+
+| # | Question | Where | Today | Status |
+|---|---|---|---|---|
+| 1 | Overkill damage: may `hp` go below 0? | 10 | Clamped at 0; the invariant `0 <= hp <= MAX_HP` holds | open |
+| 2 | `bad_join` reason is listed but nothing produces it | 7 | Never produced; a non-string name becomes `''` | open |
+| 3 | `PORT=""` or `HOST=""`: default or error? | 5 | Empty means unset, so the default is used | open |
+| 4 | `LOG_LEVEL` case/whitespace; `PORT` forms such as `1e3`, `0x50` | 5 | `INFO` and `" info"` are rejected; only plain decimal digits are accepted for `PORT` | open |
+| 5 | Allowlist origin with a trailing slash | 6 | Rejected (exact match only) | open |
+| 6 | A lower `seq` after earlier ones were consumed | 10 | Rejected: `seq` must exceed the highest ever queued | open |
+| 7 | Two players kill each other in the same tick (owner) | 10 | Resolved in player-join order; a victim killed earlier cannot fire later that tick | open |
+| 8 | Respawn yaw | 10 | The spawn's yaw is applied | open |
+| 9 | Does a cooldown-rejected shot update the cooldown clock? | 10 | No; only a fired shot does | open |
+| 10 | Name characters such as tab, newline, U+3000 | 6 | Removed (not turned into spaces) | open |
+| 11 | `TokenBucket` when the clock steps backwards | 8 | Treated as zero elapsed time | open |
+| 12 | Logger with circular objects, `BigInt`, or a throwing sink | 9 | Circular/BigInt fall back to a short line; a throwing sink propagates to the caller | open |
+| 13 | Tick counter in an empty room | 10 | Still increments | open |
+| 14 | `stepPlayer` with `NaN` or out-of-range input | 3 | Not guarded; relies on `parseClientMessage` upstream | open |
+| 15 | Static path: a `.` or `..` segment vs "any segment starting with `.` is refused" | 11 | `/a/../b.js` resolves inside root; `/a/./b.js` is refused | open |
+| 16 | Static path: `//` and an encoded `%2f` inside a segment | 11 | `//` collapses; `%2f` decodes to a separator | open |
+| 17 | Policy checker: secret rule case/inner spaces; `policy-allow` inside `/* */`; `setTimeout("a"+b)` | 13 | Case-insensitive; a literal with spaces is not matched; the marker in a block comment is ignored; the concatenated form is not flagged | open |
+| 18 | Do messages before `join` consume rate-limit tokens? | 12 | Yes: every message on a socket does | open |
+| 19 | Origin `http://evil@127.0.0.1:PORT` where the host equals `Host` (owner) | 6 | Accepted (userinfo is ignored by URL parsing) | open |
+| 20 | Security headers on the 403/429 upgrade rejections | 12 | Not sent (raw socket write) | open |
+| 21 | Oversize-frame close code | 12 | 1009, produced by the `ws` library's payload limit | open |
+| 22 | Origin with a path or without a scheme; `/ws/` with a trailing slash | 6, 12 | Path ignored; scheme-less rejected; `/ws/` is not upgraded | open |
+| 23 | `/assets` without a trailing slash | 12 | 404 (a directory) | open |
+
+Not testable through the public surface, by design: room capacity of 16 (the per-IP cap of 8 is reached first), and spawn
+positions (random).
