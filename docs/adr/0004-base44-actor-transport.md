@@ -44,6 +44,9 @@ The owner wants the project to be a regular Base44 app in his workspace, carryin
 - The platform caps a received WebSocket frame at Cloudflare's 32 MiB and parses it before our code runs. The
   4 KB rule is re-applied in `MatchSession` by measuring the parsed object; the parse cost of a hostile large
   frame is the platform's and is bounded by the per-connection message budget.
+- `npm run dev` is Vite alone: the Base44 sandbox starts the preview as `npm run dev -- --host 0.0.0.0 --port <port>`
+  plus its own `--config` wrapper and polls that port, so the script must be the Vite CLI. The Node server with Vite
+  in middleware mode is `npm run dev:server` and stays the local and test transport.
 - One new runtime dependency, `@base44/sdk` (adds about 43 kB gzip to the client bundle; the three.js chunk is
   the large one either way). Dependency approval is recorded in D-017.
 

@@ -117,7 +117,7 @@ Order: **Prompt 0**, then **Prompt 00** (the interview), then **Prompt 01** at e
 >    NOT RUN. CI runs the unit, security, integration and system suites on every pull request; the stress suite runs only
 >    on demand.
 > 4. Find out how this environment starts the app and which port the preview uses. If a preview is already running, use it:
->    do not start a second server and do not kill processes. Otherwise start `npm run dev` in the background. Report the
+>    do not start a second server and do not kill processes. Otherwise start `npm run dev:server` in the background. Report the
 >    command, the port, whether `PORT` is set, and whether the preview loads.
 > 5. Run `npm run smoke <preview-url>` and report every line. If you can open a browser, also open the preview in two tabs,
 >    join in both and confirm each sees the other; if you cannot, report that part NOT RUN and ask me to do it and tell you

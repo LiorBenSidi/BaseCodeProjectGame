@@ -46,7 +46,7 @@ Never write "all tests pass" unless both dry and live actually ran and passed. A
 
 ## Smoke test against any URL
 ```bash
-npm run dev                                   # in one terminal
+npm run dev:server                            # in one terminal (Node ws transport)
 npm run smoke http://localhost:3000           # in another
 npm run smoke https://<preview-host>          # a hosted preview: same command, its own URL
 npm run smoke -- https://<preview-host> --origin https://<the-page-origin>   # the extra -- hands the flag to the script, not to npm
