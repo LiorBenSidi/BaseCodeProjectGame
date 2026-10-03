@@ -382,3 +382,23 @@ When lag compensation arrives, rewind must include the zone geometry below, not 
 - The combat log (`src/client/combatLog.js`) keeps at most 8 entries: shot, zone, applied damage, kill.
 - G throws. With `?debug=1` the page exposes a debug harness (`window.__arenaDebug`) that aims, fires and
   throws through the normal intent path, for browsers where pointer lock is unavailable.
+
+## 16. Mobile touch controls, landscape (D-016)
+
+Client-only. Touch produces the same intent as keyboard/mouse (command `fwd`/`right`/`jump`/`yaw`/`pitch`,
+`shoot`, `throw`); nothing new is sent and the server is unchanged.
+
+### 16.1 `src/client/touchMath.js` (pure)
+- `STICK_RADIUS = 60` (px), `STICK_DEADZONE = 0.15`, `LOOK_SENSITIVITY = 0.005` (rad per px).
+- `stickVector(dx, dy, radius = STICK_RADIUS, deadzone = STICK_DEADZONE)` → `{ fwd, right }`. `dx`/`dy` are the
+  thumb offset from the stick origin in screen px (down is +y). Normalised by `radius`; length below `deadzone`
+  → `{ fwd: 0, right: 0 }`; length above 1 is scaled to 1. `right = x`, `fwd = -y`, each within [-1, 1].
+- `lookDelta(dx, dy, sensitivity = LOOK_SENSITIVITY)` → `{ yaw: -dx × s, pitch: -dy × s }` (drag right turns right,
+  drag up looks up, matching mouse look).
+- `needsRotate(width, height, coarse)` → `true` only when the pointer is coarse (touch) and `height > width`.
+
+### 16.2 Behaviour
+- Input is "active" when the pointer is locked **or** touch controls are enabled; movement and fire are sampled
+  only while active. Keyboard and stick add, then clamp to [-1, 1].
+- Pitch from touch look is clamped to ±1.5533 like mouse look.
+- Portrait on a touch device shows `#rotate` over the game; inputs keep sampling but the overlay blocks touches.

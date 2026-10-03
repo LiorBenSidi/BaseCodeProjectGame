@@ -1,5 +1,6 @@
 import { installDebugHarness } from './debugHarness.js';
 import { Game } from './game.js';
+import { isTouchDevice } from './touch.js';
 
 const canvas = document.getElementById('game');
 const menu = document.getElementById('menu');
@@ -11,12 +12,14 @@ menu.addEventListener('submit', (e) => {
   e.preventDefault();
   game.join(nameInput.value);
   menu.hidden = true;
-  capturePointer(); // must run inside the user gesture
+  // Both must run inside the user gesture.
+  if (isTouchDevice()) game.enableTouch();
+  else capturePointer();
 });
 
 // Re-capture the mouse after Esc.
 canvas.addEventListener('click', () => {
-  if (game.joined && document.pointerLockElement !== canvas) capturePointer();
+  if (game.joined && !isTouchDevice() && document.pointerLockElement !== canvas) capturePointer();
 });
 
 // requestPointerLock() returns a promise in current browsers and rejects when the browser

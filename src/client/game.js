@@ -22,6 +22,7 @@ export class Game {
   #hud = new Hud();
   #combat = new CombatHud();
   #grenades;
+  #touch;
   #remote;
   #net = null;
   #me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, alive: false };
@@ -45,7 +46,16 @@ export class Game {
     window.addEventListener('keyup', (e) => {
       if (e.code === 'Tab') this.#hud.setScoreboardVisible(false);
     });
+    this.#touch = new TouchControls(this.#input, {
+      grenade: () => this.throwGrenade(),
+      scoreboard: (show) => this.#hud.setScoreboardVisible(show),
+    });
     requestAnimationFrame((t) => this.#frame(t));
+  }
+
+  // Must run inside the Play gesture (fullscreen / orientation lock need one).
+  enableTouch() {
+    this.#touch.enable();
   }
 
   get joined() {

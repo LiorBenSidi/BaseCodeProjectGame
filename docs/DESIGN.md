@@ -47,6 +47,18 @@ decision cite its ID.
 - Supersedes: (none)
 -->
 
+### D-016 (UI6, C) Mobile: landscape only, touch layout, landscape HUD
+- Status: decided
+- Date: 2026-10-03
+- Decision: On touch devices the game is landscape only. Portrait shows a "rotate your device" overlay; on Play
+  the client asks for fullscreen and a landscape orientation lock where the browser allows it. Touch layout:
+  left half is a floating move stick (origin where the thumb lands), right half drags to look; buttons for
+  Fire (hold), Jump, Grenade and Scoreboard (hold) sit on the right. The HUD scales down on short landscape
+  screens and respects the notch / safe-area insets.
+- Source: Owner chose all three ("Force/lock landscape, Touch controls layout, HUD fit for landscape").
+- Affects: docs/SPEC.md §16; `src/client/touchMath.js`, `src/client/touch.js`, `src/client/input.js`, CSS.
+- Implementation status: implemented 2026-10-03.
+
 ### D-015 (W9, G2) Throwable tuning and blast rules
 - Status: decided
 - Date: 2026-09-30

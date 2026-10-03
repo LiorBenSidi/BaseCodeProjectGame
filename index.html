@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Base Code Arena</title>
     <link rel="stylesheet" href="/src/client/style.css" />
   </head>
@@ -20,6 +20,18 @@
       <div id="dead" hidden>You were eliminated. Respawning...</div>
       <div id="notice" hidden></div>
     </div>
+
+    <div id="touch" hidden>
+      <div id="touch-move"></div>
+      <div id="touch-look"></div>
+      <div id="touch-base" hidden><div id="touch-knob"></div></div>
+      <button id="touch-score" type="button" aria-label="Scoreboard">☰</button>
+      <button id="touch-nade" type="button" aria-label="Grenade">G</button>
+      <button id="touch-jump" type="button" aria-label="Jump">⤒</button>
+      <button id="touch-fire" type="button" aria-label="Fire">FIRE</button>
+    </div>
+
+    <div id="rotate" hidden>Rotate your device to landscape to play</div>
 
     <form id="menu">
       <h1>Base Code Arena</h1>

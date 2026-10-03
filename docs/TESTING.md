@@ -37,6 +37,7 @@
 | Grenade flight, fuse, blast, cover (D-012, D-015) | x | x | | x | |
 | Combat log + verdict feedback (D-013) | x | x | | | |
 | Snapshot size with grenades | x | | | | |
+| Touch stick, look, rotate prompt (D-016) | x | | | | |
 
 ### Combat test files
 - `tests/unit/combat.test.js`: every zone, band boundaries at exactly 20/40/120 m, misses, `applyDamage`.
