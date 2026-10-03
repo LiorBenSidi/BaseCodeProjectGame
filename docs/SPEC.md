@@ -453,6 +453,13 @@ by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
   long a room with only idle players stands still (respawn timers, grenade fuses). Schedules are Durable Object
   alarms: they survive hibernation and cost two storage writes per arm, which is why the period is coarse and
   re-arming only moves the one key.
+- **Hook guards.** The runtime shim swallows an exception thrown by a hook and skips the rest of that hook, and
+  actor console output is not reachable from outside the platform. Every hook body in `entry.ts` therefore runs
+  under `guard(hook, conn, fn)`: a throw is passed to `MatchHost.fail(hook, err, conn)`, which logs it (`error`
+  level) and sends the affected connection `{ t: "error", reason: "internal", hook }`. The client shows
+  "Server error" for any `error` frame it does not know. Only when the app secret `ACTOR_DIAG` is `"1"` does the
+  frame also carry the error `name` and `message` (and the log line the stack); the secret stays unset in
+  production. A failed `schedule` call is reported the same way and the clock is re-armed on the next event.
 - `handleStart` runs on every wake. A hibernation wake keeps sockets attached without `handleConnect`, so
   `MatchHost.wake(conns)` re-registers them and calls `requestRejoin()`; the client answers with a new `join`
   and gets a new `welcome` (a new id, a fresh spawn: match state is not persisted in this slice).

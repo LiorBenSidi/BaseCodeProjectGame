@@ -40,6 +40,7 @@ export class MatchHost {
   #maxCatchup;
   #anchorAt = null; // wall time the clock counts from; null while the room has no seated player
   #stepsSinceAnchor = 0;
+  #diag;
 
   constructor({
     instanceId = 'match',
@@ -48,8 +49,10 @@ export class MatchHost {
     now = () => Date.now(),
     tickMs = TICK_MS,
     maxCatchup = MAX_CATCHUP,
+    diag = false,
   } = {}) {
     this.#now = now;
+    this.#diag = diag === true;
     this.#tickMs = tickMs;
     this.#maxCatchup = maxCatchup;
     // The actor has no stdout; Cloudflare observability captures console output. logger.js lives
@@ -130,5 +133,33 @@ export class MatchHost {
   /** The managed ticker (handleTick) shares the wall-time gate, so it can never double step. */
   tick() {
     return this.advance();
+  }
+
+  /**
+   * A hook threw. The actor runtime swallows hook errors silently (and skips the rest of the hook), so the
+   * error is logged here and the connection it happened on is told that the server failed on its behalf:
+   * { t: 'error', reason: 'internal', hook }. The error's name and message are added only when the host runs
+   * with diagnostics on (entry.ts reads the ACTOR_DIAG secret), so a production client never sees internals.
+   * Never throws: a reporting failure must not mask the original error.
+   */
+  fail(hook, err, conn) {
+    const fields = { hook, err };
+    if (this.#diag && err?.stack) fields.stack = String(err.stack);
+    try {
+      this.#log.error('hook threw', fields);
+    } catch {
+      // the logger is the thing being reported on; nothing left to do
+    }
+    if (!conn || typeof conn.send !== 'function') return;
+    const frame = { t: 'error', reason: 'internal', hook };
+    if (this.#diag) {
+      frame.name = String(err?.name ?? 'Error');
+      frame.message = String(err?.message ?? err);
+    }
+    try {
+      conn.send(frame);
+    } catch {
+      // socket already gone
+    }
   }
 }
