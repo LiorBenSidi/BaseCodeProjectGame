@@ -560,3 +560,46 @@ if awaited I/O unfreezes the clock, and `clock.source` must read `clientClock` w
 
 Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
 18.5 blended reconciliation, 18.6 lag compensation rewind.
+
+
+## 19. Design and HUD (Batch D1)
+
+Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layout resolution.
+
+### 19.1 In-match HUD
+- HUD state derivation lives in `src/client/hudModel.js` (pure logic):
+  - Crosshair state: expanded briefly on fire, flash on hit (headshot vs body).
+  - Health and ammo readouts: health percentage and segment bar; infinite ammo status display (`INF / READY`).
+  - Hit marker: brief flash with headshot differentiation (`head` vs `hit`).
+  - Directional damage indicator: computes relative angle pointing toward attacker from player position, attacker position, and camera yaw.
+  - Kill feed queue: maximum 5 entries, auto-expiring after 5000 ms.
+  - Respawn countdown: displays centered countdown text (`Respawning in X.Xs...`) derived from local death time and `RESPAWN_MS`.
+- Scoreboard polish: Tab / touch score overlay, aligned columns, highlighted self row (`.row.me`), team color chip based on player ID parity.
+
+### 19.2 Menu and lobby skin (`src/client/theme.js`)
+- Theme tokens exported from `src/client/theme.js` as JS constants (palette, spacing, typography) and injected as CSS variables (`:root`).
+- Dark launcher styling for `#menu`: centered card, accent highlights, muted secondary text.
+- Settings panel with gear icon toggle containing:
+  - Mouse sensitivity slider (persisted in `localStorage` key `bca.sensitivity`, default 0.0022).
+  - Touch controls mode 3-way select (`Auto` / `On` / `Off`, persisted in `localStorage` key `bca.touchControls`).
+  - Show FPS toggle checkbox (persisted in `localStorage` key `bca.showFps`).
+
+### 19.3 Arena visual pass (`src/client/scene.js`, `src/client/remote.js`)
+- Hemisphere light and directional sun light with soft shadow mapping enabled.
+- Dark fog matching the horizon/sky background color (`0x0f172a`).
+- Simple gradient skybox generated via inverted sphere geometry with vertex colors.
+- Box materials with slight roughness and metalness variation per box.
+- Toned-down floor grid with lower opacity and subtle line colors.
+- Team color meshes for remote players (Blue for even IDs, Red for odd IDs) with shadows.
+- Name tags above remote players rendered as `THREE.Sprite` using cached `CanvasTexture` per name.
+- Cheap CSS radial vignette overlay for framing.
+
+### 19.4 Mobile touch controls resolution (`src/client/deviceMode.js`)
+- `resolveDeviceMode({ override, hasTouch, coarsePointer, userAgentMobile })`:
+  - `override === 'on'` -> `'touch'`
+  - `override === 'off'` -> `'desktop'`
+  - `override === 'auto'` or invalid -> `'touch'` iff `hasTouch && (coarsePointer || userAgentMobile)`.
+- Touch controls in `src/client/touch.js` render only when `resolveDeviceMode(...) === 'touch'`.
+- Safe-area insets (`env(safe-area-inset-*)`) applied to touch controls and HUD.
+- HUD font sizes scale with `clamp()` on viewport width.
+- Landscape hint overlay (`#rotate`) shown in portrait touch mode.
