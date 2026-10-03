@@ -12,10 +12,10 @@ services:
       - HOST=0.0.0.0
       - ALLOWED_ORIGINS=https://3000-${BASE44_PUBLIC_HOST_SUFFIX}
       - CHOKIDAR_USEPOLLING=true
-    command: ["sh", "-ec", "npm ci --no-audit --no-fund && exec npm run dev"]
+    command: ["sh", "-ec", "npm ci --no-audit --no-fund && exec node --watch-path=src/server --watch-path=src/shared src/server/index.js"]
     restart: on-failure
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "Promise.all(['/', '/readyz'].map(async p => { try { const r = await fetch('http://127.0.0.1:3000' + p, {signal: AbortSignal.timeout(2000)}); if (!r.ok) throw Error(String(r.status)); } catch (e) { process.stderr.write(p + ' failed: ' + e.message + '\\n'); process.exitCode = 1; } }))"]
       interval: 15s
       timeout: 5s
       retries: 3

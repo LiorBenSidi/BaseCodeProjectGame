@@ -33,6 +33,29 @@
 | Static file serving | x | | x | x | |
 | Config + logging | x | | | x | |
 | Prediction / reconciliation determinism | x | x | | | |
+| Hit zones + range bands (D-010, D-011, D-014) | x | x | | | |
+| Grenade flight, fuse, blast, cover (D-012, D-015) | x | x | | x | |
+| Combat log + verdict feedback (D-013) | x | x | | | |
+| Snapshot size with grenades | x | | | | |
+| Touch stick, look, rotate prompt (D-016) | x | | | | |
+
+### Combat test files
+- `tests/unit/combat.test.js`: every zone, band boundaries at exactly 20/40/120 m, misses, `applyDamage`.
+- `tests/unit/projectile.test.js`: arc, bounce, floor, fuse at 30/60/120 Hz, falloff, cover.
+- `tests/unit/gameRoomCombat.test.js`: verdicts, throws, self-damage, cover, snapshot `nades` and size.
+- `tests/unit/combatLog.test.js`: bounded log, head/body markers, formatting from server-shaped messages.
+- `tests/integration/combat-flow.test.js`: verdict and grenade replication over a real socket.
+- `tests/security/input-validation.test.js`: hostile `throw` messages.
+
+Baseline note: a level eye-height shot at 4 m is a **head** hit (25 × 1.5 = 37.5), so the pre-existing
+shooting tests assert 37.5 per hit and three hits to kill; their obstruction/cooldown/respawn logic is unchanged.
+
+### Debug harness (manual check, not an automated suite)
+Embedded previews refuse pointer lock, so aiming, firing and throwing cannot be driven by the mouse there.
+Open the game with `?debug=1`, join, and use the on-screen debug panel or the console:
+`__arenaDebug.aim(yaw, pitch)`, `__arenaDebug.fire()`, `__arenaDebug.throwGrenade()`, `__arenaDebug.state()`.
+These send the same `input`/`shoot`/`throw` intents as real controls; the server decides every result.
+Record what you saw (verdict, combat log line, grenade arc and explosion) in the PR.
 
 ## Docs stay true (planned contract test)
 Docs drift silently (an observed example: a project README describing one framework while `package.json` used

@@ -71,8 +71,11 @@ Base Code names its own working branches (for example `base44/...`); that is exp
 _Reserved for Base Code's environment setup. Add only non-obvious environment findings here (how the app boots,
 required secrets by name, ports). Never put rules or game decisions here._
 
-- Boot: `docker compose -f docker-compose.base44.yml up -d`. One `node:22` service runs `npm ci` then `npm run dev`
-  (Node server with Vite in middleware mode) on port 3000; `node_modules` lives in a named volume.
+- Boot: `docker compose -f docker-compose.base44.yml up -d`. One `node:22` service runs `npm ci` then
+  `node --watch-path=src/server --watch-path=src/shared src/server/index.js` (Node server with Vite in
+  middleware mode) on port 3000; `node_modules` lives in a named volume. Explicit watch paths avoid a restart
+  loop from Vite's generated config modules. The Compose override leaves protected package scripts unchanged;
+  Vite handles client-source updates.
 - No secrets required. `ALLOWED_ORIGINS` is set in compose from `${BASE44_PUBLIC_HOST_SUFFIX}` so the preview's
   WebSocket upgrade is accepted; without it the WS handshake returns 403.
 - Verify inside the container: `npm run test:dry`, and `npm run smoke -- http://127.0.0.1:3000 --origin "$ALLOWED_ORIGINS"`.

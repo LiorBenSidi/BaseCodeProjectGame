@@ -376,3 +376,33 @@ test('property: any accepted input message satisfies the clamping invariants', (
     }
   }
 });
+
+// ---------- throw (SPEC §15.4, D-012/D-015) ----------
+test('throw is accepted and yields exactly { t: "throw" }', () => {
+  assert.deepEqual(parseClientMessage('{"t":"throw"}'), { ok: true, msg: { t: 'throw' } });
+});
+
+test('throw drops every smuggled field (position, velocity, fuse, damage, owner)', () => {
+  const raw = JSON.stringify({ t: 'throw', x: 0, y: 99, z: 0, vx: 1e9, fuseMs: 0, damage: 1e6, owner: 1, id: 7, __proto__: { isAdmin: true } });
+  const r = parseClientMessage(raw);
+  assert.equal(r.ok, true);
+  assert.deepEqual(Object.keys(r.msg), ['t']);
+  assert.equal(Object.getPrototypeOf(r.msg), Object.prototype);
+});
+
+test('a JSON "__proto__" key on throw does not pollute the result', () => {
+  const r = parseClientMessage('{"t":"throw","__proto__":{"polluted":1}}');
+  assert.deepEqual(r.msg, { t: 'throw' });
+  assert.equal(({}).polluted, undefined);
+});
+
+for (const raw of ['{"t":"THROW"}', '{"t":"throw "}', '{"t":["throw"]}', '[{"t":"throw"}]', '{"t":"grenade"}', '{"t":"boom"}', '{"t":"verdict"}']) {
+  test(`throw look-alike ${raw} is bad_shape`, () => {
+    assert.deepEqual(parseClientMessage(raw), { ok: false, reason: 'bad_shape' });
+  });
+}
+
+test('an oversized throw is too_large', () => {
+  const raw = '{"t":"throw","pad":"' + 'x'.repeat(4096) + '"}';
+  assert.deepEqual(parseClientMessage(raw), { ok: false, reason: 'too_large' });
+});

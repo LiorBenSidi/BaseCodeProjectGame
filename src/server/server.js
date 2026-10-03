@@ -211,6 +211,8 @@ export async function startServer(options = {}) {
         room.handleInput(player.id, msg.cmds);
       } else if (player && msg.t === 'shoot') {
         room.handleShoot(player.id);
+      } else if (player && msg.t === 'throw') {
+        room.handleThrow(player.id);
       }
       return undefined;
     });

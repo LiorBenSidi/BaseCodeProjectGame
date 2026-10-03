@@ -1,11 +1,14 @@
 const SENSITIVITY = 0.0022;
 const MAX_PITCH = 1.5533; // keep in sync with server/protocol.js clamp
 
-// Keyboard + mouse state. Aim (yaw/pitch) is accumulated here; movement keys are sampled per command.
+const clamp1 = (v) => Math.max(-1, Math.min(1, v));
+
+// Keyboard + mouse (+ touch, see touch.js) state. Aim (yaw/pitch) is accumulated here; movement is sampled per command.
 export class Input {
   yaw = 0;
   pitch = 0;
   firing = false;
+  touch = { active: false, fwd: 0, right: 0, jump: false };
   #keys = new Set();
   #canvas;
 
@@ -15,9 +18,7 @@ export class Input {
     window.addEventListener('keyup', (e) => this.#keys.delete(e.code));
     window.addEventListener('blur', () => { this.#keys.clear(); this.firing = false; });
     window.addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
-      this.yaw -= e.movementX * SENSITIVITY;
-      this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - e.movementY * SENSITIVITY));
+      if (this.locked) this.turn(-e.movementX * SENSITIVITY, -e.movementY * SENSITIVITY);
     });
     window.addEventListener('mousedown', (e) => { if (e.button === 0 && this.locked) this.firing = true; });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });
@@ -27,18 +28,28 @@ export class Input {
     return document.pointerLockElement === this.#canvas;
   }
 
+  // Pointer captured (desktop) or touch controls enabled (mobile).
+  get active() {
+    return this.locked || this.touch.active;
+  }
+
+  turn(dyaw, dpitch) {
+    this.yaw += dyaw;
+    this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch + dpitch));
+  }
+
   has(code) {
     return this.#keys.has(code);
   }
 
-  // Movement intent for one command. Zero while the pointer is not captured (menu, Esc).
+  // Movement intent for one command. Zero while input is not active (menu, Esc).
   sample() {
-    if (!this.locked) return { fwd: 0, right: 0, jump: false };
+    if (!this.active) return { fwd: 0, right: 0, jump: false };
     const k = (c) => (this.#keys.has(c) ? 1 : 0);
     return {
-      fwd: k('KeyW') - k('KeyS'),
-      right: k('KeyD') - k('KeyA'),
-      jump: this.#keys.has('Space'),
+      fwd: clamp1(k('KeyW') - k('KeyS') + this.touch.fwd),
+      right: clamp1(k('KeyD') - k('KeyA') + this.touch.right),
+      jump: this.#keys.has('Space') || this.touch.jump,
     };
   }
 }

@@ -41,11 +41,6 @@ export class Hud {
     this.#board.replaceChildren(...rows);
   }
 
-  hitMarker() {
-    this.#cross.classList.add('hit');
-    setTimeout(() => this.#cross.classList.remove('hit'), 120);
-  }
-
   killFeed(text) {
     const line = document.createElement('div');
     line.textContent = text;
