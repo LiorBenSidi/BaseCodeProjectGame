@@ -34,6 +34,7 @@ export class Game {
   #pending = [];
   #accumulator = 0;
   #lastFrame = performance.now();
+  #fps = { on: false, frames: 0, since: performance.now() };
   #lastShot = 0;
   #tracers = [];
 
@@ -59,6 +60,23 @@ export class Game {
   // Must run inside the Play gesture (fullscreen / orientation lock need one).
   enableTouch() {
     this.#touch.enable();
+  }
+
+  /** SPEC 19.4: the touch override changed in settings; re-resolve without a reload. */
+  updateTouchMode() {
+    this.#touch.updateMode(this.joined);
+  }
+
+  /** SPEC 19.2: mouse sensitivity from the settings panel, applied to the next mouse move. */
+  setSensitivity(value) {
+    this.#input.sensitivity = value;
+  }
+
+  /** SPEC 19.2: FPS readout, measured from frame deltas and refreshed twice a second. */
+  setShowFps(on) {
+    this.#fps.on = on === true;
+    const el = document.getElementById('fps');
+    if (el) el.hidden = !this.#fps.on;
   }
 
   get joined() {
@@ -171,10 +189,21 @@ export class Game {
     return true;
   }
 
+  #countFrame(now) {
+    this.#fps.frames += 1;
+    const elapsed = now - this.#fps.since;
+    if (elapsed < 500) return;
+    const el = document.getElementById('fps');
+    if (el) el.textContent = `${Math.round((this.#fps.frames * 1000) / elapsed)} FPS`;
+    this.#fps.frames = 0;
+    this.#fps.since = now;
+  }
+
   #frame(now) {
     requestAnimationFrame((t) => this.#frame(t));
     const dt = Math.min(0.1, (now - this.#lastFrame) / 1000); // clamp: a background tab must not flood the server
     this.#lastFrame = now;
+    if (this.#fps.on) this.#countFrame(now);
     if (this.joined) this.#simulate(dt, now);
 
     this.#remote.update(now);

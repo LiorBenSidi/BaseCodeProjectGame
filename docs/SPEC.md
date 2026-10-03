@@ -579,10 +579,13 @@ Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layou
 ### 19.2 Menu and lobby skin (`src/client/theme.js`)
 - Theme tokens exported from `src/client/theme.js` as JS constants (palette, spacing, typography) and injected as CSS variables (`:root`).
 - Dark launcher styling for `#menu`: centered card, accent highlights, muted secondary text.
-- Settings panel with gear icon toggle containing:
-  - Mouse sensitivity slider (persisted in `localStorage` key `bca.sensitivity`, default 0.0022).
-  - Touch controls mode 3-way select (`Auto` / `On` / `Off`, persisted in `localStorage` key `bca.touchControls`).
-  - Show FPS toggle checkbox (persisted in `localStorage` key `bca.showFps`).
+- Settings panel (`#settings`, toggled by the gear button `#settings-open`, DOM glue in `src/client/settingsPanel.js`,
+  values in `src/client/settings.js`) containing:
+  - Mouse sensitivity slider (`localStorage` key `bca.sensitivity`, default 0.0022, clamped to [0.0005, 0.01], shown
+    as rad per 1000 px, applied to `Input.sensitivity` on the next mouse move).
+  - Touch controls three-way radio (`Auto` / `On` / `Off`, `localStorage` key `bca.touchControls`); a change
+    re-resolves the device mode at once (`Game.updateTouchMode`), also mid-match, without a reload.
+  - Show FPS checkbox (`localStorage` key `bca.showFps`): `#fps` bottom-left, frames per 500 ms window.
 
 ### 19.3 Arena visual pass (`src/client/scene.js`, `src/client/remote.js`)
 - Hemisphere light and directional sun light with soft shadow mapping enabled.
@@ -599,7 +602,10 @@ Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layou
   - `override === 'on'` -> `'touch'`
   - `override === 'off'` -> `'desktop'`
   - `override === 'auto'` or invalid -> `'touch'` iff `hasTouch && (coarsePointer || userAgentMobile)`.
-- Touch controls in `src/client/touch.js` render only when `resolveDeviceMode(...) === 'touch'`.
+- Touch controls in `src/client/touch.js` render only when `isTouchDevice()` (which is
+  `resolveDeviceMode(...) === 'touch'` with `hasTouch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window`,
+  `coarsePointer = matchMedia('(pointer: coarse)')`, `userAgentMobile` from the user agent) holds. `enable()` on a
+  desktop-mode device is a no-op that hides the controls; `updateMode(inGame)` re-applies after an override change.
 - Safe-area insets (`env(safe-area-inset-*)`) applied to touch controls and HUD.
 - HUD font sizes scale with `clamp()` on viewport width.
 - Landscape hint overlay (`#rotate`) shown in portrait touch mode.

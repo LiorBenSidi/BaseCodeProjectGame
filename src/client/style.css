@@ -1,12 +1,32 @@
-html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1117; color: #e6edf3; font: 14px/1.4 system-ui, sans-serif; }
+/* Theme tokens come from src/client/theme.js (SPEC 19.2); the fallbacks mirror PALETTE for a no-script paint. */
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg, #0d1117); color: var(--text, #e6edf3); font: var(--font-md, 14px)/1.4 var(--font-family, system-ui, sans-serif); }
 canvas#game { display: block; width: 100vw; height: 100vh; }
 [hidden] { display: none !important; }
 
-#menu { position: fixed; inset: 0; margin: auto; width: 320px; height: fit-content; padding: 24px; background: rgba(13, 17, 23, 0.92); border: 1px solid #30363d; border-radius: 12px; display: grid; gap: 10px; }
-#menu h1 { margin: 0 0 6px; font-size: 22px; }
-#menu input { padding: 10px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: inherit; }
-#menu button { padding: 10px; border: 0; border-radius: 6px; background: #238636; color: #fff; font-weight: 600; cursor: pointer; }
-#menu .hint { margin: 4px 0 0; color: #8b949e; font-size: 12px; }
+/* Menu: a centered dark launcher card (SPEC 19.2). */
+#menu { position: fixed; inset: 0; margin: auto; width: min(360px, calc(100vw - 32px)); height: fit-content; padding: var(--space-lg, 24px); background: rgba(22, 27, 34, 0.94); border: 1px solid var(--surface-border, #30363d); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); display: grid; gap: var(--space-sm, 8px); backdrop-filter: blur(6px); }
+#menu .menu-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm, 8px); }
+#menu h1 { margin: 0; font-size: 26px; letter-spacing: 0.04em; text-transform: uppercase; }
+#menu h1::first-letter { color: var(--accent-hover, #2ea043); }
+#menu .tagline { margin: 0 0 var(--space-sm, 8px); color: var(--text-muted, #8b949e); }
+#menu label { font-size: var(--font-sm, 12px); color: var(--text-muted, #8b949e); text-transform: uppercase; letter-spacing: 0.08em; }
+#menu input[type="text"], #menu input:not([type]) { padding: 12px; border-radius: 8px; border: 1px solid var(--surface-border, #30363d); background: var(--bg, #0d1117); color: inherit; font-size: var(--font-lg, 18px); }
+#menu input:focus-visible, #menu button:focus-visible { outline: 2px solid var(--accent-hover, #2ea043); outline-offset: 2px; }
+#menu button.primary { margin-top: var(--space-xs, 4px); padding: 12px; border: 0; border-radius: 8px; background: var(--accent, #238636); color: #fff; font-weight: 700; font-size: var(--font-lg, 18px); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background 0.15s; }
+#menu button.primary:hover { background: var(--accent-hover, #2ea043); }
+#menu .hint { margin: var(--space-xs, 4px) 0 0; color: var(--text-muted, #8b949e); font-size: var(--font-sm, 12px); }
+#settings-open { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--surface-border, #30363d); border-radius: 8px; background: var(--surface, #161b22); color: var(--text-muted, #8b949e); cursor: pointer; }
+#settings-open:hover, #settings-open[aria-expanded="true"] { color: var(--text, #e6edf3); border-color: var(--text-muted, #8b949e); }
+#settings { display: grid; gap: var(--space-sm, 8px); margin-top: var(--space-sm, 8px); padding-top: var(--space-md, 16px); border-top: 1px solid var(--surface-border, #30363d); }
+#settings h2 { margin: 0; font-size: var(--font-md, 14px); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted, #8b949e); }
+#settings output { float: right; font-variant-numeric: tabular-nums; color: var(--text, #e6edf3); }
+#settings input[type="range"] { width: 100%; accent-color: var(--accent, #238636); }
+#settings fieldset { margin: 0; padding: 0; border: 0; display: grid; grid-template-columns: auto repeat(3, 1fr); gap: var(--space-sm, 8px); align-items: center; }
+#settings legend { float: left; padding: 0; margin-right: var(--space-sm, 8px); font-size: var(--font-sm, 12px); color: var(--text-muted, #8b949e); text-transform: uppercase; letter-spacing: 0.08em; }
+#settings fieldset label, #settings .check { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: var(--font-md, 14px); color: var(--text, #e6edf3); cursor: pointer; }
+#settings input[type="radio"], #settings input[type="checkbox"] { accent-color: var(--accent, #238636); }
+
+#fps { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: calc(60px + env(safe-area-inset-bottom)); z-index: 4; padding: 2px 6px; border-radius: 4px; background: rgba(13, 17, 23, 0.6); font: 12px/1.4 ui-monospace, monospace; color: var(--text-muted, #8b949e); pointer-events: none; }
 
 #crosshair { position: fixed; top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
 #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #fff; opacity: 0.85; }
@@ -35,7 +55,7 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 #notice { top: 12px; font-size: 14px; }
 
 /* Touch controls and landscape fit (docs/SPEC.md §16, D-016). */
-#touch { position: fixed; inset: 0; z-index: 3; touch-action: none; user-select: none; -webkit-user-select: none; }
+#touch { position: fixed; inset: 0; z-index: 3; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); touch-action: none; user-select: none; -webkit-user-select: none; }
 #touch-move, #touch-look { position: absolute; top: 0; bottom: 0; width: 50%; }
 #touch-move { left: 0; }
 #touch-look { right: 0; }

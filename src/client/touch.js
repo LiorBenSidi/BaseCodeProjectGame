@@ -1,8 +1,16 @@
+import { getTouchOverride, resolveDeviceMode } from './deviceMode.js';
 import { lookDelta, needsRotate, stickVector } from './touchMath.js';
 
-// On-screen touch controls (docs/SPEC.md §16, D-016): floating move stick on the left half, drag-to-look on
-// the right half, and Fire / Jump / Grenade / Scoreboard buttons. Writes the same intent as keyboard/mouse.
-export const isTouchDevice = () => window.matchMedia('(pointer: coarse)').matches;
+export function isTouchDevice() {
+  if (typeof window === 'undefined') return false;
+  const nav = typeof navigator !== 'undefined' ? navigator : {};
+  return resolveDeviceMode({
+    override: getTouchOverride(),
+    hasTouch: (nav.maxTouchPoints ?? 0) > 0 || 'ontouchstart' in window,
+    coarsePointer: window.matchMedia?.('(pointer: coarse)')?.matches ?? false,
+    userAgentMobile: /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent ?? ''),
+  }) === 'touch';
+}
 
 export class TouchControls {
   #input;
@@ -17,8 +25,8 @@ export class TouchControls {
     this.#input = input;
     this.#actions = actions;
     const zone = (id) => document.getElementById(id);
-    zone('touch-move').addEventListener('pointerdown', (e) => this.#startMove(e));
-    zone('touch-look').addEventListener('pointerdown', (e) => this.#startLook(e));
+    zone('touch-move')?.addEventListener('pointerdown', (e) => this.#startMove(e));
+    zone('touch-look')?.addEventListener('pointerdown', (e) => this.#startLook(e));
     window.addEventListener('pointermove', (e) => this.#onMove(e));
     window.addEventListener('pointerup', (e) => this.#onEnd(e));
     window.addEventListener('pointercancel', (e) => this.#onEnd(e));
@@ -26,27 +34,54 @@ export class TouchControls {
     this.#hold('touch-fire', (down) => { input.firing = down; });
     this.#hold('touch-jump', (down) => { input.touch.jump = down; });
     this.#hold('touch-score', (down) => actions.scoreboard(down));
-    zone('touch-nade').addEventListener('pointerdown', (e) => { e.preventDefault(); actions.grenade(); });
+    zone('touch-nade')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.grenade(); });
 
-    const updateRotate = () => {
-      document.getElementById('rotate').hidden = !needsRotate(innerWidth, innerHeight, isTouchDevice());
-    };
-    window.addEventListener('resize', updateRotate);
-    updateRotate();
+    window.addEventListener('resize', () => this.updateRotate());
+    this.updateRotate();
+  }
+
+  updateRotate() {
+    const rotateEl = document.getElementById('rotate');
+    if (!rotateEl) return;
+    const isTouch = isTouchDevice();
+    rotateEl.hidden = !needsRotate(window.innerWidth, window.innerHeight, isTouch);
   }
 
   // Called from the Play gesture: show controls, go fullscreen and try to lock landscape (not every browser allows it).
   enable() {
-    this.#root.hidden = false;
+    if (!isTouchDevice()) {
+      this.disable();
+      return;
+    }
+    if (this.#root) this.#root.hidden = false;
     this.#input.touch.active = true;
     const el = document.documentElement;
     Promise.resolve(el.requestFullscreen?.({ navigationUI: 'hide' }))
       .then(() => screen.orientation?.lock?.('landscape'))
       .catch(() => {});
+    this.updateRotate();
+  }
+
+  disable() {
+    if (this.#root) this.#root.hidden = true;
+    this.#input.touch.active = false;
+    this.#move = null;
+    this.#look = null;
+    if (this.#base) this.#base.hidden = true;
+    this.updateRotate();
+  }
+
+  updateMode(inGame = false) {
+    if (isTouchDevice() && inGame) {
+      this.enable();
+    } else {
+      this.disable();
+    }
   }
 
   #hold(id, set) {
     const el = document.getElementById(id);
+    if (!el) return;
     el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.setPointerCapture(e.pointerId); set(true); });
     const up = () => set(false);
     el.addEventListener('pointerup', up);
@@ -56,9 +91,11 @@ export class TouchControls {
   #startMove(e) {
     if (this.#move) return;
     this.#move = { id: e.pointerId, x: e.clientX, y: e.clientY };
-    this.#base.style.left = `${e.clientX}px`;
-    this.#base.style.top = `${e.clientY}px`;
-    this.#base.hidden = false;
+    if (this.#base) {
+      this.#base.style.left = `${e.clientX}px`;
+      this.#base.style.top = `${e.clientY}px`;
+      this.#base.hidden = false;
+    }
     this.#setKnob(0, 0);
   }
 
@@ -85,12 +122,14 @@ export class TouchControls {
     if (this.#move?.id === e.pointerId) {
       this.#move = null;
       Object.assign(this.#input.touch, { fwd: 0, right: 0 });
-      this.#base.hidden = true;
+      if (this.#base) this.#base.hidden = true;
     }
     if (this.#look?.id === e.pointerId) this.#look = null;
   }
 
   #setKnob(x, y) {
-    this.#knob.style.transform = `translate(${x * 40}px, ${y * 40}px)`;
+    if (this.#knob) {
+      this.#knob.style.transform = `translate(${x * 40}px, ${y * 40}px)`;
+    }
   }
 }
