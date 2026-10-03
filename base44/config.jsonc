@@ -3,7 +3,8 @@
 {
   "name": "Base Code Arena",
   "description": "Multiplayer 3D FPS. Three.js client on Base44 hosting, authoritative Match actor (Durable Object room) for the simulation.",
-  "visibility": "public",
+  // "visibility" is set in the dashboard: the CLI visibility update was rejected for this app type (see docs/LIVE_TESTING.md)
+  // "visibility": "public",
 
   "entitiesDir": "./entities",
   "functionsDir": "./functions",

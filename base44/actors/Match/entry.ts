@@ -31,7 +31,15 @@ interface ActorConn {
 
 export default class Match extends Actor {
   tickIntervalMs = 1000 / TICK_RATE; // D-006: one simulation rate per room, 30 Hz today
-  host = new MatchHost({ instanceId: this.instanceId });
+  #host: MatchHost | null = null;
+
+  // Lazy on purpose: `instanceId` is `this.name`, which the runtime sets only when the first
+  // request arrives. Reading it from a field initializer throws inside the constructor and the
+  // platform answers every connection with 500 "user worker threw an exception" (seen 2026-10-03).
+  get host(): MatchHost {
+    this.#host ??= new MatchHost({ instanceId: this.instanceId });
+    return this.#host;
+  }
 
   handleStart() {
     this.host.wake(this.getConnections() as ActorConn[]);

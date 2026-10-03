@@ -60,3 +60,13 @@ test('entry.ts default-exports a class extending Actor and sets the tick interva
     assert.match(text, new RegExp(`\\b${hook}\\(`), `entry.ts lacks ${hook}`);
   }
 });
+
+test('entry.ts never reads this.instanceId / this.name from a class field initializer (runtime sets them after construction)', () => {
+  const text = fs.readFileSync(path.join(ACTOR, 'entry.ts'), 'utf8');
+  const classBody = text.slice(text.indexOf('extends Actor {'));
+  for (const line of classBody.split('\n')) {
+    if (/^\s+#?\w+(\s*:\s*[^=]+)?\s*=\s*.*this\./.test(line)) {
+      assert.fail(`field initializer touches this: ${line.trim()}`);
+    }
+  }
+});
