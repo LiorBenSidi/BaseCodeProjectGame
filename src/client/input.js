@@ -1,4 +1,5 @@
-const SENSITIVITY = 0.0022;
+import { getSensitivity } from './settings.js';
+
 const MAX_PITCH = 1.5533; // keep in sync with server/protocol.js clamp
 
 const clamp1 = (v) => Math.max(-1, Math.min(1, v));
@@ -9,6 +10,7 @@ export class Input {
   pitch = 0;
   firing = false;
   touch = { active: false, fwd: 0, right: 0, jump: false };
+  sensitivity = getSensitivity();
   #keys = new Set();
   #canvas;
 
@@ -18,7 +20,7 @@ export class Input {
     window.addEventListener('keyup', (e) => this.#keys.delete(e.code));
     window.addEventListener('blur', () => { this.#keys.clear(); this.firing = false; });
     window.addEventListener('mousemove', (e) => {
-      if (this.locked) this.turn(-e.movementX * SENSITIVITY, -e.movementY * SENSITIVITY);
+      if (this.locked) this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity);
     });
     window.addEventListener('mousedown', (e) => { if (e.button === 0 && this.locked) this.firing = true; });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });

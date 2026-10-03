@@ -33,12 +33,35 @@
 
     <div id="rotate" hidden>Rotate your device to landscape to play</div>
 
+    <div id="fps" hidden></div>
+
     <form id="menu">
-      <h1>Base Code Arena</h1>
+      <div class="menu-head">
+        <h1>Base Code Arena</h1>
+        <button id="settings-open" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.7 7.7 0 0 0-1.7-1L15 3.5H9l-.3 2.5a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.7 7.7 0 0 0 1.7 1l.3 2.5h6l.3-2.5a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z" />
+          </svg>
+        </button>
+      </div>
+      <p class="tagline">Fast arena shooter. Pick a callsign and drop in.</p>
       <label for="name">Callsign</label>
       <input id="name" name="name" maxlength="16" autocomplete="off" placeholder="Player" />
-      <button type="submit">Play</button>
+      <button type="submit" class="primary">Play</button>
       <p class="hint">WASD move · Space jump · Mouse aim · Click shoot · G grenade · Tab scoreboard · Esc release mouse</p>
+
+      <section id="settings" hidden aria-label="Settings">
+        <h2>Settings</h2>
+        <label for="sensitivity">Mouse sensitivity <output id="sensitivity-value" for="sensitivity"></output></label>
+        <input id="sensitivity" type="range" min="0.0005" max="0.01" step="0.0001" />
+        <fieldset id="touch-mode">
+          <legend>Touch controls</legend>
+          <label><input type="radio" name="touch-mode" value="auto" /> Auto</label>
+          <label><input type="radio" name="touch-mode" value="on" /> On</label>
+          <label><input type="radio" name="touch-mode" value="off" /> Off</label>
+        </fieldset>
+        <label class="check"><input id="show-fps" type="checkbox" /> Show FPS</label>
+      </section>
     </form>
 
     <script type="module" src="/src/client/main.js"></script>

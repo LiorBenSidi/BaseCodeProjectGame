@@ -560,3 +560,52 @@ if awaited I/O unfreezes the clock, and `clock.source` must read `clientClock` w
 
 Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
 18.5 blended reconciliation, 18.6 lag compensation rewind.
+
+
+## 19. Design and HUD (Batch D1)
+
+Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layout resolution.
+
+### 19.1 In-match HUD
+- HUD state derivation lives in `src/client/hudModel.js` (pure logic):
+  - Crosshair state: expanded briefly on fire, flash on hit (headshot vs body).
+  - Health and ammo readouts: health percentage and segment bar; infinite ammo status display (`INF / READY`).
+  - Hit marker: brief flash with headshot differentiation (`head` vs `hit`).
+  - Directional damage indicator: computes relative angle pointing toward attacker from player position, attacker position, and camera yaw.
+  - Kill feed queue: maximum 5 entries, auto-expiring after 5000 ms.
+  - Respawn countdown: displays centered countdown text (`Respawning in X.Xs...`) derived from local death time and `RESPAWN_MS`.
+- Scoreboard polish: Tab / touch score overlay, aligned columns, highlighted self row (`.row.me`), team color chip based on player ID parity.
+
+### 19.2 Menu and lobby skin (`src/client/theme.js`)
+- Theme tokens exported from `src/client/theme.js` as JS constants (palette, spacing, typography) and injected as CSS variables (`:root`).
+- Dark launcher styling for `#menu`: centered card, accent highlights, muted secondary text.
+- Settings panel (`#settings`, toggled by the gear button `#settings-open`, DOM glue in `src/client/settingsPanel.js`,
+  values in `src/client/settings.js`) containing:
+  - Mouse sensitivity slider (`localStorage` key `bca.sensitivity`, default 0.0022, clamped to [0.0005, 0.01], shown
+    as rad per 1000 px, applied to `Input.sensitivity` on the next mouse move).
+  - Touch controls three-way radio (`Auto` / `On` / `Off`, `localStorage` key `bca.touchControls`); a change
+    re-resolves the device mode at once (`Game.updateTouchMode`), also mid-match, without a reload.
+  - Show FPS checkbox (`localStorage` key `bca.showFps`): `#fps` bottom-left, frames per 500 ms window.
+
+### 19.3 Arena visual pass (`src/client/scene.js`, `src/client/remote.js`)
+- Hemisphere light and directional sun light with soft shadow mapping enabled.
+- Dark fog matching the horizon/sky background color (`0x0f172a`).
+- Simple gradient skybox generated via inverted sphere geometry with vertex colors.
+- Box materials with slight roughness and metalness variation per box.
+- Toned-down floor grid with lower opacity and subtle line colors.
+- Team color meshes for remote players (Blue for even IDs, Red for odd IDs) with shadows.
+- Name tags above remote players rendered as `THREE.Sprite` using cached `CanvasTexture` per name.
+- Cheap CSS radial vignette overlay for framing.
+
+### 19.4 Mobile touch controls resolution (`src/client/deviceMode.js`)
+- `resolveDeviceMode({ override, hasTouch, coarsePointer, userAgentMobile })`:
+  - `override === 'on'` -> `'touch'`
+  - `override === 'off'` -> `'desktop'`
+  - `override === 'auto'` or invalid -> `'touch'` iff `hasTouch && (coarsePointer || userAgentMobile)`.
+- Touch controls in `src/client/touch.js` render only when `isTouchDevice()` (which is
+  `resolveDeviceMode(...) === 'touch'` with `hasTouch = navigator.maxTouchPoints > 0 || 'ontouchstart' in window`,
+  `coarsePointer = matchMedia('(pointer: coarse)')`, `userAgentMobile` from the user agent) holds. `enable()` on a
+  desktop-mode device is a no-op that hides the controls; `updateMode(inGame)` re-applies after an override change.
+- Safe-area insets (`env(safe-area-inset-*)`) applied to touch controls and HUD.
+- HUD font sizes scale with `clamp()` on viewport width.
+- Landscape hint overlay (`#rotate`) shown in portrait touch mode.
