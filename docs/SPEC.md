@@ -444,9 +444,14 @@ by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
   `now()` and runs the simulation steps due since a fixed anchor: `floor((now - anchor) / TICK_MS)` minus the
   steps already run, at most `MAX_CATCHUP = 3` per event; when more are due the remainder is dropped and the
   clock re-anchors to `now` (the same rule as the platform `TickLoop`). The first step of a room that just got
-  its first seated player runs at once, so the first `snap` leaves with the `welcome`. An empty room resets
-  the anchor, so the next first player never pays a catch-up for idle time. The managed `handleTick`, if it
-  ever runs, goes through the same gate and cannot double step.
+  its first seated player runs at once, so the first `snap` leaves with the `welcome`: the anchor is the wall
+  time of that first event itself and the step count starts at -1. The arithmetic only ever divides a small
+  difference of two clock readings; it must never subtract `TICK_MS` from an epoch-size reading, because at
+  1.7e12 ms a double carries about 0.0002 ms and `(now - (now - 33.333)) / 33.333` rounds below 1, which lost
+  the first step in production while every test at `now = 1_000_000` passed (2026-10-03). Clock tests run at
+  an epoch-size `now` for that reason. An empty room resets the anchor, so the next first player never pays a
+  catch-up for idle time. The managed `handleTick`, if it ever runs, goes through the same gate and cannot
+  double step.
 - **Idle heartbeat.** While `shouldTick()` is true the actor keeps one platform schedule armed
   (`this.schedule("clock", now + CLOCK_WAKE_MS)`, `CLOCK_WAKE_MS = 500`), delivered through `handleWake`.
   Active play never needs it (each player's `input` message advances the room, 60 Hz per player); it bounds how
@@ -460,6 +465,15 @@ by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
   "Server error" for any `error` frame it does not know. Only when the app secret `ACTOR_DIAG` is `"1"` does the
   frame also carry the error `name` and `message` (and the log line the stack); the secret stays unset in
   production. A failed `schedule` call is reported the same way and the clock is re-armed on the next event.
+- **Diagnostic probe.** Only while `ACTOR_DIAG` is `"1"`, a client message `{ t: "diag" }` is answered, before
+  protocol validation, with `{ t: "diag", now, anchorAt, stepsSinceAnchor, tickMs, maxCatchup, playerCount,
+  lastFail, hooks, clockArmed }`: the clock internals (`MatchHost.probe`), the last error reported through
+  `fail` (`{ hook, name, message, at }` or `null`), how many times each hook ran since the object was created
+  (`hooks`, including `tick` and `wake`, so a silent ticker or alarm is visible), and whether a heartbeat is
+  armed. The probe does not advance the clock, so two probes some milliseconds apart show whether the object's
+  wall clock moves between messages. With the secret unset `{ t: "diag" }` is an unknown message type and
+  earns a protocol strike like any other. `scripts/actor-probe.mjs` sends it from Node over the SDK with the
+  direct transport a browser uses (see `docs/LIVE_TESTING.md`).
 - `handleStart` runs on every wake. A hibernation wake keeps sockets attached without `handleConnect`, so
   `MatchHost.wake(conns)` re-registers them and calls `requestRejoin()`; the client answers with a new `join`
   and gets a new `welcome` (a new id, a fresh spawn: match state is not persisted in this slice).

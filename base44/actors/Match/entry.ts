@@ -22,7 +22,8 @@
 //     ticker upkeep, is skipped), and actor console output is not reachable from outside. Every hook
 //     therefore runs under a guard: the error is logged and the connection gets { t: 'error',
 //     reason: 'internal' }. With the ACTOR_DIAG secret set to "1" the frame also carries the error's
-//     name and message; leave it unset in production.
+//     name and message, and a client message { t: 'diag' } is answered with the clock internals and
+//     per-hook counters (SPEC 17.3 diagnostic probe); leave the secret unset in production.
 //
 // Everything under ./server and ./shared is generated from src/ by base44/tools/sync-actor.mjs.
 // Edit the originals in src/, then run the sync; tests/unit/actorBundle.test.js enforces it.
@@ -58,6 +59,7 @@ export default class Match extends Actor {
   tickIntervalMs = 1000 / TICK_RATE; // D-006: one simulation rate per room, 30 Hz today
   #host: MatchHost | null = null;
   #clockArmed = false; // in-memory only: after an eviction the persisted schedule fires anyway and re-arms
+  #hooks: Record<string, number> = {}; // how often each hook ran in this object's lifetime, for the probe
 
   // Lazy on purpose: `instanceId` is `this.name`, which the runtime sets only when the first
   // request arrives. Reading it from a field initializer throws inside the constructor and the
@@ -82,7 +84,11 @@ export default class Match extends Actor {
   }
 
   async handleMessage(conn: ActorConn, msg: unknown) {
-    this.guard("message", conn, () => this.host.message(conn, msg));
+    this.guard("message", conn, () => {
+      // Opt-in probe, answered before protocol validation; a no-op (false) unless ACTOR_DIAG is "1".
+      if (this.host.probe(conn, msg, { hooks: { ...this.#hooks }, clockArmed: this.#clockArmed })) return;
+      this.host.message(conn, msg);
+    });
     await this.armClock(conn);
   }
 
@@ -106,6 +112,7 @@ export default class Match extends Actor {
 
   /** Run one hook body; a throw is reported through MatchHost.fail instead of vanishing in the runtime. */
   private guard(hook: string, conn: ActorConn | undefined, fn: () => unknown) {
+    this.#hooks[hook] = (this.#hooks[hook] ?? 0) + 1;
     try {
       fn();
     } catch (err) {

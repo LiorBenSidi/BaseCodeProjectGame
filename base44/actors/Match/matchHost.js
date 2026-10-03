@@ -41,6 +41,7 @@ export class MatchHost {
   #anchorAt = null; // wall time the clock counts from; null while the room has no seated player
   #stepsSinceAnchor = 0;
   #diag;
+  #lastFail = null; // { hook, name, message, at } of the last error reported through fail(), for the probe
 
   constructor({
     instanceId = 'match',
@@ -105,6 +106,11 @@ export class MatchHost {
    * at most maxCatchup back to back, then the remaining time is dropped and the clock re-anchors to now,
    * exactly the platform TickLoop's rule. A room that just got its first player steps immediately, so the
    * first snapshot leaves with the welcome. Returns the number of steps run.
+   *
+   * Precision rule: the anchor is always a raw clock reading and the only division is of (now - anchor), a
+   * small difference of two readings. Never subtract tickMs from an epoch-size reading: at 1.7e12 ms a double
+   * keeps about 0.0002 ms, so (now - (now - 33.333)) / 33.333 rounds below 1 and the first step is lost. That
+   * is what happened in production on 2026-10-03 while every test at now = 1_000_000 passed.
    */
   advance() {
     if (!this.shouldTick()) {
@@ -114,8 +120,8 @@ export class MatchHost {
     }
     const now = this.#now();
     if (this.#anchorAt === null) {
-      this.#anchorAt = now - this.#tickMs; // the first step is due at once
-      this.#stepsSinceAnchor = 0;
+      this.#anchorAt = now;
+      this.#stepsSinceAnchor = -1; // one step behind the anchor: the first step is due at once
     }
     // Integer step accounting from a fixed anchor, so 1000 / 30 never drifts through float sums.
     const due = Math.floor((now - this.#anchorAt) / this.#tickMs + 1e-6) - this.#stepsSinceAnchor;
@@ -143,6 +149,12 @@ export class MatchHost {
    * Never throws: a reporting failure must not mask the original error.
    */
   fail(hook, err, conn) {
+    this.#lastFail = {
+      hook,
+      name: String(err?.name ?? 'Error'),
+      message: String(err?.message ?? err),
+      at: this.#now(),
+    };
     const fields = { hook, err };
     if (this.#diag && err?.stack) fields.stack = String(err.stack);
     try {
@@ -161,5 +173,33 @@ export class MatchHost {
     } catch {
       // socket already gone
     }
+  }
+
+  /**
+   * Diagnostic probe (SPEC 17.3). With diagnostics on, a client message { t: 'diag' } is answered with the clock
+   * internals and the last reported hook error, plus whatever the actor adds (hook counters, heartbeat state).
+   * It never advances the clock, so two probes some milliseconds apart show whether the object's wall clock
+   * moves between messages. Returns true when the message was consumed; false means "not for me", including
+   * every message while diagnostics are off, where { t: 'diag' } is an unknown type like any other.
+   */
+  probe(conn, msg, extras = {}) {
+    if (!this.#diag || msg === null || typeof msg !== 'object' || msg.t !== 'diag') return false;
+    const frame = {
+      t: 'diag',
+      now: this.#now(),
+      anchorAt: this.#anchorAt,
+      stepsSinceAnchor: this.#stepsSinceAnchor,
+      tickMs: this.#tickMs,
+      maxCatchup: this.#maxCatchup,
+      playerCount: this.#session.playerCount,
+      lastFail: this.#lastFail,
+      ...extras,
+    };
+    try {
+      conn.send(frame);
+    } catch {
+      // socket already gone
+    }
+    return true;
   }
 }
