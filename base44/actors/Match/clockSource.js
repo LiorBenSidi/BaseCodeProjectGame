@@ -13,9 +13,14 @@
 //               connection advances its own clock by the clamped difference between consecutive
 //               timestamps (never backwards, at most maxClientStepMs per message), anchored at the
 //               chosen time of its first stamped message so client clock skew never matters. The
-//               room-wide candidate is the fastest connection. Once the server clock has been
-//               seen moving (ioWall advanced at least once) the candidate may not run more than
-//               aheadToleranceMs ahead of it, which bounds a speed hack to that lead.
+//               room-wide candidate is the fastest connection. While the server clock (wall or
+//               ioWall) is alive, meaning it advanced within the last serverAliveWindowMs of
+//               client time, the candidate may not run more than aheadToleranceMs ahead of it,
+//               which bounds a speed hack to that lead. When the server clock has been still for
+//               longer than that window it counts as frozen and the client clock drives on its own,
+//               bounded by maxClientStepMs per message and the input rate limit. (Build 2.0 live,
+//               2026-10-03: the wall clock moved a few times during connection setup, then froze;
+//               a clamp armed for good by that first movement held the room at 15 steps.)
 //   timerTick   a counter the actor bumps from a setTimeout chain, evidence only: it never
 //               drives the chosen time, the probe shows whether timers fire at all.
 //
@@ -25,15 +30,18 @@
 
 export const CLOCK_AHEAD_TOLERANCE_MS = 250;
 export const MAX_CLIENT_STEP_MS = 100;
+export const SERVER_ALIVE_WINDOW_MS = 1000;
 
 export class ClockSource {
   #wallFn;
   #aheadToleranceMs;
   #maxClientStepMs;
+  #serverAliveWindowMs;
 
   #wall;
   #ioWall = 0;
-  #ioWallMoved = false; // true once ioWall advanced past its first reading: the server clock is alive
+  #serverMoved = false; // true once wall or ioWall advanced past its first reading
+  #serverMovedAtClient = 0; // clientClock value when the server clock last advanced
   #timerTick = 0;
   #conns = new Map(); // connId -> { lastTs, clock }
 
@@ -47,10 +55,12 @@ export class ClockSource {
     wall = () => Date.now(),
     aheadToleranceMs = CLOCK_AHEAD_TOLERANCE_MS,
     maxClientStepMs = MAX_CLIENT_STEP_MS,
+    serverAliveWindowMs = SERVER_ALIVE_WINDOW_MS,
   } = {}) {
     this.#wallFn = wall;
     this.#aheadToleranceMs = aheadToleranceMs;
     this.#maxClientStepMs = maxClientStepMs;
+    this.#serverAliveWindowMs = serverAliveWindowMs;
     this.#wall = wall();
     this.#chosen = this.#wall;
   }
@@ -58,7 +68,7 @@ export class ClockSource {
   /** Date.now() sampled right after an awaited I/O call. */
   recordIoWall(value) {
     if (!isFiniteNumber(value) || value <= this.#ioWall) return;
-    if (this.#ioWall > 0) this.#ioWallMoved = true;
+    if (this.#ioWall > 0) this.#noteServerMoved();
     this.#ioWall = value;
   }
 
@@ -69,6 +79,8 @@ export class ClockSource {
     if (!c) {
       // First stamp: anchor this connection's virtual clock at the current chosen time.
       this.#conns.set(connId, { lastTs: ts, clock: this.#chosen });
+      // A server move seen before any client clock existed: its alive window starts at this anchor.
+      if (this.#serverMoved && this.#serverMovedAtClient === 0) this.#serverMovedAtClient = this.#chosen;
       return;
     }
     if (ts <= c.lastTs) return;
@@ -97,6 +109,7 @@ export class ClockSource {
     if (isFiniteNumber(w) && w > this.#wall) {
       this.#wall = w;
       this.#advances.wall += 1;
+      this.#noteServerMoved();
     }
     if (this.#ioWall > this.#seen.ioWall) {
       this.#advances.ioWall += 1;
@@ -116,7 +129,7 @@ export class ClockSource {
       this.#advances.clientClock += 1;
       this.#seen.clientClock = client;
     }
-    if (this.#ioWallMoved) client = Math.min(client, server + this.#aheadToleranceMs);
+    if (this.#serverAlive(client)) client = Math.min(client, server + this.#aheadToleranceMs);
     if (client > best) {
       best = client;
       source = 'clientClock';
@@ -127,6 +140,17 @@ export class ClockSource {
       this.#source = source;
     }
     return this.#chosen;
+  }
+
+  #noteServerMoved() {
+    this.#serverMoved = true;
+    this.#serverMovedAtClient = this.clientClock;
+  }
+
+  /** The server clock counts as alive while it advanced within the last serverAliveWindowMs of client time. */
+  #serverAlive(clientNow) {
+    if (!this.#serverMoved) return false;
+    return clientNow - this.#serverMovedAtClient <= this.#serverAliveWindowMs;
   }
 
   /** Snapshot for the diag frame. Reads the clock but, like now(), never steps the simulation. */
@@ -141,6 +165,7 @@ export class ClockSource {
       },
       advances: { ...this.#advances },
       connections: this.#conns.size,
+      serverAlive: this.#serverAlive(this.clientClock),
       chosen,
       source: this.#source,
     };

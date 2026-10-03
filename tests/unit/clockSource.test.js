@@ -1,7 +1,7 @@
 // SPEC 18.1: ClockSource, the Match actor's time source when the runtime clock is frozen.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ClockSource, CLOCK_AHEAD_TOLERANCE_MS, MAX_CLIENT_STEP_MS } from '../../base44/actors/Match/clockSource.js';
+import { ClockSource, CLOCK_AHEAD_TOLERANCE_MS, MAX_CLIENT_STEP_MS, SERVER_ALIVE_WINDOW_MS } from '../../base44/actors/Match/clockSource.js';
 
 const EPOCH = 1_791_051_197_625; // epoch-size like production, see Batch 1.2
 
@@ -96,16 +96,61 @@ test('the fastest connection wins and a closed connection stops contributing', (
   assert.equal(cs.probe().connections, 1);
 });
 
-test('once ioWall has moved, the client clock may lead the server clock by at most the tolerance', () => {
+test('while the server clock is alive, the client clock may lead it by at most the tolerance', () => {
   const cs = frozen();
   cs.recordIoWall(EPOCH); // first reading: not yet proof of movement
   cs.recordIoWall(EPOCH + 10); // moved: the server clock is alive
   assert.equal(cs.now(), EPOCH + 10);
   cs.recordClientTs('c1', 0);
-  for (let i = 1; i <= 20; i++) cs.recordClientTs('c1', i * 100); // wants +2000 ms
+  for (let i = 1; i <= 8; i++) cs.recordClientTs('c1', i * 100); // wants +800 ms, inside the alive window
   assert.equal(cs.now(), EPOCH + 10 + CLOCK_AHEAD_TOLERANCE_MS);
-  cs.recordIoWall(EPOCH + 1_000);
+  cs.recordIoWall(EPOCH + 1_000); // server moved again
+  for (let i = 9; i <= 16; i++) cs.recordClientTs('c1', i * 100); // wants +1600 ms in total
   assert.equal(cs.now(), EPOCH + 1_000 + CLOCK_AHEAD_TOLERANCE_MS);
+});
+
+test('server clock that moved at setup and froze again: after the alive window the client clock drives (live 2.0 finding)', () => {
+  // Live diag-live-4 on build 2.0: wall/ioWall advanced 4 times while the connection was set up, then froze.
+  // The lead clamp bound the client clock to a dead value and the room stopped after 15 steps.
+  const cs = frozen();
+  cs.recordIoWall(EPOCH);
+  cs.recordIoWall(EPOCH + 10); // moved once: alive for now
+  assert.equal(cs.now(), EPOCH + 10);
+  cs.recordClientTs('c1', 0);
+  // Inside the alive window the clamp holds.
+  for (let i = 1; i <= 5; i++) cs.recordClientTs('c1', i * 100); // +500 ms of client time
+  assert.equal(cs.now(), EPOCH + 10 + CLOCK_AHEAD_TOLERANCE_MS);
+  // Past the window with no server movement, the server clock counts as frozen and the client clock leads.
+  const steps = SERVER_ALIVE_WINDOW_MS / 100 + 5;
+  for (let i = 6; i <= 5 + steps; i++) cs.recordClientTs('c1', i * 100);
+  assert.equal(cs.now(), EPOCH + 10 + (5 + steps) * 100);
+  assert.equal(cs.probe().source, 'clientClock');
+});
+
+test('a server clock that keeps moving keeps the lead clamp active', () => {
+  let t = EPOCH;
+  const cs = new ClockSource({ wall: () => t });
+  cs.recordClientTs('c1', 0);
+  for (let i = 1; i <= 100; i++) {
+    t += 10; // server moves 10 ms per message
+    cs.recordClientTs('c1', i * 100); // client claims 100 ms per message (speed hack)
+    assert.ok(cs.now() <= t + CLOCK_AHEAD_TOLERANCE_MS, `message ${i}: ${cs.now()} > ${t + CLOCK_AHEAD_TOLERANCE_MS}`);
+  }
+});
+
+test('the server clock resuming re-arms the clamp without moving the chosen time backwards', () => {
+  const cs = frozen();
+  cs.recordIoWall(EPOCH);
+  cs.recordIoWall(EPOCH + 10);
+  cs.recordClientTs('c1', 0);
+  const steps = SERVER_ALIVE_WINDOW_MS / 100 + 10;
+  for (let i = 1; i <= steps; i++) cs.recordClientTs('c1', i * 100);
+  const led = cs.now();
+  assert.ok(led > EPOCH + 10 + CLOCK_AHEAD_TOLERANCE_MS);
+  cs.recordIoWall(EPOCH + 20); // server alive again, far behind the client clock
+  assert.equal(cs.now(), led); // monotonic: no drop
+  cs.recordClientTs('c1', (steps + 1) * 100);
+  assert.equal(cs.now(), led); // clamped again: client may not lead a live server clock further
 });
 
 test('while ioWall never moved, the client clock is not clamped (it is the only time there is)', () => {
@@ -130,6 +175,7 @@ test('timerTick is evidence only: counted, never chosen', () => {
 test('probe reports every candidate and the chosen value', () => {
   const cs = frozen();
   const p = cs.probe();
-  assert.deepEqual(Object.keys(p).sort(), ['advances', 'candidates', 'chosen', 'connections', 'source']);
+  assert.deepEqual(Object.keys(p).sort(), ['advances', 'candidates', 'chosen', 'connections', 'serverAlive', 'source']);
+  assert.equal(p.serverAlive, false);
   assert.deepEqual(Object.keys(p.candidates).sort(), ['clientClock', 'ioWall', 'timerTick', 'wall']);
 });

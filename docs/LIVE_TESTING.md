@@ -73,9 +73,12 @@ whose id starts with `diag-` (for example `diag-live-1`); in any other room it e
 `build` in the answer to confirm which `ACTOR_BUILD` the live object runs, and compare `now` across the two
 answers to see whether the object's clock moved. A room name given here is a real room: pick one no player uses.
 From build 2.0 the answer also carries `clock` (SPEC 18.1): `candidates` (`wall`, `ioWall`, `clientClock`,
-`timerTick`), `advances` per candidate, `chosen` and `source`. `advances.ioWall` growing between the two answers
-means awaited storage I/O unfreezes the object's clock; `advances.timerTick` growing means timers fire there;
-`source: "clientClock"` with `--inputs` means the stamped input stream drives the room clock.
+`timerTick`), `advances` per candidate, `serverAlive` (build 2.1), `chosen` and `source`. `advances.wall` or
+`advances.ioWall` growing between the two answers means the object's clock moved on its own; `advances.timerTick`
+growing means timers fire there; `source: "clientClock"` with `--inputs` means the stamped input stream drives
+the room clock, and `serverAlive: false` means the lead clamp is released because the server clock has been
+still for more than a second of client time. Healthy: `snaps` near 30 per second and `stepsSinceAnchor`
+growing between the two answers (build 2.0 live showed 16 snapshots in 12 s with `stepsSinceAnchor` stuck at 15).
 
 ## Browser play-through (live, visual)
 Use this when a person or the assistant can drive a browser. Some embedded browsers refuse pointer lock; the game

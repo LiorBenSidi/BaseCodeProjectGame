@@ -38,14 +38,13 @@ import { TICK_RATE, isDiagRoom } from "./shared/constants.js";
 // Idle heartbeat for the event-driven clock. Active play advances the room on every input message
 // (60 Hz per player), so this only bounds how long an idle room can stand still: half a second.
 export const CLOCK_WAKE_MS = 500;
-export const CLOCK_STORAGE_KEY = "clock-io"; // never written: the awaited read is what matters (SPEC 18.1)
 export const TIMER_EVIDENCE_MS = 1000;
 export const TIMER_EVIDENCE_MAX = 600; // ten minutes of evidence per object lifetime, then the chain ends
 
 const CLOCK_KEY = "clock";
 // Bumped by hand with every actor change that ships; the diag probe reports it so a live room can be
 // matched to the code it runs after a Publish (Durable Objects give no other way to read that back).
-export const ACTOR_BUILD = "2.0";
+export const ACTOR_BUILD = "2.1";
 
 interface ActorConn {
   id: string;
@@ -90,7 +89,6 @@ export default class Match extends Actor {
   }
 
   async handleMessage(conn: ActorConn, msg: unknown) {
-    await this.sampleIoWall(conn);
     this.guard("message", conn, () => {
       // Probe, answered before protocol validation; a no-op (false) outside a diag- room.
       if (this.host.probe(conn, msg, { build: ACTOR_BUILD, hooks: { ...this.#hooks }, clockArmed: this.#clockArmed })) return;
@@ -124,21 +122,6 @@ export default class Match extends Actor {
       fn();
     } catch (err) {
       this.host.fail(hook, err, conn);
-    }
-  }
-
-  /**
-   * SPEC 18.1 ioWall: the Workers clock is allowed to move after awaited I/O, so one cheap storage read
-   * per message (only while someone is seated) is followed by a Date.now() sample for the ClockSource.
-   * Reading a key that is never written stays in the object's storage cache; a failure is reported, not fatal.
-   */
-  private async sampleIoWall(conn: ActorConn) {
-    if (!this.host.shouldTick()) return;
-    try {
-      await this.storage.get(CLOCK_STORAGE_KEY);
-      this.host.clock?.recordIoWall(Date.now());
-    } catch (err) {
-      this.host.fail("io-clock", err, conn);
     }
   }
 

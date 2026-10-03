@@ -526,37 +526,47 @@ clock, so a 60 Hz input stream was cut by `rate_limit` after `BUCKET.capacity` m
 
 `MatchHost` now takes `clock` (a `ClockSource`) and reads `now()` from it. Candidates, all in ms:
 - `wall`: `Date.now()` as the runtime reports it. May be frozen.
-- `ioWall`: `Date.now()` sampled right after an awaited `storage.get(CLOCK_STORAGE_KEY)` in `handleMessage`
-  (`entry.ts`, at most once per message, only while `shouldTick()`); awaited I/O is where the Workers clock
-  is allowed to move. The key is never written, so the read stays in the object's storage cache. A storage
-  failure is reported through `fail("io-clock")`, never fatal.
+- `ioWall`: `Date.now()` recorded by the actor after awaited I/O (`recordIoWall`). Build 2.0 sampled it
+  after an awaited `storage.get` on every message; live (diag-live-4, 2026-10-03) it advanced only during
+  connection setup, exactly like `wall`, so build 2.1 removed that read. The candidate and its API stay for
+  any future I/O point that turns out to move the clock.
 - `clientClock`: every `input` message may carry `ts`, the client's `Date.now()` (`game.js` stamps it;
   §7 accepts a finite number >= 0 and drops anything else without failing the message). Per connection the
   first stamp anchors a virtual clock at the current chosen time (client skew is irrelevant); each later
   stamp advances it by `min(ts - lastTs, MAX_CLIENT_STEP_MS = 100)`, never backwards. The candidate is the
-  fastest connection. Once `ioWall` has been seen moving, the candidate may lead `max(wall, ioWall)` by at
-  most `CLOCK_AHEAD_TOLERANCE_MS = 250`, which bounds a speed hack to that lead; while the server clock has
-  never moved the client clock is the only time there is and is not clamped. A closed connection stops
-  contributing (`removeConnection`), the chosen time never drops.
+  fastest connection. While the server clock (`wall` or `ioWall`) is alive, meaning it advanced within the
+  last `SERVER_ALIVE_WINDOW_MS = 1000` of client time (measured on the client candidate; a move seen before
+  any connection existed starts its window at the first connection's anchor), the candidate may lead
+  `max(wall, ioWall)` by at most `CLOCK_AHEAD_TOLERANCE_MS = 250`, which bounds a speed hack to that lead.
+  A server clock still for longer than the window counts as frozen and the client clock drives on its own,
+  bounded by `MAX_CLIENT_STEP_MS` per message and the §7 input rate limit (about 6x real time at most for a
+  forged stream). When the server clock moves again the clamp re-arms; the chosen time never drops. Why the
+  window (build 2.0 live, 2026-10-03): `wall` advanced 4 to 5 times during connection setup and then froze;
+  a clamp armed for good by that first movement held the room at 15 steps (16 snapshots in 12 s). A closed
+  connection stops contributing (`removeConnection`).
 - `timerTick`: a counter bumped by a `setTimeout` chain in `entry.ts` (`TIMER_EVIDENCE_MS = 1000`, at most
   `TIMER_EVIDENCE_MAX = 600` fires per object lifetime). Evidence only: it never drives the chosen time.
 
 `now()` returns `max(previous, best candidate)`: monotonic whichever candidate wins. `probe()` returns
 `{ candidates: { wall, ioWall, clientClock, timerTick }, advances: { same keys, how often each moved },
-connections, chosen, source }` where `source` names the candidate that last moved the chosen time. The diag
+connections, serverAlive, chosen, source }` where `source` names the candidate that last moved the chosen time
+and `serverAlive` says whether the lead clamp is currently armed. The diag
 frame of §17.3 carries it as `clock`, and `now` in that frame equals `clock.chosen`.
 
 `MatchHost.message` records the stamp before `MatchSession.message` so the token bucket refills from the
 advanced time; `MatchHost.close` drops the connection from the clock. Tests: `tests/unit/clockSource.test.js`
 (frozen everything; moving wall; ioWall drives and never goes backwards; 60 Hz client deltas; 10 s jump clamped
 to one step; backwards and non-numeric stamps ignored; fastest connection wins and removal keeps monotonicity;
-tolerance clamp only after ioWall moved; timerTick counted and never chosen), `tests/unit/matchHost.test.js`
+tolerance clamp while the server clock is alive; a server clock that moved at setup and froze releases the
+client clock after the window; a moving server clock keeps the clamp; a resuming server clock re-arms it
+without a drop; timerTick counted and never chosen), `tests/unit/matchHost.test.js`
 (stamped inputs on a frozen clock produce snapshots and the probe's `clock` block; unstamped inputs never step
 and never throw), `tests/unit/protocol.test.js` (`ts` validation).
 
-Live check: `ACTOR_BUILD = "2.0"`. In a `diag-` room, two probes must show `clock.advances.ioWall` growing
-if awaited I/O unfreezes the clock, and `clock.source` must read `clientClock` while a browser player moves.
-`scripts/actor-probe.mjs --inputs` stamps its inputs like `game.js`, so the Node probe exercises `clientClock` too.
+Live check: `ACTOR_BUILD = "2.1"`. `npm run actor-probe -- <app-id> diag-live-5 12 --inputs --diag` must
+report `snaps` near 30 per second (build 2.0: 16 in 12 s), `clock.source: "clientClock"`, `serverAlive: false`
+once the setup movement is more than a second behind, and `stepsSinceAnchor` growing between the two diag
+frames. The probe stamps its inputs like `game.js`, so the Node probe exercises `clientClock` on its own.
 
 Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
 18.5 blended reconciliation, 18.6 lag compensation rewind.
