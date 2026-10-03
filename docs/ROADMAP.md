@@ -3,6 +3,10 @@
 Order matters: each phase ends green (`npm run verify`, CodeQL clean) before the next starts. Every item
 starts with a `docs/SPEC.md` change and failing tests.
 
+## Base44 app scaffold (done 2026-10-03, D-017)
+Site + Match actor + shared session layer (`docs/SPEC.md` §17, ADR 0004). First deploy and the 30/60 Hz
+measurement are the next steps.
+
 ## Phase 0 - Foundation (this scaffold)
 Authoritative server, prediction, hit-scan, protocol validation, rate limiting, structured logging,
 policy checker, layered tests, CI + CodeQL, ADRs, threat model.
@@ -19,7 +23,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 ## Phase 1 - Netcode hardening
 - Lag compensation for hit-scan (rewind by client latency, capped).
 - Reconnect tokens (128-bit random) and graceful disconnect handling.
-- Delta snapshots, then a binary wire format **only after** measuring bandwidth.
+- Delta snapshots (the hosted transport is JSON text only, ADR 0004; no binary format).
 - Smooth reconciliation error correction (blend instead of snap).
 - Clock sync / RTT estimate for HUD and lag compensation.
 
@@ -39,17 +43,19 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - glTF maps and character models, animation, audio, particle effects.
 - Map format loaded from data (validated like any other untrusted input).
 
-## Phase 5 - Persistence and accounts
-- Accounts with server-side sessions (large random ids, `HttpOnly` cookies, CSRF protection).
-- Leaderboards / stats store. Decide the backend deliberately; do not couple the simulation to it.
-  Option: Base44 entities via the SDK (as a standard Base44 app like smartcart does: `base44/` with
-  `entities`, `functions`, `agents`). Only for slow, non-realtime data; the game loop stays on our own
-  Node server because Base44 backend functions are serverless with memory/execution limits.
+## Phase 5 - Persistence and accounts (on Base44, D-017)
+- Players sign in with the app's auth; the actor reads `conn.identity.userId` (platform-verified) and binds
+  the seat, score and progression to it. Anonymous play stays allowed for the slice.
+- Leaderboards / stats as Base44 entities, written from the actor through `this.client.asServiceRole` at
+  round end (never per tick). Frontend writes stay limited to user-owned records.
+- Match state persisted at checkpoints (`this.storage`) so a wake mid-match restores seats instead of
+  respawning everyone.
 
-## Phase 6 - Production
-- Choose a host that runs a persistent Node process (Base Code is a development preview).
-- Deploy job in CI: main-only, gated on green, immutable SHA tags, `/healthz` gate, rollback.
-- External uptime monitor, log aggregation, load test at target concurrency.
+## Phase 6 - Production (on Base44, D-017)
+- `base44 deploy --build` from CI on `main` only, after green checks; the smoke script gains an actor mode.
+- Tick budget measurements at 30 / 60 Hz (ADR 0004 exit criteria) before `TICK_RATE` moves (D-006, D-003).
+- Lobby and room registry (Phase 3) designed around the platform's 300 connection attempts per minute per actor.
+- Custom domain on the Base44 app; external uptime monitor on the published site.
 - Optional: C++/WASM simulation core if profiling justifies it (ADR 0001).
 
 ## Standing work

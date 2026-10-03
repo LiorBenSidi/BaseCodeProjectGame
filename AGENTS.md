@@ -79,3 +79,6 @@ required secrets by name, ports). Never put rules or game decisions here._
 - No secrets required. `ALLOWED_ORIGINS` is set in compose from `${BASE44_PUBLIC_HOST_SUFFIX}` so the preview's
   WebSocket upgrade is accepted; without it the WS handshake returns 403.
 - Verify inside the container: `npm run test:dry`, and `npm run smoke -- http://127.0.0.1:3000 --origin "$ALLOWED_ORIGINS"`.
+- Base44 app sandbox (editor preview): the platform launches `npm run dev -- --host 0.0.0.0 --port <port> --config <its Vite wrapper>`
+  and polls that port, so `npm run dev` is plain Vite. The Node game server is `npm run dev:server` (port 3000). The sandbox
+  sets `VITE_BASE44_APP_ID`, so the preview client connects to the deployed Match actor, not to a local server.

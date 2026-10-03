@@ -48,6 +48,15 @@
 Client combat UI: `combatLog.js` (pure, bounded log and formatting), `combatHud.js` (DOM), `grenades.js`
 (renders `nades` and explosions), `debugHarness.js` (`?debug=1` only).
 
+## Hosted deployment (Base44, D-017)
+```
+browser  --https-->  Base44 hosting (dist/ from Vite)
+browser  --wss---->  Match actor (Durable Object, one per room id)  ->  MatchSession  ->  GameRoom
+```
+`src/client/game.js` picks `ActorNetwork` when `VITE_BASE44_APP_ID` is set at build time, otherwise the raw
+`/ws` transport. The actor folder contains generated copies of `src/shared` and the `GameRoom` closure
+(`base44/tools/sync-actor.mjs`); `src/` stays the single place to edit. See ADR 0004.
+
 ## Operational endpoints
 `GET /healthz` liveness, `GET /readyz` readiness (+ player count), `WS /ws` game.
 

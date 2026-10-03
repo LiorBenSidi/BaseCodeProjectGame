@@ -11,7 +11,8 @@ client**, served from a single port. Built to be imported into Base Code and gro
 ## Quick start
 ```bash
 npm ci               # installs the exact locked versions (use `npm install` only when a dependency is deliberately added)
-npm run dev          # http://localhost:3000  (PORT env var to change)
+npm run dev:server   # http://localhost:3000  (PORT env var to change): Node game server + Vite middleware
+npm run dev          # Vite only, no game server: what the Base44 sandbox preview runs (actor transport)
 ```
 Open it in two browser windows and press Play in each. Controls: WASD, Space, mouse, click to shoot, Tab
 scoreboard, Esc to release the mouse.
@@ -19,7 +20,8 @@ scoreboard, Esc to release the mouse.
 ## Commands
 | Command | Does |
 |---|---|
-| `npm run dev` | server + Vite dev middleware + HMR on one port |
+| `npm run dev:server` | Node game server + Vite dev middleware + HMR on one port (local ws transport) |
+| `npm run dev` | Vite dev server only. The Base44 sandbox starts it as `npm run dev -- --host 0.0.0.0 --port <port>`; with `VITE_BASE44_APP_ID` set the client uses the Match actor |
 | `npm run build` / `npm start` | production build / serve it with a strict CSP |
 | `npm run lint` | syntax + security-pattern policy check |
 | `npm test` (or `test:unit`, `:integration`, `:system`, `:security`, `:stress`) | test suites |
@@ -33,10 +35,27 @@ scoreboard, Esc to release the mouse.
 ## Importing into Base Code
 1. Push this repository to GitHub (project root = repo root; Base Code does not support monorepo subfolders).
 2. In Base Code, connect the repository or paste its URL.
-3. Run `npm ci` and `npm run dev` in its environment and open the preview. Then paste **Prompt 0**, and afterwards **Prompt 00** (the design interview), from `docs/BASE_CODE_PROMPTS.md`.
+3. Run `npm ci` and `npm run dev:server` in its environment and open the preview. Then paste **Prompt 0**, and afterwards **Prompt 00** (the design interview), from `docs/BASE_CODE_PROMPTS.md`.
 
 Base Code is a **development preview**, not production hosting; see `docs/ROADMAP.md` phase 6.
 Base Code does not add Base44 entities or the SDK to an imported repository, so the project is self-contained.
+
+## Running on Base44 (hosted app, D-017)
+
+The hosted game is a Base44 app: Vite builds the client into `dist/` for Base44 hosting, and the simulation
+runs in the `Match` actor (`base44/actors/Match/`, one room per `?room=<id>`). Node is still the dev and test
+transport. Details: `docs/SPEC.md` §17, `docs/adr/0004-base44-actor-transport.md`.
+
+```bash
+npx base44 login                               # once per machine
+npx base44 link                                # writes base44/.app.jsonc (not committed)
+node base44/tools/sync-actor.mjs               # refresh the actor's copies of src/shared and GameRoom
+npm run test:dry                               # the actorBundle test fails if the copies drifted
+npx base44 deploy --build -y                   # actors + site; the build injects VITE_BASE44_APP_ID
+npm run smoke https://<app>.base44.app         # HTTP half only: the room is a WebSocket on another host
+```
+
+`base44/.app.jsonc` carries the app id and is ignored by git. Secrets are never needed by the actor.
 
 ## Repository map
 ```

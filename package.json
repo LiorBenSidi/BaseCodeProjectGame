@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Multiplayer 3D FPS: authoritative Node/ws server + Three.js client, single port.",
   "scripts": {
-    "dev": "node src/server/index.js",
+    "dev": "vite",
+    "dev:server": "node src/server/index.js",
     "build": "vite build",
     "start": "NODE_ENV=production node src/server/index.js",
     "lint": "node scripts/check-policy.mjs && node scripts/check-agents-md.mjs",
@@ -24,6 +25,7 @@
     "hooks": "sh scripts/setup-hooks.sh"
   },
   "dependencies": {
+    "@base44/sdk": "0.8.52",
     "three": "0.185.1",
     "ws": "8.21.3"
   },

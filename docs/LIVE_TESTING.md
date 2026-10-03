@@ -46,7 +46,7 @@ Never write "all tests pass" unless both dry and live actually ran and passed. A
 
 ## Smoke test against any URL
 ```bash
-npm run dev                                   # in one terminal
+npm run dev:server                            # in one terminal (Node ws transport)
 npm run smoke http://localhost:3000           # in another
 npm run smoke https://<preview-host>          # a hosted preview: same command, its own URL
 npm run smoke -- https://<preview-host> --origin https://<the-page-origin>   # the extra -- hands the flag to the script, not to npm
@@ -54,6 +54,14 @@ npm run smoke -- https://<preview-host> --origin https://<the-page-origin>   # t
 It performs GET requests and one short WebSocket session: health, readiness, the game page, then join -> welcome ->
 snapshot -> input acknowledged. A `403` on the WebSocket step means the server refused the page's `Origin`: set
 `ALLOWED_ORIGINS` to that exact origin for that environment (see `SECURITY.md`). It changes no data: it briefly joins as a player named `smoke-NNNN` and leaves.
+
+## Smoke against the Base44 deployment
+
+`npm run smoke <site-url>` covers only the HTTP half there: `/healthz`, `/readyz` and `/ws` live on the Node
+server, not on Base44 hosting, so expect those lines to fail and read only the page line. The room is checked
+by hand until the smoke script gains an actor mode (Phase 6): open the deployed site in two tabs (same
+`?room=`), press Play in both, confirm each sees the other; then reload one tab and confirm it comes back with
+its seat (same `sessionStorage` connection id) and that the other tab saw no duplicate player.
 
 ## Browser play-through (live, visual)
 Use this when a person or the assistant can drive a browser. Some embedded browsers refuse pointer lock; the game

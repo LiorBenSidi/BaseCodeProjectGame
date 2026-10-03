@@ -1,0 +1,23 @@
+// Base44 project configuration for Base Code Arena.
+// The app id lives in base44/.app.jsonc, written by `base44 create` / `base44 link` (not committed).
+{
+  "name": "Base Code Arena",
+  "description": "Multiplayer 3D FPS. Three.js client on Base44 hosting, authoritative Match actor (Durable Object room) for the simulation.",
+  // "visibility" is set in the dashboard: the CLI visibility update was rejected for this app type (see docs/LIVE_TESTING.md)
+  // "visibility": "public",
+
+  "entitiesDir": "./entities",
+  "functionsDir": "./functions",
+  "actorsDir": "./actors",
+
+  "site": {
+    // vite.config.js writes the client build to <repo>/dist
+    "outputDirectory": "./dist",
+    "installCommand": "npm ci",
+    // `base44 build` / `base44 deploy --build` run this with VITE_BASE44_APP_ID injected,
+    // which is what switches src/client/game.js to the actor transport.
+    "buildCommand": "npm run build",
+    // The sandbox runs this with --host/--port/--config appended: it must be the Vite CLI (see AGENTS.md Environment notes)
+    "serveCommand": "npm run dev"
+  }
+}
