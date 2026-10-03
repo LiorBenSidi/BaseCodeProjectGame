@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MatchHost, CLOSE_CODES, MAX_CATCHUP, TICK_MS, wrapConn } from '../../base44/actors/Match/matchHost.js';
-import { MAX_PLAYERS } from '../../src/shared/constants.js';
+import { DIAG_ROOM_PREFIX, MAX_PLAYERS, isDiagRoom } from '../../src/shared/constants.js';
 
 function actorConn(id) {
   const c = { id, sent: [], rejected: null };
@@ -297,10 +297,26 @@ test('probe ignores other messages and is inert without diagnostics', () => {
   const off = new MatchHost({ sink: (l) => lines.push(JSON.parse(l)), now: () => EPOCH_NOW, logLevel: 'debug' });
   const d = actorConn('d');
   off.connect(d);
-  assert.equal(off.probe(d, { t: 'diag' }, {}), false, 'with the secret unset the message is not special');
+  assert.equal(off.probe(d, { t: 'diag' }, {}), false, 'outside a diag- room the message is not special');
   off.message(d, { t: 'diag' });
   assert.equal(d.sent.length, 0, 'nothing is answered');
   const strike = lines.find((l) => l.msg === 'bad client message');
   assert.ok(strike, 'and it earns the usual protocol strike');
   assert.equal(strike.reason, 'bad_shape');
+});
+
+// ---- diagnostics gate (SPEC 17.3): the room id decides, because the platform uploads no app secret to an actor.
+test('isDiagRoom accepts only room ids that start with the diag- prefix', () => {
+  assert.equal(DIAG_ROOM_PREFIX, 'diag-');
+  for (const id of ['diag-1', 'diag-live-check', 'diag-']) assert.equal(isDiagRoom(id), true, id);
+  for (const id of ['arena-1', 'Diag-1', 'xdiag-1', 'diag', '', undefined, null, 7, { startsWith: () => true }]) {
+    assert.equal(isDiagRoom(id), false, `must reject ${JSON.stringify(id)}`);
+  }
+});
+
+test('probe passes a build marker through to the frame', () => {
+  const h = new MatchHost({ sink: () => {}, now: () => EPOCH_NOW, diag: true });
+  const c = actorConn('b1');
+  assert.equal(h.probe(c, { t: 'diag' }, { build: '1.3', hooks: {}, clockArmed: false }), true);
+  assert.equal(c.sent[0].build, '1.3');
 });

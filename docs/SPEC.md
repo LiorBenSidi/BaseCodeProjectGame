@@ -462,17 +462,26 @@ by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
   actor console output is not reachable from outside the platform. Every hook body in `entry.ts` therefore runs
   under `guard(hook, conn, fn)`: a throw is passed to `MatchHost.fail(hook, err, conn)`, which logs it (`error`
   level) and sends the affected connection `{ t: "error", reason: "internal", hook }`. The client shows
-  "Server error" for any `error` frame it does not know. Only when the app secret `ACTOR_DIAG` is `"1"` does the
-  frame also carry the error `name` and `message` (and the log line the stack); the secret stays unset in
-  production. A failed `schedule` call is reported the same way and the clock is re-armed on the next event.
-- **Diagnostic probe.** Only while `ACTOR_DIAG` is `"1"`, a client message `{ t: "diag" }` is answered, before
-  protocol validation, with `{ t: "diag", now, anchorAt, stepsSinceAnchor, tickMs, maxCatchup, playerCount,
-  lastFail, hooks, clockArmed }`: the clock internals (`MatchHost.probe`), the last error reported through
-  `fail` (`{ hook, name, message, at }` or `null`), how many times each hook ran since the object was created
-  (`hooks`, including `tick` and `wake`, so a silent ticker or alarm is visible), and whether a heartbeat is
-  armed. The probe does not advance the clock, so two probes some milliseconds apart show whether the object's
-  wall clock moves between messages. With the secret unset `{ t: "diag" }` is an unknown message type and
-  earns a protocol strike like any other. `scripts/actor-probe.mjs` sends it from Node over the SDK with the
+  "Server error" for any `error` frame it does not know. Only in a diagnostics room does the frame also carry
+  the error `name` and `message` (and the log line the stack). A failed `schedule` call is reported the same
+  way and the clock is re-armed on the next event.
+- **Diagnostics gate.** Diagnostics are on for a room whose id starts with `diag-` (`isDiagRoom` in
+  `src/shared/constants.js`, evaluated once per object from `instanceId`) and off everywhere else. The gate is
+  the room id, not an app secret, because the platform uploads no app secret to a deployed actor: an actor's
+  environment holds only its configuration strings and its connection keypair (platform actors design doc,
+  read 2026-10-03), so a secret-based switch can never turn on in production. The lobby never produces a
+  `diag-` id, and a diagnostics room exposes nothing the actor does not already hold in plain memory: clock
+  numbers, hook counters, the last error's name and message. Anyone may open one; it is a room like any other,
+  rate limited and striked the same way.
+- **Diagnostic probe.** In a diagnostics room, a client message `{ t: "diag" }` is answered, before protocol
+  validation, with `{ t: "diag", now, anchorAt, stepsSinceAnchor, tickMs, maxCatchup, playerCount, lastFail,
+  build, hooks, clockArmed }`: the clock internals (`MatchHost.probe`), the last error reported through `fail`
+  (`{ hook, name, message, at }` or `null`), the `ACTOR_BUILD` marker from `entry.ts` (a hand-bumped string,
+  the only way to read back which code a live object runs after a Publish), how many times each hook ran
+  since the object was created (`hooks`, including `tick` and `wake`, so a silent ticker or alarm is visible),
+  and whether a heartbeat is armed. The probe does not advance the clock, so two probes some milliseconds
+  apart show whether the object's wall clock moves between messages. In any other room `{ t: "diag" }` is an
+  unknown message type and earns a protocol strike like any other. `scripts/actor-probe.mjs` sends it from Node over the SDK with the
   direct transport a browser uses (see `docs/LIVE_TESTING.md`).
 - `handleStart` runs on every wake. A hibernation wake keeps sockets attached without `handleConnect`, so
   `MatchHost.wake(conns)` re-registers them and calls `requestRejoin()`; the client answers with a new `join`

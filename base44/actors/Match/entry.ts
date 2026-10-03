@@ -21,32 +21,26 @@
 //   - A hook that throws is swallowed by the runtime shim (and the rest of that hook, including the
 //     ticker upkeep, is skipped), and actor console output is not reachable from outside. Every hook
 //     therefore runs under a guard: the error is logged and the connection gets { t: 'error',
-//     reason: 'internal' }. With the ACTOR_DIAG secret set to "1" the frame also carries the error's
-//     name and message, and a client message { t: 'diag' } is answered with the clock internals and
-//     per-hook counters (SPEC 17.3 diagnostic probe); leave the secret unset in production.
+//     reason: 'internal' }. In a diagnostics room (id starting with "diag-", see isDiagRoom) the frame
+//     also carries the error's name and message, and a client message { t: 'diag' } is answered with
+//     the clock internals, per-hook counters and the ACTOR_BUILD marker (SPEC 17.3 diagnostic probe).
+//     The gate is the room id because the platform uploads no app secret to an actor (verified in the
+//     platform's actors design doc, 2026-10-03): an actor env holds only its config strings and keypair.
 //
 // Everything under ./server and ./shared is generated from src/ by base44/tools/sync-actor.mjs.
 // Edit the originals in src/, then run the sync; tests/unit/actorBundle.test.js enforces it.
 
 import { Actor } from "base44:runtime/actors";
 import { MatchHost } from "./matchHost.js";
-import { TICK_RATE } from "./shared/constants.js";
+import { TICK_RATE, isDiagRoom } from "./shared/constants.js";
 
 // Idle heartbeat for the event-driven clock. Active play advances the room on every input message
 // (60 Hz per player), so this only bounds how long an idle room can stand still: half a second.
 export const CLOCK_WAKE_MS = 500;
 const CLOCK_KEY = "clock";
-const DIAG_SECRET = "ACTOR_DIAG";
-
-/** Diagnostics are opt-in through an app secret; read lazily because the runtime installs Base44 in the constructor. */
-function diagEnabled(): boolean {
-  try {
-    const b44 = (globalThis as { Base44?: { secrets?: { get(name: string): string | undefined } } }).Base44;
-    return b44?.secrets?.get(DIAG_SECRET) === "1";
-  } catch {
-    return false;
-  }
-}
+// Bumped by hand with every actor change that ships; the diag probe reports it so a live room can be
+// matched to the code it runs after a Publish (Durable Objects give no other way to read that back).
+export const ACTOR_BUILD = "1.3";
 
 interface ActorConn {
   id: string;
@@ -65,7 +59,7 @@ export default class Match extends Actor {
   // request arrives. Reading it from a field initializer throws inside the constructor and the
   // platform answers every connection with 500 "user worker threw an exception" (seen 2026-10-03).
   get host(): MatchHost {
-    this.#host ??= new MatchHost({ instanceId: this.instanceId, diag: diagEnabled() });
+    this.#host ??= new MatchHost({ instanceId: this.instanceId, diag: isDiagRoom(this.instanceId) });
     return this.#host;
   }
 
@@ -85,8 +79,8 @@ export default class Match extends Actor {
 
   async handleMessage(conn: ActorConn, msg: unknown) {
     this.guard("message", conn, () => {
-      // Opt-in probe, answered before protocol validation; a no-op (false) unless ACTOR_DIAG is "1".
-      if (this.host.probe(conn, msg, { hooks: { ...this.#hooks }, clockArmed: this.#clockArmed })) return;
+      // Probe, answered before protocol validation; a no-op (false) outside a diag- room.
+      if (this.host.probe(conn, msg, { build: ACTOR_BUILD, hooks: { ...this.#hooks }, clockArmed: this.#clockArmed })) return;
       this.host.message(conn, msg);
     });
     await this.armClock(conn);

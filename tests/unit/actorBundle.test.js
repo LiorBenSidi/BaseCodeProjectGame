@@ -68,7 +68,11 @@ test('entry.ts default-exports a class extending Actor and sets the tick interva
     assert.match(text, new RegExp(`this\\.guard\\("${hook}", `), `entry.ts hook ${hook} is not guarded`);
   }
   assert.match(text, /this\.host\.fail\("schedule", /, 'entry.ts does not report a failed schedule');
-  assert.match(text, /const DIAG_SECRET = "ACTOR_DIAG"/, 'entry.ts does not name the diagnostics secret');
+  // SPEC 17.3 diagnostics: gated by the room id (app secrets never reach a deployed actor), build marker in the probe.
+  assert.match(text, /diag: isDiagRoom\(this\.instanceId\)/, 'entry.ts does not gate diagnostics on the room id');
+  assert.match(text, /export const ACTOR_BUILD = "\d+\.\d+"/, 'entry.ts does not carry a build marker');
+  assert.match(text, /build: ACTOR_BUILD/, 'entry.ts does not put the build marker in the probe');
+  assert.doesNotMatch(text, /ACTOR_DIAG|secrets/, 'entry.ts still reads an app secret for diagnostics');
 });
 
 test('entry.ts never reads this.instanceId / this.name from a class field initializer (runtime sets them after construction)', () => {

@@ -145,7 +145,7 @@ export class MatchHost {
    * A hook threw. The actor runtime swallows hook errors silently (and skips the rest of the hook), so the
    * error is logged here and the connection it happened on is told that the server failed on its behalf:
    * { t: 'error', reason: 'internal', hook }. The error's name and message are added only when the host runs
-   * with diagnostics on (entry.ts reads the ACTOR_DIAG secret), so a production client never sees internals.
+   * with diagnostics on (entry.ts enables them only for diag- rooms, isDiagRoom), so a play room never shows internals.
    * Never throws: a reporting failure must not mask the original error.
    */
   fail(hook, err, conn) {
@@ -180,7 +180,7 @@ export class MatchHost {
    * internals and the last reported hook error, plus whatever the actor adds (hook counters, heartbeat state).
    * It never advances the clock, so two probes some milliseconds apart show whether the object's wall clock
    * moves between messages. Returns true when the message was consumed; false means "not for me", including
-   * every message while diagnostics are off, where { t: 'diag' } is an unknown type like any other.
+   * every message while diagnostics are off (any room not named diag-*), where { t: 'diag' } is an unknown type like any other.
    */
   probe(conn, msg, extras = {}) {
     if (!this.#diag || msg === null || typeof msg !== 'object' || msg.t !== 'diag') return false;
