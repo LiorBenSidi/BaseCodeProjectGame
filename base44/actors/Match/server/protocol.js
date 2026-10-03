@@ -49,7 +49,10 @@ function validateObject(data) {
         if (!parsed) return fail('bad_cmd');
         cmds.push(parsed);
       }
-      return { ok: true, msg: { t: 'input', cmds } };
+      const msg = { t: 'input', cmds };
+      // SPEC 18.1: optional client clock stamp (the client's Date.now()); absent or malformed stamps are dropped, never fatal.
+      if (isNum(data.ts) && data.ts >= 0) msg.ts = data.ts;
+      return { ok: true, msg };
     }
     default:
       return fail('bad_shape');
