@@ -68,8 +68,10 @@ over the SDK and counts the frames that arrive (`welcome`, `snap`, `error`, ...)
 first: without one the SDK sends no `X-Base44-Anonymous-Id`, the connection-token mint answers 422 and the SDK
 silently falls back to the platform proxy, so the Node run would not exercise the direct WebSocket path a browser
 uses. `--inputs` streams 60 Hz input messages like a moving player; `--diag` sends `{ t: "diag" }` twice, a few
-hundred ms apart, and prints both answers (SPEC 17.3 diagnostic probe), which needs the `ACTOR_DIAG` app secret
-set to `1` on that app. A room name given here is a real room: pick one no player uses.
+hundred ms apart, and prints both answers (SPEC 17.3 diagnostic probe). The probe is answered only in a room
+whose id starts with `diag-` (for example `diag-live-1`); in any other room it earns a protocol strike. Read
+`build` in the answer to confirm which `ACTOR_BUILD` the live object runs, and compare `now` across the two
+answers to see whether the object's clock moved. A room name given here is a real room: pick one no player uses.
 
 ## Browser play-through (live, visual)
 Use this when a person or the assistant can drive a browser. Some embedded browsers refuse pointer lock; the game

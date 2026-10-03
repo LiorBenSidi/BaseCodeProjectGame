@@ -8,7 +8,7 @@
 //   room      a real room on the live app; pick one no player uses (default probe-1)
 //   seconds   how long to listen (default 8)
 //   --inputs  stream 60 Hz input messages like a moving player (each one advances the room clock)
-//   --diag    send { t: "diag" } twice, 400 ms apart, and print both answers; needs ACTOR_DIAG=1 on the app
+//   --diag    send { t: "diag" } twice, 400 ms apart, and print both answers; answered only in a diag-* room
 //   --proxy   force the platform proxy transport instead of the direct WebSocket a browser uses
 //
 // Exit code 0 = at least one snapshot arrived, 1 = none did, 2 = bad usage.
