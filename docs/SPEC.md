@@ -92,13 +92,15 @@ Pure function of an env-like object (never reads `process.env` itself). Returns
 `raw` is a string or Buffer. Returns `{ ok:true, msg }` or `{ ok:false, reason }`. Never throws, for any input.
 
 Reasons: `too_large` (byte length > 4096), `bad_json`, `bad_shape` (not a plain object, or unknown/missing `t`),
-`bad_join`, `bad_cmd`.
+`bad_join`, `bad_cmd`, `bad_ping`.
 
 Accepted messages (the returned `msg` is **freshly built from whitelisted fields only**; unknown extra fields such as
 `__proto__`, `isAdmin`, `hp` are dropped):
 
 - `{ t:'join', name? }` → `msg = { t:'join', name }` where `name = sanitizeName(name)` (`''` if absent/non-string).
 - `{ t:'shoot' }` → `msg = { t:'shoot' }`.
+- `{ t:'ping', id, ts }` → `msg = { t:'ping', id, ts }` (§18.2). `id`: safe integer >= 0; `ts`: finite number >= 0 (the
+  client's `Date.now()`). Anything else → `bad_ping`.
 - `{ t:'input', cmds:[...] }`: 1 to `MAX_CMDS_PER_MSG = 8` commands (export this constant), each
   `{ seq, fwd, right, jump, yaw, pitch }`:
   - `seq`: safe integer ≥ 0, otherwise `bad_cmd`.
@@ -424,7 +426,7 @@ layer so their behaviour cannot drift.
   `parseClientMessage` has already refused anything larger, so the check is a no-op there.
 - `join` before a seat creates the player (`GameRoom.addPlayer`); a second `join` on the same connection is
   ignored. A full room sends `{ t: 'error', reason: 'room_full' }` then `close('room_full')`.
-- `input`, `shoot`, `throw` without a seat are dropped. Messages from an unregistered connection are ignored.
+- `input`, `shoot`, `throw` without a seat are dropped; `ping` is answered with or without a seat (§18.2). Messages from an unregistered connection are ignored.
 - `requestRejoin()` sends `{ t: 'rejoin' }` to every seatless connection and returns how many were asked.
 - Close reasons are stable strings; the transport maps them: ws `1008` (rate_limit, protocol_violations),
   `1013` (room_full); actor `4008` / `4013` (Cloudflare accepts application codes 1000 and 3000-4999 only).
@@ -568,8 +570,55 @@ report `snaps` near 30 per second (build 2.0: 16 in 12 s), `clock.source: "clien
 once the setup movement is more than a second behind, and `stepsSinceAnchor` growing between the two diag
 frames. The probe stamps its inputs like `game.js`, so the Node probe exercises `clientClock` on its own.
 
-Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
-18.5 blended reconciliation, 18.6 lag compensation rewind.
+### 18.2 Clock sync: `ping` / `pong` and `src/client/clockSync.js`
+Why: lag compensation (18.6) rewinds the room to the time the shooter saw, and the shooter can only name that
+time in room time. 18.1 made the room clock move; 18.2 gives every client an estimate of it, and a measured
+RTT for the HUD and the probe.
+
+Wire format. The client sends `{ t: 'ping', id, ts }` (`id` counts up from 0 per connection, `ts` is the
+client's `Date.now()`; §7 validates both). The session answers `{ t: 'pong', id, ts, now }` on the same
+connection: `id` and `ts` echoed unchanged, `now` the room clock as the session sees it (`Date.now()` on the
+Node server, the `ClockSource` chosen time on the actor, §18.1). A `ping` is answered with or without a seat,
+so a client can measure before its `join` completes. On the actor the ping's `ts` also feeds the ClockSource
+exactly like an input stamp (`MatchHost.message`), so an idle client still moves the room clock once a second.
+
+Per-connection clamp (`PING_MIN_INTERVAL_MS = 400` and `answerPing(state, msg, now, send)`, exported from
+`matchSession.js`; `MatchSession` and the ws path in `server.js` both call it, so the Node server and the
+actor apply one rule). A ping is dropped,
+silently and without a strike, when it arrives within the interval of the previous accepted ping on both the
+server clock and the client's own stamps. Both, because a frozen server clock (§18.1) would otherwise block
+every ping after the first; a client that forges its stamps to beat the clamp is still bounded by the token
+bucket of §8 and §17.1, and a `pong` costs about 60 bytes. Pings still cost a bucket token like every message.
+
+Client (`src/client/clockSync.js`, pure, no DOM, unit tested in `tests/unit/clockSync.test.js`):
+- `new ClockSync({ intervalMs = PING_INTERVAL_MS (1000), samples = CLOCK_SAMPLES (8), timeoutMs = PING_TIMEOUT_MS (5000) })`.
+- `nextPing(now)`: the `{ t: 'ping', id, ts: now }` to send when at least `intervalMs` passed since the previous
+  one (the first call always sends), otherwise `null`. Outstanding pings older than `timeoutMs` are forgotten.
+- `onPong(pong, now)`: validates the shape and that `id` is outstanding with the echoed `ts`, computes
+  `rtt = now - ts` and `offset = pong.now + rtt / 2 - now`, keeps the newest `samples` samples, returns the
+  sample, or `null` for anything unknown, duplicated or malformed.
+- `rtt` (latest sample), `jitter` (max minus min RTT over the kept samples), `offset` (the offset of the
+  lowest-RTT kept sample: the sample least smeared by queueing), `synced` (at least one sample),
+  `serverTime(now) = now + offset` (`null` while unsynced), `stats()` for display and the probe.
+- `game.js` owns one `ClockSync`, calls `nextPing(Date.now())` every frame while seated and sends the result,
+  routes `pong` into `onPong`. The FPS readout (§19.2) shows `NN FPS · RR ms` once synced; `debugState()`
+  carries `rtt` and `clockOffset`. Nothing else consumes the estimate yet: 18.6 does.
+
+Probe: `npm run actor-probe -- <app-id> [room] [secs] --ping` sends a ping per second through the same
+`ClockSync` and reports `pongs`, `rttMs { p50, max }` and `clockOffsetMs` in the summary.
+
+Tests: `tests/unit/protocol.test.js` (ping shape, `bad_ping`), `tests/unit/matchSession.test.js` (pong echoes
+`id` and `ts` with the injected clock's `now`; answered before `join`; a second ping inside 400 ms on both
+clocks is dropped without a strike; a ping inside 400 ms of server time but 1000 ms of client time is
+answered; no bucket bypass), `tests/unit/matchHost.test.js` (ping stamps advance the ClockSource on a frozen
+runtime), `tests/unit/clockSync.test.js` (interval gating, sample math, lowest-RTT offset, unknown and stale
+pongs ignored, timeout, serverTime), `tests/unit/actorProbeArgs.test.js` (`--ping`).
+
+Live check: `ACTOR_BUILD = "2.2"`. `npm run actor-probe -- <app-id> diag-live-6 12 --inputs --ping` must report
+`pongs` near 12 and an `rttMs.p50` in the same range as the snapshot gap percentiles.
+
+Not started in this batch: 18.3 delta snapshots, 18.4 reconnect tokens, 18.5 blended reconciliation,
+18.6 lag compensation rewind.
 
 
 ## 19. Design and HUD (Batch D1)

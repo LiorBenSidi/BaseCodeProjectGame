@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameRoom } from '../../src/server/GameRoom.js';
-import { MatchSession, MAX_PROTOCOL_STRIKES, BUCKET, exceedsMessageBytes } from '../../src/server/matchSession.js';
+import { MatchSession, MAX_PROTOCOL_STRIKES, BUCKET, PING_MIN_INTERVAL_MS, answerPing, exceedsMessageBytes } from '../../src/server/matchSession.js';
 import { MAX_MESSAGE_BYTES } from '../../src/server/protocol.js';
 import { MAX_PLAYERS } from '../../src/shared/constants.js';
 
@@ -195,4 +195,64 @@ test('exceedsMessageBytes: scalars are not measured, 4 KB is the boundary, unser
   exact.p += 'x';
   assert.equal(exceedsMessageBytes(exact), true);
   assert.equal(exceedsMessageBytes({ n: 1n }), true);
+});
+
+// ---------- ping / pong (SPEC 18.2) ----------
+
+test('ping is answered with the echoed id and ts and the session clock, before and after join', () => {
+  const { session, advance } = setup();
+  const c = fakeConn('a');
+  session.connect(c);
+  session.message(c, { t: 'ping', id: 0, ts: 777 });
+  assert.deepEqual(c.sent.at(-1), { t: 'pong', id: 0, ts: 777, now: 1_000_000 });
+  session.message(c, { t: 'join', name: 'p' });
+  advance(1000);
+  session.message(c, { t: 'ping', id: 1, ts: 1777 });
+  assert.deepEqual(c.sent.at(-1), { t: 'pong', id: 1, ts: 1777, now: 1_001_000 });
+  assert.equal(c.closed, null);
+});
+
+test('PING_MIN_INTERVAL_MS is 400 and a ping inside it on both clocks is dropped without a strike', () => {
+  assert.equal(PING_MIN_INTERVAL_MS, 400);
+  const { session, advance } = setup();
+  const c = fakeConn('a');
+  session.connect(c);
+  session.message(c, { t: 'ping', id: 0, ts: 1000 });
+  advance(100);
+  for (let i = 1; i <= MAX_PROTOCOL_STRIKES + 2; i++) session.message(c, { t: 'ping', id: i, ts: 1000 + i });
+  assert.equal(c.sent.filter((m) => m.t === 'pong').length, 1);
+  assert.equal(c.closed, null, 'clamped pings are not protocol strikes');
+  advance(300); // 400 ms of server time since the accepted ping
+  session.message(c, { t: 'ping', id: 50, ts: 1400 });
+  assert.equal(c.sent.filter((m) => m.t === 'pong').length, 2);
+});
+
+test('a ping inside the interval on the server clock but not on the client stamps is answered (frozen server clock)', () => {
+  const { session } = setup(); // the clock never advances unless advance() is called
+  const c = fakeConn('a');
+  session.connect(c);
+  session.message(c, { t: 'ping', id: 0, ts: 1000 });
+  session.message(c, { t: 'ping', id: 1, ts: 2000 });
+  session.message(c, { t: 'ping', id: 2, ts: 2100 }); // too soon on both: dropped
+  session.message(c, { t: 'ping', id: 3, ts: 3000 });
+  assert.deepEqual(c.sent.filter((m) => m.t === 'pong').map((m) => m.id), [0, 1, 3]);
+});
+
+test('pings still spend bucket tokens: a flood is closed with rate_limit like any other message', () => {
+  const { session } = setup();
+  const c = fakeConn('a');
+  session.connect(c);
+  for (let i = 0; i <= BUCKET.capacity; i++) session.message(c, { t: 'ping', id: i, ts: i });
+  assert.equal(c.closed, 'rate_limit');
+});
+
+test('answerPing is the shared clamp: same decisions as the session, returns whether a pong went out', () => {
+  const state = { lastPingAt: null, lastPingTs: null };
+  const sent = [];
+  const send = (o) => sent.push(o);
+  assert.equal(answerPing(state, { t: 'ping', id: 0, ts: 1000 }, 5000, send), true);
+  assert.equal(answerPing(state, { t: 'ping', id: 1, ts: 1100 }, 5100, send), false);
+  assert.equal(answerPing(state, { t: 'ping', id: 2, ts: 2000 }, 5100, send), true, 'client stamps moved a second');
+  assert.equal(answerPing(state, { t: 'ping', id: 3, ts: 2100 }, 5500, send), true, 'server clock moved 400 ms');
+  assert.deepEqual(sent.map((m) => [m.id, m.ts, m.now]), [[0, 1000, 5000], [2, 2000, 5100], [3, 2100, 5500]]);
 });
