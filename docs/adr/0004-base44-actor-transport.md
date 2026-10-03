@@ -23,7 +23,8 @@ The owner wants the project to be a regular Base44 app in his workspace, carryin
    its own PR, guarded by the existing integration and security suites.)
 3. The actor folder is self-contained by generation: `base44/tools/sync-actor.mjs` copies `src/shared` and the
    `GameRoom` closure in; a unit test fails on drift. `src/` stays the only place to edit.
-4. The client picks the transport at build time from `VITE_BASE44_APP_ID` (injected by `base44 build`).
+4. The client picks the transport at build time from `VITE_BASE44_APP_ID` (set by the Base44 build environment:
+   the app sandbox exports it for `npm run build`, `base44 build` derives it from `BASE44_APP_ID`).
 5. Invariants 1, 2, 3, 5, 6 and 7 of `AGENTS.md` are unchanged. Invariant 4 ("one port") still governs the
    Node server; on Base44 the site and the room are two platform endpoints and no listener is ours.
 

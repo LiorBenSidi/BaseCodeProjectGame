@@ -454,7 +454,8 @@ by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
 
 ### 17.4 `src/client/netActor.js` — `ActorNetwork(handlers, { appId, roomId })`
 - Same handler contract as `Network` (§12 client side). Chosen by `game.js` when `VITE_BASE44_APP_ID` is set
-  (injected by `base44 build`); otherwise the raw `/ws` transport is used.
+  (set by the Base44 build environment: the app sandbox exports it, `base44 build` derives it from `BASE44_APP_ID`);
+  otherwise the raw `/ws` transport is used.
 - Connection id: one per tab (`sessionStorage`, key `bca.connectionId`, `^[A-Za-z0-9_-]{1,64}$`), so a reconnect
   reclaims the same server-side connection and two tabs never share one.
 - New client handlers: `rejoin` (re-send `join` with the stored name, drop the old id and pending commands),

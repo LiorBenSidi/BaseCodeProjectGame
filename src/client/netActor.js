@@ -8,7 +8,8 @@
 //   - after the room wakes from hibernation the server asks for `{ t: 'rejoin' }`; Game answers
 //     with a fresh join (see game.js). Nothing here is trusted: unknown message types are dropped.
 //
-// The appId comes from VITE_BASE44_APP_ID, injected by `base44 build`; it is a public identifier.
+// The appId comes from VITE_BASE44_APP_ID, set by the Base44 build environment (sandbox env, or `base44 build`
+// from BASE44_APP_ID); it is a public identifier.
 
 import { createClient } from '@base44/sdk';
 

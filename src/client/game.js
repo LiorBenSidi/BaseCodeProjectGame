@@ -100,7 +100,8 @@ export class Game {
       rejoin: () => { this.#id = null; this.#net.send({ t: 'join', name: this.#name }); },
       stale: () => { if (this.#id !== null) this.#hud.notice('Connection unstable, reconnecting...'); },
     };
-    // VITE_BASE44_APP_ID is injected by `base44 build`; without it this is the Node/ws server.
+    // VITE_BASE44_APP_ID is set by the Base44 build environment (the app sandbox exports it; `base44 build`
+    // derives it from BASE44_APP_ID); without it this is the Node/ws server.
     const appId = import.meta.env?.VITE_BASE44_APP_ID;
     this.#net = appId
       ? new ActorNetwork(handlers, { appId, roomId: roomIdFromLocation(window.location.search) })
