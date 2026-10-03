@@ -51,11 +51,16 @@ npx base44 login                               # once per machine
 npx base44 link                                # writes base44/.app.jsonc (not committed)
 node base44/tools/sync-actor.mjs               # refresh the actor's copies of src/shared and GameRoom
 npm run test:dry                               # the actorBundle test fails if the copies drifted
-npx base44 deploy --build -y                   # actors + site; the build injects VITE_BASE44_APP_ID
+npx base44 build                               # local production build; the build injects VITE_BASE44_APP_ID
 npm run smoke https://<app>.base44.app         # HTTP half only: the room is a WebSocket on another host
 ```
 
 `base44/.app.jsonc` carries the app id and is ignored by git. Secrets are never needed by the actor.
+
+Production is the Base44 app linked to this repository (2-way GitHub sync). It updates only when a change is
+merged to `main` and then published from the editor (Publish button). `base44 deploy` does not update the
+linked app; use it only for local experiments against a scratch app. Roll back with Revert to a version,
+then Publish.
 
 ## Repository map
 ```

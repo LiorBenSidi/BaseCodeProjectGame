@@ -8,6 +8,7 @@ import { Network } from './net.js';
 import { ActorNetwork, roomIdFromLocation } from './netActor.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
+import { TouchControls } from './touch.js';
 
 const TRACER_MS = 90;
 const MAX_PENDING = 600; // ~10 s of unacknowledged commands; beyond that the connection is effectively dead

@@ -52,7 +52,9 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
   respawning everyone.
 
 ## Phase 6 - Production (on Base44, D-017)
-- `base44 deploy --build` from CI on `main` only, after green checks; the smoke script gains an actor mode.
+- Production ships only by merging to `main` and pressing Publish in the Base44 editor (the app is linked to
+  this repository with 2-way sync; `base44 deploy` does not reach production on a linked app). CI stays the
+  green gate before the merge; the smoke script gains an actor mode.
 - Tick budget measurements at 30 / 60 Hz (ADR 0004 exit criteria) before `TICK_RATE` moves (D-006, D-003).
 - Lobby and room registry (Phase 3) designed around the platform's 300 connection attempts per minute per actor.
 - Custom domain on the Base44 app; external uptime monitor on the published site.
