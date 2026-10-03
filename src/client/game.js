@@ -158,7 +158,8 @@ export class Game {
       outgoing.push(cmd);
     }
     if (this.#pending.length > MAX_PENDING) this.#pending.splice(0, this.#pending.length - MAX_PENDING);
-    if (outgoing.length) this.#net.send({ t: 'input', cmds: outgoing });
+    // SPEC 18.1: the stamp lets the room's ClockSource advance from client time when the runtime clock is frozen.
+    if (outgoing.length) this.#net.send({ t: 'input', cmds: outgoing, ts: Date.now() });
 
     if (this.#input.firing && this.#input.locked) this.#tryFire(now);
   }

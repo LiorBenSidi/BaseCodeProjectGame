@@ -320,3 +320,48 @@ test('probe passes a build marker through to the frame', () => {
   assert.equal(h.probe(c, { t: 'diag' }, { build: '1.3', hooks: {}, clockArmed: false }), true);
   assert.equal(c.sent[0].build, '1.3');
 });
+
+// SPEC 18.1: MatchHost driven by a ClockSource
+import { ClockSource } from '../../base44/actors/Match/clockSource.js';
+
+test('clock source: with a frozen runtime clock, stamped inputs step the room and the probe reports the clock', () => {
+  const EPOCH = 1_791_051_197_625;
+  const clock = new ClockSource({ wall: () => EPOCH });
+  const sent = [];
+  const host = new MatchHost({ instanceId: 'diag-clock', diag: true, clock, sink: () => {}, logLevel: 'error' });
+  const conn = { id: 'c1', send: (m) => sent.push(m) };
+  host.connect(conn);
+  host.message(conn, { t: 'join', name: 'probe' });
+  const cmd = (seq) => ({ seq, fwd: 1, right: 0, jump: false, yaw: 0, pitch: 0 });
+  let ts = 10_000;
+  // 60 stamped inputs, 16 ms apart on the client: about 960 ms of client time.
+  for (let i = 1; i <= 60; i++) {
+    ts += 16;
+    host.message(conn, { t: 'input', cmds: [cmd(i)], ts });
+  }
+  const snaps = sent.filter((m) => m.t === 'snap').length;
+  assert.ok(snaps >= 20, `expected about 29 snapshots from 960 ms of client time, got ${snaps}`);
+  sent.length = 0;
+  host.probe(conn, { t: 'diag' });
+  const frame = sent.find((m) => m.t === 'diag');
+  assert.ok(frame.clock, 'probe carries the clock block');
+  assert.equal(frame.clock.source, 'clientClock');
+  assert.equal(frame.clock.candidates.wall, EPOCH);
+  assert.ok(frame.clock.candidates.clientClock > EPOCH + 900);
+  assert.equal(frame.now, frame.clock.chosen);
+});
+
+test('clock source: an unstamped input stream on a frozen clock never steps and never throws', () => {
+  const EPOCH = 1_791_051_197_625;
+  const clock = new ClockSource({ wall: () => EPOCH });
+  const sent = [];
+  const host = new MatchHost({ instanceId: 'diag-frozen', diag: true, clock, sink: () => {}, logLevel: 'error' });
+  const conn = { id: 'c1', send: (m) => sent.push(m) };
+  host.connect(conn);
+  host.message(conn, { t: 'join', name: 'probe' });
+  const cmd = (seq) => ({ seq, fwd: 1, right: 0, jump: false, yaw: 0, pitch: 0 });
+  for (let i = 1; i <= 30; i++) host.message(conn, { t: 'input', cmds: [cmd(i)] });
+  assert.equal(sent.filter((m) => m.t === 'snap').length, 1, 'only the first step, due at the anchor');
+  host.close(conn);
+  assert.equal(clock.probe().connections, 0);
+});

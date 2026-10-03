@@ -514,3 +514,50 @@ without a `handleClose`), hibernation and eviction, object placement (§17.3). T
 §12 has no equivalent; the 16-player room cap, the per-connection budget and the 4 KB message rule (re-applied
 in §17.1) remain the in-room limits. Not owned by anyone below 32 MiB: the inbound frame size, which is why
 §17.1 measures it.
+
+## 18. Phase 1 netcode (Batch 2)
+
+### 18.1 `base44/actors/Match/clockSource.js`: `ClockSource({ wall, aheadToleranceMs, maxClientStepMs })`
+Why: on the deployed actor (build 1.3, 2026-10-03) `Date.now()` was frozen across incoming WebSocket messages
+(two diag frames 400 ms apart, 117 messages in between, identical `now`), `handleTick` never fired and the
+500 ms schedule did not wake the object within 12 s. The event-driven clock of §17.3 was correct and had no
+time to read: one snapshot per connection, then nothing. Worse, `TokenBucket` refills from the same frozen
+clock, so a 60 Hz input stream was cut by `rate_limit` after `BUCKET.capacity` messages.
+
+`MatchHost` now takes `clock` (a `ClockSource`) and reads `now()` from it. Candidates, all in ms:
+- `wall`: `Date.now()` as the runtime reports it. May be frozen.
+- `ioWall`: `Date.now()` sampled right after an awaited `storage.get(CLOCK_STORAGE_KEY)` in `handleMessage`
+  (`entry.ts`, at most once per message, only while `shouldTick()`); awaited I/O is where the Workers clock
+  is allowed to move. The key is never written, so the read stays in the object's storage cache. A storage
+  failure is reported through `fail("io-clock")`, never fatal.
+- `clientClock`: every `input` message may carry `ts`, the client's `Date.now()` (`game.js` stamps it;
+  §7 accepts a finite number >= 0 and drops anything else without failing the message). Per connection the
+  first stamp anchors a virtual clock at the current chosen time (client skew is irrelevant); each later
+  stamp advances it by `min(ts - lastTs, MAX_CLIENT_STEP_MS = 100)`, never backwards. The candidate is the
+  fastest connection. Once `ioWall` has been seen moving, the candidate may lead `max(wall, ioWall)` by at
+  most `CLOCK_AHEAD_TOLERANCE_MS = 250`, which bounds a speed hack to that lead; while the server clock has
+  never moved the client clock is the only time there is and is not clamped. A closed connection stops
+  contributing (`removeConnection`), the chosen time never drops.
+- `timerTick`: a counter bumped by a `setTimeout` chain in `entry.ts` (`TIMER_EVIDENCE_MS = 1000`, at most
+  `TIMER_EVIDENCE_MAX = 600` fires per object lifetime). Evidence only: it never drives the chosen time.
+
+`now()` returns `max(previous, best candidate)`: monotonic whichever candidate wins. `probe()` returns
+`{ candidates: { wall, ioWall, clientClock, timerTick }, advances: { same keys, how often each moved },
+connections, chosen, source }` where `source` names the candidate that last moved the chosen time. The diag
+frame of §17.3 carries it as `clock`, and `now` in that frame equals `clock.chosen`.
+
+`MatchHost.message` records the stamp before `MatchSession.message` so the token bucket refills from the
+advanced time; `MatchHost.close` drops the connection from the clock. Tests: `tests/unit/clockSource.test.js`
+(frozen everything; moving wall; ioWall drives and never goes backwards; 60 Hz client deltas; 10 s jump clamped
+to one step; backwards and non-numeric stamps ignored; fastest connection wins and removal keeps monotonicity;
+tolerance clamp only after ioWall moved; timerTick counted and never chosen), `tests/unit/matchHost.test.js`
+(stamped inputs on a frozen clock produce snapshots and the probe's `clock` block; unstamped inputs never step
+and never throw), `tests/unit/protocol.test.js` (`ts` validation).
+
+Live check: `ACTOR_BUILD = "2.0"`. In a `diag-` room, two probes must show `clock.advances.ioWall` growing
+if awaited I/O unfreezes the clock, and `clock.source` must read `clientClock` while a browser player moves.
+`scripts/actor-probe.mjs` sends unstamped inputs (a `ts` stamp there needs the owner's approval for a
+`scripts/` change), so from Node only `ioWall` and `timerTick` are exercised.
+
+Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
+18.5 blended reconciliation, 18.6 lag compensation rewind.

@@ -32,15 +32,20 @@
 
 import { Actor } from "base44:runtime/actors";
 import { MatchHost } from "./matchHost.js";
+import { ClockSource } from "./clockSource.js";
 import { TICK_RATE, isDiagRoom } from "./shared/constants.js";
 
 // Idle heartbeat for the event-driven clock. Active play advances the room on every input message
 // (60 Hz per player), so this only bounds how long an idle room can stand still: half a second.
 export const CLOCK_WAKE_MS = 500;
+export const CLOCK_STORAGE_KEY = "clock-io"; // never written: the awaited read is what matters (SPEC 18.1)
+export const TIMER_EVIDENCE_MS = 1000;
+export const TIMER_EVIDENCE_MAX = 600; // ten minutes of evidence per object lifetime, then the chain ends
+
 const CLOCK_KEY = "clock";
 // Bumped by hand with every actor change that ships; the diag probe reports it so a live room can be
 // matched to the code it runs after a Publish (Durable Objects give no other way to read that back).
-export const ACTOR_BUILD = "1.3";
+export const ACTOR_BUILD = "2.0";
 
 interface ActorConn {
   id: string;
@@ -54,17 +59,24 @@ export default class Match extends Actor {
   #host: MatchHost | null = null;
   #clockArmed = false; // in-memory only: after an eviction the persisted schedule fires anyway and re-arms
   #hooks: Record<string, number> = {}; // how often each hook ran in this object's lifetime, for the probe
+  #timerArmed = false;
+  #timerTicks = 0;
 
   // Lazy on purpose: `instanceId` is `this.name`, which the runtime sets only when the first
   // request arrives. Reading it from a field initializer throws inside the constructor and the
   // platform answers every connection with 500 "user worker threw an exception" (seen 2026-10-03).
   get host(): MatchHost {
-    this.#host ??= new MatchHost({ instanceId: this.instanceId, diag: isDiagRoom(this.instanceId) });
+    this.#host ??= new MatchHost({
+      instanceId: this.instanceId,
+      diag: isDiagRoom(this.instanceId),
+      clock: new ClockSource(),
+    });
     return this.#host;
   }
 
   async handleStart() {
     this.guard("start", undefined, () => this.host.wake(this.getConnections() as ActorConn[]));
+    this.armTimerEvidence();
     await this.armClock();
   }
 
@@ -78,6 +90,7 @@ export default class Match extends Actor {
   }
 
   async handleMessage(conn: ActorConn, msg: unknown) {
+    await this.sampleIoWall(conn);
     this.guard("message", conn, () => {
       // Probe, answered before protocol validation; a no-op (false) outside a diag- room.
       if (this.host.probe(conn, msg, { build: ACTOR_BUILD, hooks: { ...this.#hooks }, clockArmed: this.#clockArmed })) return;
@@ -112,6 +125,33 @@ export default class Match extends Actor {
     } catch (err) {
       this.host.fail(hook, err, conn);
     }
+  }
+
+  /**
+   * SPEC 18.1 ioWall: the Workers clock is allowed to move after awaited I/O, so one cheap storage read
+   * per message (only while someone is seated) is followed by a Date.now() sample for the ClockSource.
+   * Reading a key that is never written stays in the object's storage cache; a failure is reported, not fatal.
+   */
+  private async sampleIoWall(conn: ActorConn) {
+    if (!this.host.shouldTick()) return;
+    try {
+      await this.storage.get(CLOCK_STORAGE_KEY);
+      this.host.clock?.recordIoWall(Date.now());
+    } catch (err) {
+      this.host.fail("io-clock", err, conn);
+    }
+  }
+
+  /** SPEC 18.1 timerTick: a setTimeout chain that only counts. The probe shows whether timers fire here at all. */
+  private armTimerEvidence() {
+    if (this.#timerArmed) return;
+    this.#timerArmed = true;
+    const bump = () => {
+      this.#timerTicks += 1;
+      this.host.clock?.recordTimerTick(this.#timerTicks);
+      if (this.#timerTicks < TIMER_EVIDENCE_MAX) setTimeout(bump, TIMER_EVIDENCE_MS);
+    };
+    setTimeout(bump, TIMER_EVIDENCE_MS);
   }
 
   /** Arm one heartbeat while the room has a seated player; re-arming the same key only moves its time. */

@@ -36,6 +36,7 @@ export class MatchHost {
   #session;
   #log;
   #now;
+  #clock; // ClockSource (SPEC 18.1) or null when the caller injects a plain now()
   #tickMs;
   #maxCatchup;
   #anchorAt = null; // wall time the clock counts from; null while the room has no seated player
@@ -47,12 +48,14 @@ export class MatchHost {
     instanceId = 'match',
     logLevel = 'info',
     sink,
-    now = () => Date.now(),
+    clock = null,
+    now = clock ? () => clock.now() : () => Date.now(),
     tickMs = TICK_MS,
     maxCatchup = MAX_CATCHUP,
     diag = false,
   } = {}) {
     this.#now = now;
+    this.#clock = clock;
     this.#diag = diag === true;
     this.#tickMs = tickMs;
     this.#maxCatchup = maxCatchup;
@@ -66,6 +69,10 @@ export class MatchHost {
 
   get session() {
     return this.#session;
+  }
+
+  get clock() {
+    return this.#clock;
   }
 
   /** Any wake (deploy, idle-out, hibernation). Sockets still attached must re-announce themselves. */
@@ -86,11 +93,17 @@ export class MatchHost {
   }
 
   message(conn, msg) {
+    // SPEC 18.1: the client's clock stamp feeds the ClockSource before the session (and its token
+    // bucket, which refills from the same clock) looks at the time.
+    if (this.#clock && msg !== null && typeof msg === 'object' && msg.t === 'input') {
+      this.#clock.recordClientTs(conn.id, msg.ts);
+    }
     this.#session.message(conn, msg);
     this.advance();
   }
 
   close(conn) {
+    this.#clock?.removeConnection(conn.id);
     this.#session.close(conn);
     this.advance();
   }
@@ -193,6 +206,7 @@ export class MatchHost {
       maxCatchup: this.#maxCatchup,
       playerCount: this.#session.playerCount,
       lastFail: this.#lastFail,
+      clock: this.#clock ? this.#clock.probe() : null,
       ...extras,
     };
     try {

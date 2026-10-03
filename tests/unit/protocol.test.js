@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClientMessage, MAX_CMDS_PER_MSG } from '../../src/server/protocol.js';
+import { parseClientMessage, validateClientMessage, MAX_CMDS_PER_MSG } from '../../src/server/protocol.js';
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -405,4 +405,17 @@ for (const raw of ['{"t":"THROW"}', '{"t":"throw "}', '{"t":["throw"]}', '[{"t":
 test('an oversized throw is too_large', () => {
   const raw = '{"t":"throw","pad":"' + 'x'.repeat(4096) + '"}';
   assert.deepEqual(parseClientMessage(raw), { ok: false, reason: 'too_large' });
+});
+
+// SPEC 18.1: optional client clock stamp on input messages
+test('input ts: a finite non-negative number is kept, anything else is dropped without failing the message', () => {
+  const cmds = [{ seq: 1, fwd: 0, right: 0, jump: false, yaw: 0, pitch: 0 }];
+  const ok = validateClientMessage({ t: 'input', cmds, ts: 1_791_051_197_625 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.msg.ts, 1_791_051_197_625);
+  for (const bad of [undefined, -1, 'now', NaN, Infinity, null, {}]) {
+    const r = validateClientMessage({ t: 'input', cmds, ts: bad });
+    assert.equal(r.ok, true, `ts=${String(bad)}`);
+    assert.equal('ts' in r.msg, false, `ts=${String(bad)}`);
+  }
 });
