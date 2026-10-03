@@ -63,6 +63,12 @@ test('entry.ts default-exports a class extending Actor and sets the tick interva
   assert.match(text, /const CLOCK_KEY = "clock"/, 'entry.ts does not name the clock schedule key');
   assert.match(text, /this\.schedule\(CLOCK_KEY, /, 'entry.ts does not arm the clock schedule');
   assert.match(text, /host\.advance\(\)/, 'entry.ts does not advance the clock');
+  // Every hook body runs under the guard, and the schedule call is guarded too (hook errors are silent upstream).
+  for (const hook of ['start', 'connect', 'message', 'tick', 'close', 'wake']) {
+    assert.match(text, new RegExp(`this\\.guard\\("${hook}", `), `entry.ts hook ${hook} is not guarded`);
+  }
+  assert.match(text, /this\.host\.fail\("schedule", /, 'entry.ts does not report a failed schedule');
+  assert.match(text, /const DIAG_SECRET = "ACTOR_DIAG"/, 'entry.ts does not name the diagnostics secret');
 });
 
 test('entry.ts never reads this.instanceId / this.name from a class field initializer (runtime sets them after construction)', () => {

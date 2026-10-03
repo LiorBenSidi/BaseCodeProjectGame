@@ -162,3 +162,49 @@ test('an empty room stops the clock and a new first player does not inherit the 
   h.message(b, { t: 'join', name: 'Bob' });
   assert.equal(snaps(b), 1, 'exactly the immediate first step, not a capped catch-up of the idle time');
 });
+
+// ---- hook error reporting (entry.ts guards call fail) ------------------------------------------
+
+test('fail logs the error and sends a bare internal-error frame without diagnostics', () => {
+  const lines = [];
+  const h = new MatchHost({ sink: (l) => lines.push(JSON.parse(l)), now: () => 1_000_000 });
+  const c = actorConn('a');
+  h.fail('message', new TypeError('boom'), c);
+  assert.deepEqual(c.sent, [{ t: 'error', reason: 'internal', hook: 'message' }], 'no name or message leaks');
+  const log = lines.find((l) => l.msg === 'hook threw');
+  assert.ok(log, 'the error is logged');
+  assert.equal(log.level, 'error');
+  assert.equal(log.hook, 'message');
+  assert.deepEqual(log.err, { name: 'TypeError', message: 'boom' });
+  assert.equal(log.stack, undefined, 'no stack without diagnostics');
+});
+
+test('fail adds the error name and message to the frame only when diagnostics are on', () => {
+  const lines = [];
+  const h = new MatchHost({ sink: (l) => lines.push(JSON.parse(l)), now: () => 1_000_000, diag: true });
+  const c = actorConn('a');
+  h.fail('schedule', new RangeError('no alarm'), c);
+  assert.deepEqual(c.sent, [{ t: 'error', reason: 'internal', hook: 'schedule', name: 'RangeError', message: 'no alarm' }]);
+  const log = lines.find((l) => l.msg === 'hook threw');
+  assert.ok(typeof log.stack === 'string' && log.stack.includes('no alarm'), 'stack is logged with diagnostics');
+});
+
+test('fail copes with no connection, a non-Error value and a throwing socket', () => {
+  const h = new MatchHost({ sink: () => {}, now: () => 1_000_000, diag: true });
+  assert.doesNotThrow(() => h.fail('tick', 'plain string', undefined));
+  assert.doesNotThrow(() => h.fail('close', null, { id: 'x' }), 'conn without send');
+  const bad = { id: 'b', send: () => { throw new Error('socket closed'); } };
+  assert.doesNotThrow(() => h.fail('message', new Error('x'), bad));
+  const c = actorConn('c');
+  h.fail('message', 'plain string', c);
+  assert.deepEqual(c.sent, [{ t: 'error', reason: 'internal', hook: 'message', name: 'Error', message: 'plain string' }]);
+});
+
+test('diag is strictly opt-in: only the boolean true enables it', () => {
+  for (const v of ['1', 1, 'true', undefined, null]) {
+    const h = new MatchHost({ sink: () => {}, now: () => 1_000_000, diag: v });
+    const c = actorConn('a');
+    h.fail('message', new Error('secret detail'), c);
+    assert.equal(c.sent[0].message, undefined, `diag=${JSON.stringify(v)} must not leak`);
+  }
+});

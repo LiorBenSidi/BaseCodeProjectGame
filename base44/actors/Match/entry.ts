@@ -18,6 +18,11 @@
 //     rule (re-measured on the parsed object, frames are capped at 32 MiB upstream) stay ours.
 //   - The room object is created near its first joiner and never moves (idFromName, no
 //     location hint): the lobby must encode the region in the room id.
+//   - A hook that throws is swallowed by the runtime shim (and the rest of that hook, including the
+//     ticker upkeep, is skipped), and actor console output is not reachable from outside. Every hook
+//     therefore runs under a guard: the error is logged and the connection gets { t: 'error',
+//     reason: 'internal' }. With the ACTOR_DIAG secret set to "1" the frame also carries the error's
+//     name and message; leave it unset in production.
 //
 // Everything under ./server and ./shared is generated from src/ by base44/tools/sync-actor.mjs.
 // Edit the originals in src/, then run the sync; tests/unit/actorBundle.test.js enforces it.
@@ -30,6 +35,17 @@ import { TICK_RATE } from "./shared/constants.js";
 // (60 Hz per player), so this only bounds how long an idle room can stand still: half a second.
 export const CLOCK_WAKE_MS = 500;
 const CLOCK_KEY = "clock";
+const DIAG_SECRET = "ACTOR_DIAG";
+
+/** Diagnostics are opt-in through an app secret; read lazily because the runtime installs Base44 in the constructor. */
+function diagEnabled(): boolean {
+  try {
+    const b44 = (globalThis as { Base44?: { secrets?: { get(name: string): string | undefined } } }).Base44;
+    return b44?.secrets?.get(DIAG_SECRET) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface ActorConn {
   id: string;
@@ -47,12 +63,12 @@ export default class Match extends Actor {
   // request arrives. Reading it from a field initializer throws inside the constructor and the
   // platform answers every connection with 500 "user worker threw an exception" (seen 2026-10-03).
   get host(): MatchHost {
-    this.#host ??= new MatchHost({ instanceId: this.instanceId });
+    this.#host ??= new MatchHost({ instanceId: this.instanceId, diag: diagEnabled() });
     return this.#host;
   }
 
   async handleStart() {
-    this.host.wake(this.getConnections() as ActorConn[]);
+    this.guard("start", undefined, () => this.host.wake(this.getConnections() as ActorConn[]));
     await this.armClock();
   }
 
@@ -61,21 +77,22 @@ export default class Match extends Actor {
   }
 
   async handleConnect(conn: ActorConn) {
-    this.host.connect(conn);
-    await this.armClock();
+    this.guard("connect", conn, () => this.host.connect(conn));
+    await this.armClock(conn);
   }
 
   async handleMessage(conn: ActorConn, msg: unknown) {
-    this.host.message(conn, msg);
-    await this.armClock();
+    this.guard("message", conn, () => this.host.message(conn, msg));
+    await this.armClock(conn);
   }
 
   handleTick() {
-    this.host.advance();
+    this.guard("tick", undefined, () => this.host.advance());
   }
 
   async handleClose(conn: ActorConn) {
-    this.host.close(conn);
+    // The socket is gone; report to the log only.
+    this.guard("close", undefined, () => this.host.close(conn));
     await this.armClock();
   }
 
@@ -83,14 +100,28 @@ export default class Match extends Actor {
   async handleWake(key: string) {
     if (key !== CLOCK_KEY) return;
     this.#clockArmed = false;
-    this.host.advance();
+    this.guard("wake", undefined, () => this.host.advance());
     await this.armClock();
   }
 
+  /** Run one hook body; a throw is reported through MatchHost.fail instead of vanishing in the runtime. */
+  private guard(hook: string, conn: ActorConn | undefined, fn: () => unknown) {
+    try {
+      fn();
+    } catch (err) {
+      this.host.fail(hook, err, conn);
+    }
+  }
+
   /** Arm one heartbeat while the room has a seated player; re-arming the same key only moves its time. */
-  private async armClock() {
+  private async armClock(conn?: ActorConn) {
     if (this.#clockArmed || !this.host.shouldTick()) return;
     this.#clockArmed = true;
-    await this.schedule(CLOCK_KEY, Date.now() + CLOCK_WAKE_MS);
+    try {
+      await this.schedule(CLOCK_KEY, Date.now() + CLOCK_WAKE_MS);
+    } catch (err) {
+      this.#clockArmed = false; // the next event tries again
+      this.host.fail("schedule", err, conn);
+    }
   }
 }
