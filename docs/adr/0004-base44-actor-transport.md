@@ -53,5 +53,6 @@ The owner wants the project to be a regular Base44 app in his workspace, carryin
 
 ## Exit criteria for the test the owner and the builder agreed on
 Measure, on a deployed room with 16 simulated players at 30 Hz and 60 Hz: tick jitter and catch-up count
-inside `handleTick`, snapshot bytes per second per player, client RTT. Record the numbers in `docs/DESIGN.md`
+inside `MatchHost.advance()` (the event-driven clock of D-018; `handleTick` itself did not fire on the first
+deploy), snapshot bytes per second per player, client RTT. Record the numbers in `docs/DESIGN.md`
 under D-006/D-003 before raising `TICK_RATE`.

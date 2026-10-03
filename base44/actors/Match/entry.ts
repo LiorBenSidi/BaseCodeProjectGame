@@ -4,9 +4,13 @@
 // infra/base44-userapp-bundler/src/shim/actor.ts on 2026-10-03):
 //   - handleStart runs on every wake; a hibernation wake keeps sockets attached without
 //     re-running handleConnect, so MatchHost.wake() re-registers them and asks for a rejoin.
-//   - The managed ticker calls handleTick every tickIntervalMs while shouldTick() is true and
-//     at least one connection is open. No minimum interval is enforced; late ticks catch up
-//     at most 3 steps, then time is dropped (TickLoop.maxCatchup).
+//   - The managed ticker (handleTick, a setTimeout loop inside the object) is declared but not relied
+//     on: in production it was observed never to fire (2026-10-03, instrumented deploy), so the room
+//     runs an event-driven clock instead (SPEC 17.3). Every hook ends in MatchHost.advance(), which
+//     runs the simulation steps due by wall time (at most 3, then time is dropped, the TickLoop rule),
+//     and a platform schedule ("clock", CLOCK_WAKE_MS) wakes the object through handleWake so an idle
+//     room still advances (respawns, grenade fuses). Schedules are Durable Object alarms: they survive
+//     hibernation and cost two storage writes per arm, which is why the heartbeat is coarse.
 //   - Messages are JSON text in both directions; conn.send stringifies, handleMessage gets the
 //     parsed object. Every incoming object still goes through validateClientMessage.
 //   - Origin checks, connection tokens and the per-script connection rate limit are the
@@ -22,6 +26,11 @@ import { Actor } from "base44:runtime/actors";
 import { MatchHost } from "./matchHost.js";
 import { TICK_RATE } from "./shared/constants.js";
 
+// Idle heartbeat for the event-driven clock. Active play advances the room on every input message
+// (60 Hz per player), so this only bounds how long an idle room can stand still: half a second.
+export const CLOCK_WAKE_MS = 500;
+const CLOCK_KEY = "clock";
+
 interface ActorConn {
   id: string;
   identity?: { type: "authenticated"; userId: string } | { type: "anonymous"; anonymousId: string };
@@ -32,6 +41,7 @@ interface ActorConn {
 export default class Match extends Actor {
   tickIntervalMs = 1000 / TICK_RATE; // D-006: one simulation rate per room, 30 Hz today
   #host: MatchHost | null = null;
+  #clockArmed = false; // in-memory only: after an eviction the persisted schedule fires anyway and re-arms
 
   // Lazy on purpose: `instanceId` is `this.name`, which the runtime sets only when the first
   // request arrives. Reading it from a field initializer throws inside the constructor and the
@@ -41,27 +51,46 @@ export default class Match extends Actor {
     return this.#host;
   }
 
-  handleStart() {
+  async handleStart() {
     this.host.wake(this.getConnections() as ActorConn[]);
+    await this.armClock();
   }
 
   shouldTick() {
     return this.host.shouldTick();
   }
 
-  handleConnect(conn: ActorConn) {
+  async handleConnect(conn: ActorConn) {
     this.host.connect(conn);
+    await this.armClock();
   }
 
-  handleMessage(conn: ActorConn, msg: unknown) {
+  async handleMessage(conn: ActorConn, msg: unknown) {
     this.host.message(conn, msg);
+    await this.armClock();
   }
 
   handleTick() {
-    this.host.tick();
+    this.host.advance();
   }
 
-  handleClose(conn: ActorConn) {
+  async handleClose(conn: ActorConn) {
     this.host.close(conn);
+    await this.armClock();
+  }
+
+  /** Platform schedule fired (Durable Object alarm): run the steps that are due, then re-arm while seated. */
+  async handleWake(key: string) {
+    if (key !== CLOCK_KEY) return;
+    this.#clockArmed = false;
+    this.host.advance();
+    await this.armClock();
+  }
+
+  /** Arm one heartbeat while the room has a seated player; re-arming the same key only moves its time. */
+  private async armClock() {
+    if (this.#clockArmed || !this.host.shouldTick()) return;
+    this.#clockArmed = true;
+    await this.schedule(CLOCK_KEY, Date.now() + CLOCK_WAKE_MS);
   }
 }

@@ -135,3 +135,18 @@ The health endpoint can also be hit with the standard Apache Bench tool (`ab`, p
 Linux): `ab -n 1000 -c 100 http://localhost:3000/healthz`. It exercises HTTP only, not the WebSocket game traffic (that is
 `npm run test:stress`). Watch requests per second and time per request; higher concurrency raises per-request latency while
 throughput flattens.
+
+## Deployed room clock (D-018)
+
+The hosted room has no timer of its own: steps run inside the events that reach the actor (every `input`
+message, plus one platform wake every 500 ms while someone is seated). To check it on the published site:
+
+1. Open the site in two tabs, join both. Each tab should see the other move with no visible stepping.
+2. Kill one player and leave both tabs idle (no keys, no mouse). The dead player must respawn after `RESPAWN_MS`
+   with at most about half a second of extra delay: that delay is the idle heartbeat doing the work the managed
+   ticker does not.
+3. Throw a grenade and stand still. The blast must land on its fuse, again within about half a second.
+
+If step 2 or 3 stalls indefinitely, the schedule did not fire: check the actor logs for `clock dropped time`
+lines and `Actor.handleWake threw` (platform shim), and re-read SPEC §17.3.
+

@@ -8,6 +8,12 @@
 import { GameRoom } from './server/GameRoom.js';
 import { createLogger } from './server/logger.js';
 import { MatchSession } from './server/matchSession.js';
+import { TICK_RATE } from './shared/constants.js';
+
+/** One simulation step per TICK_MS of wall time (D-006). */
+export const TICK_MS = 1000 / TICK_RATE;
+/** Steps run back to back after a stall before the rest of the time is dropped: the platform TickLoop bound. */
+export const MAX_CATCHUP = 3;
 
 // Cloudflare only lets an application close a socket with 1000 or 3000-4999, so the ws codes
 // used by src/server/server.js (1008 policy violation, 1013 try again later) become 4008 / 4013.
@@ -29,8 +35,23 @@ export function wrapConn(conn) {
 export class MatchHost {
   #session;
   #log;
+  #now;
+  #tickMs;
+  #maxCatchup;
+  #anchorAt = null; // wall time the clock counts from; null while the room has no seated player
+  #stepsSinceAnchor = 0;
 
-  constructor({ instanceId = 'match', logLevel = 'info', sink, now = () => Date.now() } = {}) {
+  constructor({
+    instanceId = 'match',
+    logLevel = 'info',
+    sink,
+    now = () => Date.now(),
+    tickMs = TICK_MS,
+    maxCatchup = MAX_CATCHUP,
+  } = {}) {
+    this.#now = now;
+    this.#tickMs = tickMs;
+    this.#maxCatchup = maxCatchup;
     // The actor has no stdout; Cloudflare observability captures console output. logger.js lives
     // in src/server where console is banned, so the sink is injected from here instead.
     const logSink = sink ?? ((line) => console.log(line)); // policy-allow: NO_CONSOLE_SERVER because this file is actor glue outside src/
@@ -51,19 +72,23 @@ export class MatchHost {
     }
     const asked = this.#session.requestRejoin();
     if (attached > 0) this.#log.info('actor woke with sockets attached', { attached, asked });
+    this.advance();
     return asked;
   }
 
   connect(conn) {
     this.#session.connect(wrapConn(conn));
+    this.advance();
   }
 
   message(conn, msg) {
     this.#session.message(conn, msg);
+    this.advance();
   }
 
   close(conn) {
     this.#session.close(conn);
+    this.advance();
   }
 
   /** The platform also requires at least one live connection; this keeps empty rooms idle. */
@@ -71,7 +96,39 @@ export class MatchHost {
     return this.#session.playerCount > 0;
   }
 
+  /**
+   * Event-driven clock (SPEC 17.3). The deployed actor has no reliable timer, so every event (connect,
+   * message, close, wake, platform tick, clock wake) samples wall time and runs the steps that are due:
+   * at most maxCatchup back to back, then the remaining time is dropped and the clock re-anchors to now,
+   * exactly the platform TickLoop's rule. A room that just got its first player steps immediately, so the
+   * first snapshot leaves with the welcome. Returns the number of steps run.
+   */
+  advance() {
+    if (!this.shouldTick()) {
+      this.#anchorAt = null;
+      this.#stepsSinceAnchor = 0;
+      return 0;
+    }
+    const now = this.#now();
+    if (this.#anchorAt === null) {
+      this.#anchorAt = now - this.#tickMs; // the first step is due at once
+      this.#stepsSinceAnchor = 0;
+    }
+    // Integer step accounting from a fixed anchor, so 1000 / 30 never drifts through float sums.
+    const due = Math.floor((now - this.#anchorAt) / this.#tickMs + 1e-6) - this.#stepsSinceAnchor;
+    const steps = Math.min(Math.max(due, 0), this.#maxCatchup);
+    for (let i = 0; i < steps; i++) this.#session.tick();
+    this.#stepsSinceAnchor += steps;
+    if (due > steps) {
+      this.#log.debug('clock dropped time after a stall', { droppedSteps: due - steps });
+      this.#anchorAt = now;
+      this.#stepsSinceAnchor = 0;
+    }
+    return steps;
+  }
+
+  /** The managed ticker (handleTick) shares the wall-time gate, so it can never double step. */
   tick() {
-    this.#session.tick();
+    return this.advance();
   }
 }
