@@ -1,5 +1,6 @@
 import { INPUT_DT, PLAYER, WEAPON } from '../shared/constants.js';
 import { stepPlayer } from '../shared/movement.js';
+import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
 import { Hud } from './hud.js';
@@ -35,6 +36,7 @@ export class Game {
   #accumulator = 0;
   #lastFrame = performance.now();
   #fps = { on: false, frames: 0, since: performance.now() };
+  #clock = new ClockSync(); // SPEC 18.2: room clock estimate and RTT from ping/pong
   #lastShot = 0;
   #tracers = [];
 
@@ -101,7 +103,7 @@ export class Game {
 
   debugState() {
     return { joined: this.joined, id: this.#id, alive: this.#me.alive, yaw: this.#input.yaw, pitch: this.#input.pitch,
-      pos: [this.#me.x, this.#me.y, this.#me.z] };
+      pos: [this.#me.x, this.#me.y, this.#me.z], rtt: this.#clock.rtt, clockOffset: this.#clock.offset };
   }
 
   join(name) {
@@ -113,6 +115,7 @@ export class Game {
       verdict: (m) => this.#combat.verdict(m),
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); },
       kill: (m) => this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`),
+      pong: (m) => this.#clock.onPong(m, Date.now()),
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
       close: () => { this.#id = null; this.#hud.notice('Disconnected. Reload to rejoin.'); },
       // Actor transport only: the room woke up without our seat, or the link went quiet.
@@ -194,7 +197,9 @@ export class Game {
     const elapsed = now - this.#fps.since;
     if (elapsed < 500) return;
     const el = document.getElementById('fps');
-    if (el) el.textContent = `${Math.round((this.#fps.frames * 1000) / elapsed)} FPS`;
+    const fps = `${Math.round((this.#fps.frames * 1000) / elapsed)} FPS`;
+    const rtt = this.#clock.stats().rtt;
+    if (el) el.textContent = rtt === null ? fps : `${fps} · ${rtt} ms`;
     this.#fps.frames = 0;
     this.#fps.since = now;
   }
@@ -204,7 +209,11 @@ export class Game {
     const dt = Math.min(0.1, (now - this.#lastFrame) / 1000); // clamp: a background tab must not flood the server
     this.#lastFrame = now;
     if (this.#fps.on) this.#countFrame(now);
-    if (this.joined) this.#simulate(dt, now);
+    if (this.joined) {
+      this.#simulate(dt, now);
+      const ping = this.#clock.nextPing(Date.now());
+      if (ping) this.#net.send(ping);
+    }
 
     this.#remote.update(now);
     this.#updateTracers(now);

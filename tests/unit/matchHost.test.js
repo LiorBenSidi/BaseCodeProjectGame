@@ -365,3 +365,21 @@ test('clock source: an unstamped input stream on a frozen clock never steps and 
   host.close(conn);
   assert.equal(clock.probe().connections, 0);
 });
+
+test('clock source: ping stamps advance the ClockSource like input stamps (SPEC 18.2)', () => {
+  const EPOCH = 1_791_051_197_625;
+  const clock = new ClockSource({ wall: () => EPOCH });
+  const sent = [];
+  const host = new MatchHost({ instanceId: 'diag-ping', diag: true, clock, sink: () => {}, logLevel: 'error' });
+  const conn = { id: 'c1', send: (m) => sent.push(m) };
+  host.connect(conn);
+  host.message(conn, { t: 'join', name: 'probe' });
+  host.message(conn, { t: 'ping', id: 0, ts: 10_000 });
+  // One second of client time later; MAX_CLIENT_STEP_MS bounds the step to 100 ms of room time.
+  host.message(conn, { t: 'ping', id: 1, ts: 11_000 });
+  const pongs = sent.filter((m) => m.t === 'pong');
+  assert.equal(pongs.length, 2);
+  assert.equal(pongs[0].now, EPOCH);
+  assert.equal(pongs[1].now, EPOCH + 100, 'the second pong carries the advanced room clock');
+  assert.equal(pongs[1].ts, 11_000);
+});
