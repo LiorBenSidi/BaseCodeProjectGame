@@ -5,6 +5,7 @@ import { Grenades } from './grenades.js';
 import { Hud } from './hud.js';
 import { Input } from './input.js';
 import { Network } from './net.js';
+import { ActorNetwork, roomIdFromLocation } from './netActor.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
 
@@ -25,6 +26,7 @@ export class Game {
   #touch;
   #remote;
   #net = null;
+  #name = '';
   #me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, alive: false };
   #id = null;
   #seq = 0;
@@ -84,8 +86,9 @@ export class Game {
   }
 
   join(name) {
-    this.#net = new Network({
-      welcome: (m) => { this.#id = m.id; this.#hud.show(); },
+    this.#name = name;
+    const handlers = {
+      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#hud.notice(''); this.#hud.show(); },
       snap: (m) => this.#onSnapshot(m),
       shot: (m) => this.#addTracer(m),
       verdict: (m) => this.#combat.verdict(m),
@@ -93,7 +96,15 @@ export class Game {
       kill: (m) => this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`),
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
       close: () => { this.#id = null; this.#hud.notice('Disconnected. Reload to rejoin.'); },
-    });
+      // Actor transport only: the room woke up without our seat, or the link went quiet.
+      rejoin: () => { this.#id = null; this.#net.send({ t: 'join', name: this.#name }); },
+      stale: () => { if (this.#id !== null) this.#hud.notice('Connection unstable, reconnecting...'); },
+    };
+    // VITE_BASE44_APP_ID is injected by `base44 build`; without it this is the Node/ws server.
+    const appId = import.meta.env?.VITE_BASE44_APP_ID;
+    this.#net = appId
+      ? new ActorNetwork(handlers, { appId, roomId: roomIdFromLocation(window.location.search) })
+      : new Network(handlers);
     this.#net.connect(name);
   }
 

@@ -57,6 +57,14 @@ Open the game with `?debug=1`, join, and use the on-screen debug panel or the co
 These send the same `input`/`shoot`/`throw` intents as real controls; the server decides every result.
 Record what you saw (verdict, combat log line, grenade arc and explosion) in the PR.
 
+## Base44 transport (section 17)
+| Area | Unit | Live |
+|---|---|---|
+| `MatchSession` budgets, strikes, join, room full, rejoin | `tests/unit/matchSession.test.js` | `tests/integration`, `tests/security` through `server.js` |
+| `MatchHost` wake / close codes / ticker gate | `tests/unit/matchHost.test.js` | manual two-tab check on the deployed room (LIVE_TESTING.md) |
+| Actor folder in sync with `src/`, CFW import rules | `tests/unit/actorBundle.test.js` | `npx base44 actors deploy` (the bundler is the final judge) |
+| Client room id / connection id helpers | `tests/unit/netActor.test.js` | manual reload check |
+
 ## Docs stay true (planned contract test)
 Docs drift silently (an observed example: a project README describing one framework while `package.json` used
 another). Add `tests/system/docs-contract.test.js`: every `npm run <x>` mentioned in README/CONTRIBUTING must exist

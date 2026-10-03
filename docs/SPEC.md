@@ -402,3 +402,57 @@ Client-only. Touch produces the same intent as keyboard/mouse (command `fwd`/`ri
   only while active. Keyboard and stick add, then clamp to [-1, 1].
 - Pitch from touch look is clamped to ±1.5533 like mouse look.
 - Portrait on a touch device shows `#rotate` over the game; inputs keep sampling but the overlay blocks touches.
+
+## 17. Base44 hosting: Match actor and session layer (D-017)
+
+The game runs as a Base44 app: the client is a static site on Base44 hosting, the simulation runs in a
+**Match actor** (one Cloudflare Durable Object per room id). The Node server in `src/server/server.js`
+stays for local development, the test suites and the smoke script. Both transports share one session
+layer so their behaviour cannot drift.
+
+### 17.1 `src/server/matchSession.js` — `MatchSession({ room, logger, now })`
+- A connection is `{ id, send(obj), close(reason) }`. `connect(conn)` registers it (returns `false` for a
+  duplicate id), `message(conn, data)` handles one already-parsed message, `close(conn)` forgets it and
+  removes its player, `tick()` advances the room.
+- Per connection: a `TokenBucket({ capacity: 120, refillPerSec: 100 })` (`BUCKET`) and a strike counter.
+  Over budget → `close('rate_limit')`. Every message goes through `validateClientMessage` (§5 whitelist,
+  same reasons); a rejected message is a strike, `MAX_PROTOCOL_STRIKES = 5` → `close('protocol_violations')`.
+- `join` before a seat creates the player (`GameRoom.addPlayer`); a second `join` on the same connection is
+  ignored. A full room sends `{ t: 'error', reason: 'room_full' }` then `close('room_full')`.
+- `input`, `shoot`, `throw` without a seat are dropped. Messages from an unregistered connection are ignored.
+- `requestRejoin()` sends `{ t: 'rejoin' }` to every seatless connection and returns how many were asked.
+- Close reasons are stable strings; the transport maps them: ws `1008` (rate_limit, protocol_violations),
+  `1013` (room_full); actor `4008` / `4013` (Cloudflare accepts application codes 1000 and 3000-4999 only).
+
+### 17.2 `src/server/protocol.js` — `validateClientMessage(data)`
+Object-level entry to the §5 whitelist for transports that already decoded the JSON. Never throws
+(`bad_shape` on anything unexpected). `parseClientMessage(raw)` is now `size check → JSON.parse →
+validateClientMessage`; its behaviour and reasons are unchanged. The byte cap is the transport's job on the
+actor path (the platform caps frames; `ws` keeps `maxPayload`).
+
+### 17.3 `base44/actors/Match/` — the actor
+- `entry.ts` default-exports `class Match extends Actor` with `tickIntervalMs = 1000 / TICK_RATE` and delegates
+  every hook to `matchHost.js`. `shouldTick()` is `playerCount > 0` (the platform also requires a live socket).
+- `handleStart` runs on every wake. A hibernation wake keeps sockets attached without `handleConnect`, so
+  `MatchHost.wake(conns)` re-registers them and calls `requestRejoin()`; the client answers with a new `join`
+  and gets a new `welcome` (a new id, a fresh spawn: match state is not persisted in this slice).
+- `server/` and `shared/` inside the actor folder are **generated** copies of `src/` made by
+  `node base44/tools/sync-actor.mjs`; `tests/unit/actorBundle.test.js` fails when they differ, when a file
+  imports anything but `./`, `../` or `base44:runtime/actors`, when `Deno.*` appears, or when a helper is
+  named `entry`.
+- Room id: `?room=<id>` on the page URL, `^[A-Za-z0-9_-]{1,64}$`, default `arena-1`.
+
+### 17.4 `src/client/netActor.js` — `ActorNetwork(handlers, { appId, roomId })`
+- Same handler contract as `Network` (§12 client side). Chosen by `game.js` when `VITE_BASE44_APP_ID` is set
+  (injected by `base44 build`); otherwise the raw `/ws` transport is used.
+- Connection id: one per tab (`sessionStorage`, key `bca.connectionId`, `^[A-Za-z0-9_-]{1,64}$`), so a reconnect
+  reclaims the same server-side connection and two tabs never share one.
+- New client handlers: `rejoin` (re-send `join` with the stored name, drop the old id and pending commands),
+  `stale` (no message for `STALE_MS = 5000` while seated → HUD notice; the SDK reconnects by itself).
+- The client never learns about a close: the SDK heartbeats (1 s) and redials with backoff.
+
+### 17.5 What the platform owns on this path (not re-implemented)
+Origin check and connection tokens (minted per connection by the SDK), the per-actor connection-attempt rate
+limit (300 per 60 s per actor script), reconnect supersede (a returning connection id replaces a stale socket
+without a `handleClose`), hibernation and eviction. The per-IP connection cap of §12 has no equivalent; the
+16-player room cap and the per-connection budget remain the in-room limits.

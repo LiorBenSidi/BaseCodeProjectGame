@@ -47,6 +47,25 @@ decision cite its ID.
 - Supersedes: (none)
 -->
 
+### D-017 (T, E) Hosting: a Base44 app (site + Match actor), Node server kept for development
+- Status: decided
+- Date: 2026-10-03
+- Decision: The game becomes a regular Base44 app in the owner's workspace. The Three.js client is built by
+  Vite and served by Base44 hosting; the simulation runs in a Base44 **Match actor** (one Durable Object per
+  room id, managed ticker at `TICK_RATE`), which wraps `GameRoom` through the new transport-agnostic
+  `MatchSession`. The Node/ws server stays as the development and test transport; the Base Code imported
+  project (`BaseCodeProjectGame`) stays as the repository workspace. Accounts, leaderboards and the RPG layer
+  (D-004) will use the same app's entities and functions, with `conn.identity.userId` as the verified player
+  identity.
+- Source: Owner, 2026-10-03: transform the project into a Base44-hosted app, under the owner's workspace,
+  carrying every decision made so far; after the builder confirmed Actors fit the authoritative-room model.
+- Constraints read from the platform (actor runtime, 2026-10-03): JSON text frames only (the binary wire format
+  of Phase 1 is replaced by delta snapshots), at most 3 catch-up ticks after a stall, room state is lost on a
+  wake unless persisted, no minimum tick interval (60 and 120 Hz are a measurement, not a rule).
+- Affects: docs/SPEC.md §17; docs/adr/0004; `base44/`, `src/server/matchSession.js`, `src/client/netActor.js`,
+  `src/client/game.js`; ROADMAP phases 5 and 6; one new dependency `@base44/sdk` (owner approval recorded here).
+- Implementation status: scaffolded 2026-10-03 on branch `base44-app`; first deploy pending the app creation.
+
 ### D-016 (UI6, C) Mobile: landscape only, touch layout, landscape HUD
 - Status: decided
 - Date: 2026-10-03

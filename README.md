@@ -38,6 +38,23 @@ scoreboard, Esc to release the mouse.
 Base Code is a **development preview**, not production hosting; see `docs/ROADMAP.md` phase 6.
 Base Code does not add Base44 entities or the SDK to an imported repository, so the project is self-contained.
 
+## Running on Base44 (hosted app, D-017)
+
+The hosted game is a Base44 app: Vite builds the client into `dist/` for Base44 hosting, and the simulation
+runs in the `Match` actor (`base44/actors/Match/`, one room per `?room=<id>`). Node is still the dev and test
+transport. Details: `docs/SPEC.md` §17, `docs/adr/0004-base44-actor-transport.md`.
+
+```bash
+npx base44 login                               # once per machine
+npx base44 link                                # writes base44/.app.jsonc (not committed)
+node base44/tools/sync-actor.mjs               # refresh the actor's copies of src/shared and GameRoom
+npm run test:dry                               # the actorBundle test fails if the copies drifted
+npx base44 deploy --build -y                   # actors + site; the build injects VITE_BASE44_APP_ID
+npm run smoke https://<app>.base44.app         # HTTP half only: the room is a WebSocket on another host
+```
+
+`base44/.app.jsonc` carries the app id and is ignored by git. Secrets are never needed by the actor.
+
 ## Repository map
 ```
 src/shared/   deterministic simulation core (constants, map, movement, hit-scan)

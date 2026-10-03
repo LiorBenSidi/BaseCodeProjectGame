@@ -24,6 +24,7 @@
     "hooks": "sh scripts/setup-hooks.sh"
   },
   "dependencies": {
+    "@base44/sdk": "0.8.52",
     "three": "0.185.1",
     "ws": "8.21.3"
   },
