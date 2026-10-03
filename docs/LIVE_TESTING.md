@@ -63,6 +63,14 @@ by hand until the smoke script gains an actor mode (Phase 6): open the deployed 
 `?room=`), press Play in both, confirm each sees the other; then reload one tab and confirm it comes back with
 its seat (same `sessionStorage` connection id) and that the other tab saw no duplicate player.
 
+`npm run actor-probe -- <app-id> [room] [seconds] [--inputs] [--diag]` joins the deployed `Match` actor from Node
+over the SDK and counts the frames that arrive (`welcome`, `snap`, `error`, ...). It installs a minimal `window`
+first: without one the SDK sends no `X-Base44-Anonymous-Id`, the connection-token mint answers 422 and the SDK
+silently falls back to the platform proxy, so the Node run would not exercise the direct WebSocket path a browser
+uses. `--inputs` streams 60 Hz input messages like a moving player; `--diag` sends `{ t: "diag" }` twice, a few
+hundred ms apart, and prints both answers (SPEC 17.3 diagnostic probe), which needs the `ACTOR_DIAG` app secret
+set to `1` on that app. A room name given here is a real room: pick one no player uses.
+
 ## Browser play-through (live, visual)
 Use this when a person or the assistant can drive a browser. Some embedded browsers refuse pointer lock; the game
 logic can still be exercised by treating the pointer as captured and sending real keyboard and mouse events:
