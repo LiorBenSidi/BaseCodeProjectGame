@@ -75,7 +75,7 @@ answers to see whether the object's clock moved. A room name given here is a rea
 From build 2.0 the answer also carries `clock` (SPEC 18.1): `candidates` (`wall`, `ioWall`, `clientClock`,
 `timerTick`), `advances` per candidate, `chosen` and `source`. `advances.ioWall` growing between the two answers
 means awaited storage I/O unfreezes the object's clock; `advances.timerTick` growing means timers fire there;
-`source: "clientClock"` appears only with stamped inputs, which today means a browser player in that room.
+`source: "clientClock"` with `--inputs` means the stamped input stream drives the room clock.
 
 ## Browser play-through (live, visual)
 Use this when a person or the assistant can drive a browser. Some embedded browsers refuse pointer lock; the game

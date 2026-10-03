@@ -74,7 +74,7 @@ async function main(argv) {
   let seq = 0;
   const timers = [];
   if (args.inputs) {
-    timers.push(setInterval(() => conn.send({ t: 'input', cmds: [{ seq: ++seq, fwd: 1, right: 0, jump: false, yaw: 0, pitch: 0 }] }), 1000 / 60));
+    timers.push(setInterval(() => conn.send({ t: 'input', cmds: [{ seq: ++seq, fwd: 1, right: 0, jump: false, yaw: 0, pitch: 0 }], ts: Date.now() }), 1000 / 60));
   }
   if (args.diag) {
     timers.push(setTimeout(() => conn.send({ t: 'diag' }), 1500));

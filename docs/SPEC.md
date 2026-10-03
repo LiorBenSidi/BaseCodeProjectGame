@@ -556,8 +556,7 @@ and never throw), `tests/unit/protocol.test.js` (`ts` validation).
 
 Live check: `ACTOR_BUILD = "2.0"`. In a `diag-` room, two probes must show `clock.advances.ioWall` growing
 if awaited I/O unfreezes the clock, and `clock.source` must read `clientClock` while a browser player moves.
-`scripts/actor-probe.mjs` sends unstamped inputs (a `ts` stamp there needs the owner's approval for a
-`scripts/` change), so from Node only `ioWall` and `timerTick` are exercised.
+`scripts/actor-probe.mjs --inputs` stamps its inputs like `game.js`, so the Node probe exercises `clientClock` too.
 
 Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
 18.5 blended reconciliation, 18.6 lag compensation rewind.
