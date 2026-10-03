@@ -52,6 +52,8 @@ function parse(raw) {
       return { ok: true, msg: { t: 'join', name: sanitizeName(data.name) } };
     case 'shoot':
       return { ok: true, msg: { t: 'shoot' } };
+    case 'throw':
+      return { ok: true, msg: { t: 'throw' } };
     case 'input': {
       if (!Array.isArray(data.cmds) || data.cmds.length < 1 || data.cmds.length > MAX_CMDS_PER_MSG) {
         return fail('bad_cmd');

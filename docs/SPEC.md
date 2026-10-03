@@ -158,7 +158,8 @@ Constants (export them): `MAX_CMDS_PER_TICK = 4`, `MAX_QUEUE = 12`.
      Origin `[x, y + PLAYER.eye, z]`, direction `aimDir(yaw, pitch)`, range `WEAPON.range`, against `MAP.boxes` and
      the hitboxes of **other alive** players. Events, all through `send`:
      - every player receives `{ t:'shot', id: shooterId, from:[x,y,z], to:[x,y,z] }` (`to` = origin + dir·t);
-     - on a player hit: `hp -= WEAPON.damage`; the shooter receives `{ t:'hit', id: victimId }`;
+     - on a player hit: damage from §15 (zone × range band) is applied; the shooter receives `{ t:'hit', id: victimId }`
+       and, for every fired shot, a `verdict` (§15.4);
      - if `hp <= 0`: victim `alive=false`, `deaths++`, shooter `kills++`, respawn time `now() + RESPAWN_MS`, and every
        player receives `{ t:'kill', killer, victim, killerName, victimName }`.
      A player can never damage themself. A wall in between prevents damage. Dead players cannot be hit.
@@ -311,32 +312,73 @@ positions (random).
 
 ---
 
-## 15. Approved combat extension — pending implementation (D-010–D-013)
+## 15. Combat: zones, range bands, throwable (D-010 to D-015)
 
-The current contracts in §§1–12 still describe the running baseline. This section records the owner's
-approved extension, not a claim that it is implemented. Resolve the remaining tuning decisions in
-`docs/DESIGN.md` before replacing those contracts and writing feature tests.
+Implemented 2026-09-30. Tuning lives as data in `src/shared/combatData.js`; changing a value there changes
+gameplay without code edits. Shots resolve against **current** positions: this is not lag compensation.
+When lag compensation arrives, rewind must include the zone geometry below, not only the movement box.
 
-- Five damage categories: head ×1.5, upper torso ×1.1, lower torso ×1.0, arms ×0.95, legs ×0.9.
-  Categories are not the same as collider count: both arms can have separate geometry but share one multiplier.
-  Hit geometry belongs to the deterministic core. Equal world poses and shot rays must produce equal zone
-  results regardless of the room's 30/60/120 Hz scheduling. This does not imply that moving-world trajectories
-  are automatically bit-identical across different step sizes.
-- Weapon data defines three to four distance bands; the first rifle has three bands. The base damage steps
-  down twice and is multiplied by the resolved zone multiplier. Distances and base values remain unapproved.
-- The server accepts fire/throw intent only. Hit identity, health and damage never come from a client claim.
-  Current baseline shots use current positions: lag compensation does not yet exist. When introduced, rewind
-  must include the anatomical hit geometry, not only the movement box.
-- One throwable: server-simulated launch arc, world collision, bounce, fuse, explosion and radial damage
-  falloff. Snapshot replication includes projectile identity, position and state. Damage application is shared
-  with bullets in the deterministic core. Abilities are explicitly deferred. Throwable tuning and inventory,
-  self-damage and blast-cover rules remain to be confirmed.
-- Accepted shots produce a server verdict even on a miss. The HUD distinguishes head/body confirmations
-  and shows damage/zone feedback plus a bounded per-shot log (shot, zone, applied damage, kill outcome).
-  Do not show speculative client hits as confirmed hits.
-- The 4096-byte limit in §7 is an **incoming client-message** limit, not an outbound snapshot budget.
-  New intent must remain within it; projectile snapshots and shot-result traffic need separate size/load tests.
-  Five zone categories do not require transmitting collider geometry each snapshot.
-- Verification order: existing rifle/obstruction/cooldown/death/respawn baseline, then zone and band-boundary
-  unit tests, hostile new-intent tests, deterministic projectile/collision/fuse tests, socket replication tests,
-  and real-browser feedback/throwing checks. Do not label current-position registration as lag-compensated.
+### 15.1 `src/shared/combatData.js`
+- `ZONE_MULTIPLIERS = { head: 1.5, upperTorso: 1.1, lowerTorso: 1.0, arms: 0.95, legs: 0.9 }` (D-010).
+- `ZONE_LAYOUT = { legsTop: 0.9, lowerTorsoTop: 1.15, upperTorsoTop: 1.5, armOffset: 0.25 }`, heights in
+  metres above the feet, inside the §3 hitbox (height 1.8).
+- `RIFLE = { range: 120, cooldownMs: 150, bands: [{ below: 20, damage: 25 }, { below: 40, damage: 22 },
+  { below: 120, damage: 18 }] }` (D-011, D-014). `range`, `cooldownMs` and the close band equal `WEAPON` in §1.
+- `GRENADE = { fuseMs: 3000, speed: 16, gravity: 24, restitution: 0.45, radius: 0.1, blastRadius: 5,
+  maxDamage: 100, substepHz: 120, perLife: 1 }` (D-015).
+
+### 15.2 `src/shared/combat.js`
+- `zoneAt(p, point)` → zone name for an impact `point` on player `p`'s hitbox. Height `h = point.y - p.y`:
+  `h >= upperTorsoTop` → `head`; `h < legsTop` → `legs`. Otherwise the lateral offset
+  `(point - p) · right`, with `right = [cos yaw, 0, -sin yaw]`, decides: `|offset| > armOffset` → `arms`,
+  else `upperTorso` (`h >= lowerTorsoTop`) or `lowerTorso`. Two arms share one multiplier.
+- `bandDamage(weapon, dist)` → the damage of the first band with `dist < below`, or `0` when `dist` is at or
+  beyond the last band. Boundaries are exclusive above: exactly 20 m is band 2, exactly 40 m is band 3,
+  exactly 120 m is `0`.
+- `shotDamage(weapon, zone, dist)` → `bandDamage × ZONE_MULTIPLIERS[zone]`, rounded to 2 decimals.
+- `applyDamage(target, amount)` → `{ applied, killed }`, the one damage function for bullets **and**
+  explosions. `applied = min(target.hp, amount)`; `target.hp` drops by it (2-decimal rounding, never below 0);
+  `killed` is true when hp reaches 0 from above 0. Amounts `<= 0` change nothing.
+- `resolveShot(origin, dir, weapon, boxes, targets)`, `targets = [{ id, p }]` → `{ t, targetId, zone, dist,
+  damage }`. Obstruction follows `castRay` (§4) against `playerBox(p)`. On a miss `targetId`/`zone` are `null`
+  and `damage` is `0`. `dist = t`. Pure: equal poses and rays give equal results whatever the room tick rate.
+
+### 15.3 `src/shared/projectile.js`
+- `launchGrenade(id, owner, origin, dir)` → `{ id, owner, x, y, z, vx, vy, vz, stepsLeft, exploded: false }`,
+  velocity `dir × GRENADE.speed`, `stepsLeft = round(fuseMs / 1000 × substepHz)` (360).
+- `stepGrenade(g, dt, boxes, half)` advances `round(dt × substepHz)` sub-steps (at least 1) of
+  `1 / substepHz` s. Each: `vy -= gravity × h`, then move axis by axis; a move that would overlap a box
+  (the grenade is a cube of half-size `radius`), go below `y = radius`, or leave `|x|,|z| <= half - radius`
+  is undone and that velocity component becomes `-v × restitution`. Every vertical contact (floor or box top)
+  also multiplies horizontal velocity by `restitution`, and a vertical speed below 0.5 m/s after a contact
+  becomes 0, so the grenade settles (within one sub-step, under 1 cm, of the surface). `stepsLeft` counts down;
+  at 0 `exploded` becomes true and the grenade stops. The fuse is therefore exactly 3 s at 30, 60 and 120 Hz.
+- `blastDamage(center, p, boxes)` → damage to player `p`. `d` = distance from `center` to the nearest point
+  of `playerBox(p)`. `d >= blastRadius` → `0`. Any map box strictly nearer along the segment from `center` to
+  that point (cover) → `0`. Otherwise `maxDamage × (1 - d / blastRadius)`, rounded to 2 decimals.
+
+### 15.4 Protocol and room (extends §7, §10, §12)
+- `parseClientMessage` accepts `{ t: 'throw' }` → `msg = { t: 'throw' }`; every other field is dropped.
+- `GameRoom.handleThrow(id)` marks one pending throw. Player fields add `grenades` (`GRENADE.perLife`,
+  restored on respawn). Unknown ids are ignored.
+- Tick order becomes: commands, shots, throws, grenades, respawn, snapshot.
+- **Shots** use `resolveShot` with `RIFLE`. Unchanged: cooldown, the `shot` broadcast, `hit` to the shooter,
+  the `kill` broadcast. New: the shooter always receives
+  `{ t: 'verdict', target: id|null, zone: name|null, dmg, dist, kill: bool }`, a miss included. `dmg` is the
+  applied damage, `dist` is rounded to 2 decimals.
+- **Throws** fire only if the thrower is alive and `grenades > 0`; origin at the eye, direction
+  `aimDir(yaw, pitch)`, grenade ids start at 1 and are never reused.
+- **Grenades** step by `1 / TICK_RATE`. On explosion every alive player within range, the thrower included,
+  takes `blastDamage` through `applyDamage`. Everyone receives
+  `{ t: 'boom', id, owner, at: [x, y, z], hits: [{ id, dmg, kill }] }`. A kill broadcasts `kill` with
+  `killer` = owner; a self-kill counts a death and no kill. A grenade outlives its owner's death or departure.
+- **Snapshots** add `nades: [{ id, x, y, z }]` (3-decimal rounding) next to `players`; player entries are
+  unchanged. With 16 players and 16 live grenades a snapshot stays under 4096 bytes of JSON (a load check,
+  not the §7 incoming limit, which still applies only to client messages).
+
+### 15.5 Client feedback (D-013)
+- Feedback reacts only to server messages (`verdict`, `boom`, `kill`); the client never shows a hit it
+  predicted. The crosshair marks a head hit differently from a body hit.
+- The combat log (`src/client/combatLog.js`) keeps at most 8 entries: shot, zone, applied damage, kill.
+- G throws. With `?debug=1` the page exposes a debug harness (`window.__arenaDebug`) that aims, fires and
+  throws through the normal intent path, for browsers where pointer lock is unavailable.

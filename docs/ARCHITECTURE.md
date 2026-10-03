@@ -15,7 +15,7 @@
 ## Layers and their rules
 | Directory | Responsibility | May import |
 |---|---|---|
-| `src/shared/` | Deterministic simulation core: constants, map, movement, hit-scan. No I/O, no clock, no randomness. | itself only |
+| `src/shared/` | Deterministic simulation core: constants, map, movement, hit-scan, combat, projectile. No I/O, no clock, no randomness. | itself only |
 | `src/server/` | Rules and I/O. Pure logic (`GameRoom`, `protocol`, `security`, `rateLimit`, `config`, `logger`, `static`) is separate from the I/O shell (`server.js`, `index.js`). | `shared` |
 | `src/client/` | Rendering, input, prediction, HUD. | `shared` |
 
@@ -29,6 +29,24 @@
   movement feels instant while staying correct.
 - Other players are rendered ~100 ms in the past, interpolating between two snapshots.
 - Shots are resolved server-side against current positions (no lag compensation yet).
+- Combat (SPEC §15, D-010–D-015): `shared/combatData.js` holds tuning as data, `shared/combat.js` resolves
+  hit zones, range bands and the one damage function, `shared/projectile.js` simulates the grenade at 120 Hz
+  sub-steps. Clients send intent only (`shoot`, `throw`); the server replies with a per-shot `verdict`,
+  a `boom` per explosion, and a `nades` list in every snapshot.
+
+### Server -> client messages
+| Message | To | Shape |
+|---|---|---|
+| `welcome` | joiner | `{ id, tickRate }` |
+| `snap` | everyone | `{ tick, ack, players: [...], nades: [{ id, x, y, z }] }` |
+| `shot` | everyone | `{ id, from, to }` |
+| `hit` | shooter | `{ id }` |
+| `verdict` | shooter | `{ target, zone, dmg, dist, kill }` (also on a miss) |
+| `boom` | everyone | `{ id, owner, at, hits: [{ id, dmg, kill }] }` |
+| `kill` | everyone | `{ killer, victim, killerName, victimName }` |
+
+Client combat UI: `combatLog.js` (pure, bounded log and formatting), `combatHud.js` (DOM), `grenades.js`
+(renders `nades` and explosions), `debugHarness.js` (`?debug=1` only).
 
 ## Operational endpoints
 `GET /healthz` liveness, `GET /readyz` readiness (+ player count), `WS /ws` game.

@@ -1,9 +1,11 @@
+import { installDebugHarness } from './debugHarness.js';
 import { Game } from './game.js';
 
 const canvas = document.getElementById('game');
 const menu = document.getElementById('menu');
 const nameInput = document.getElementById('name');
 const game = new Game(canvas);
+installDebugHarness(game);
 
 menu.addEventListener('submit', (e) => {
   e.preventDefault();

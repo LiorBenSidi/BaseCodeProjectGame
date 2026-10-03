@@ -5,10 +5,13 @@
 // Trust model: this class assumes commands were already validated by protocol.js, but it still
 // enforces the rules that matter for fairness (replay protection, command budget, fire rate).
 
-import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER, WEAPON } from '../shared/constants.js';
+import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER } from '../shared/constants.js';
 import { MAP } from '../shared/map.js';
 import { stepPlayer } from '../shared/movement.js';
-import { aimDir, castRay, playerBox } from '../shared/hitscan.js';
+import { aimDir } from '../shared/hitscan.js';
+import { applyDamage, resolveShot } from '../shared/combat.js';
+import { GRENADE, RIFLE } from '../shared/combatData.js';
+import { blastDamage, launchGrenade, stepGrenade } from '../shared/projectile.js';
 import { sanitizeName } from './security.js';
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
@@ -20,6 +23,8 @@ export class GameRoom {
   #players = new Map();
   #nextId = 1;
   #tick = 0;
+  #grenades = [];
+  #nextGrenadeId = 1;
   #now;
   #random;
   #log;
@@ -58,6 +63,8 @@ export class GameRoom {
       queue: [],
       lastQueuedSeq: -1,
       wantsShot: false,
+      wantsThrow: false,
+      grenades: GRENADE.perLife,
       lastShotAt: -Infinity,
       respawnAt: 0,
     };
@@ -91,6 +98,11 @@ export class GameRoom {
     if (p) p.wantsShot = true;
   }
 
+  handleThrow(id) {
+    const p = this.#players.get(id);
+    if (p) p.wantsThrow = true;
+  }
+
   tick() {
     this.#tick += 1;
     const now = this.#now();
@@ -101,6 +113,12 @@ export class GameRoom {
       p.wantsShot = false;
       this.#fire(p, now);
     }
+    for (const p of this.#players.values()) {
+      if (!p.wantsThrow) continue;
+      p.wantsThrow = false;
+      this.#throw(p);
+    }
+    this.#stepGrenades(now);
     for (const p of this.#players.values()) {
       if (!p.alive && now >= p.respawnAt) this.#respawn(p);
     }
@@ -121,39 +139,73 @@ export class GameRoom {
   }
 
   #fire(p, now) {
-    if (!p.alive || now - p.lastShotAt < WEAPON.cooldownMs) return;
+    if (!p.alive || now - p.lastShotAt < RIFLE.cooldownMs) return;
     p.lastShotAt = now;
 
     const origin = [p.x, p.y + PLAYER.eye, p.z];
     const dir = aimDir(p.yaw, p.pitch);
     const targets = [];
-    for (const q of this.#players.values()) {
-      if (q !== p && q.alive) targets.push({ id: q.id, box: playerBox(q) });
-    }
-    const { t, targetId } = castRay(origin, dir, WEAPON.range, MAP.boxes, targets);
-    const to = [origin[0] + dir[0] * t, origin[1] + dir[1] * t, origin[2] + dir[2] * t];
+    for (const q of this.#players.values()) if (q !== p && q.alive) targets.push({ id: q.id, p: q });
+    const shot = resolveShot(origin, dir, RIFLE, MAP.boxes, targets);
+    const to = [origin[0] + dir[0] * shot.t, origin[1] + dir[1] * shot.t, origin[2] + dir[2] * shot.t];
     this.#broadcast({ t: 'shot', id: p.id, from: origin, to });
 
-    if (targetId === null) return;
-    const victim = this.#players.get(targetId);
-    victim.hp = Math.max(0, victim.hp - WEAPON.damage);
+    if (shot.targetId === null) {
+      this.#sendTo(p, { t: 'verdict', target: null, zone: null, dmg: 0, dist: shot.dist, kill: false });
+      return;
+    }
+    const victim = this.#players.get(shot.targetId);
+    const { applied, killed } = applyDamage(victim, shot.damage);
     this.#sendTo(p, { t: 'hit', id: victim.id });
-    if (victim.hp > 0) return;
+    this.#sendTo(p, { t: 'verdict', target: victim.id, zone: shot.zone, dmg: applied, dist: shot.dist, kill: killed });
+    if (killed) this.#kill(p.id, p.name, victim, now);
+  }
 
+  #throw(p) {
+    if (!p.alive || p.grenades <= 0) return;
+    p.grenades -= 1;
+    const g = launchGrenade(this.#nextGrenadeId++, p.id, [p.x, p.y + PLAYER.eye, p.z], aimDir(p.yaw, p.pitch));
+    g.ownerName = p.name;
+    this.#grenades.push(g);
+  }
+
+  #stepGrenades(now) {
+    for (const g of this.#grenades) stepGrenade(g, 1 / TICK_RATE, MAP.boxes, MAP.half);
+    const exploded = this.#grenades.filter((g) => g.exploded);
+    if (exploded.length === 0) return;
+    this.#grenades = this.#grenades.filter((g) => !g.exploded);
+    for (const g of exploded) {
+      const at = [g.x, g.y, g.z];
+      const hits = [];
+      const victims = [];
+      for (const q of this.#players.values()) {
+        if (!q.alive) continue;
+        const { applied, killed } = applyDamage(q, blastDamage(at, q, MAP.boxes));
+        if (applied <= 0) continue;
+        hits.push({ id: q.id, dmg: applied, kill: killed });
+        if (killed) victims.push(q);
+      }
+      this.#broadcast({ t: 'boom', id: g.id, owner: g.owner, at: at.map(round3), hits });
+      for (const v of victims) this.#kill(g.owner, g.ownerName, v, now);
+    }
+  }
+
+  // A self-kill (own grenade) counts a death and no kill. The killer may have left the room.
+  #kill(killerId, killerName, victim, now) {
     victim.alive = false;
     victim.deaths += 1;
     victim.respawnAt = now + RESPAWN_MS;
-    p.kills += 1;
-    this.#log?.info('kill', { killer: p.id, victim: victim.id });
-    this.#broadcast({
-      t: 'kill', killer: p.id, victim: victim.id, killerName: p.name, victimName: victim.name,
-    });
+    const killer = this.#players.get(killerId);
+    if (killer && killer !== victim) killer.kills += 1;
+    this.#log?.info('kill', { killer: killerId, victim: victim.id });
+    this.#broadcast({ t: 'kill', killer: killerId, victim: victim.id, killerName, victimName: victim.name });
   }
 
   #respawn(p) {
     this.#place(p);
     p.hp = MAX_HP;
     p.alive = true;
+    p.grenades = GRENADE.perLife;
   }
 
   #place(p) {
@@ -177,8 +229,9 @@ export class GameRoom {
         hp: p.hp, alive: p.alive ? 1 : 0, k: p.kills, d: p.deaths,
       });
     }
+    const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));
     for (const p of this.#players.values()) {
-      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players });
+      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades });
     }
   }
 

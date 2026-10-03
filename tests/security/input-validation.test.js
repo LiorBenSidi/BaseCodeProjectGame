@@ -207,8 +207,9 @@ describe('smuggled fields have no effect', () => {
     await b.nextSnaps(6);
     const shots = b.ofType('shot');
     assert.ok(shots.every((s) => s.id === idB), 'shot events are attributed to the real sender');
-    // b's own legitimate shot could in principle graze a, but a single shot can never do more than 25 damage.
-    assert.ok(a.lastSnap.players.find((p) => p.id === idA).hp >= 75);
+    // b's own legitimate shot could in principle graze a, but one rifle shot never exceeds a close head hit
+    // (25 x 1.5 = 37.5, D-010/D-014).
+    assert.ok(a.lastSnap.players.find((p) => p.id === idA).hp >= 62.5);
     assert.equal(a.ofType('kill').length, 0);
   });
 });
@@ -289,13 +290,48 @@ describe('the server owns position, health and speed', () => {
     await victim.join('Victim');
     const hit = await damageViaRoom(ctx, victim);
     assert.ok(hit, 'the injected shooter managed to hit the victim from at least one bearing');
-    assert.equal(victim.me().hp, 75);
+    assert.equal(victim.me().hp, 62.5, 'one level head hit at close range (D-010/D-014)');
     victim.sendRaw('{"t":"join","name":"Victim","hp":100}');
     victim.sendRaw('{"t":"input","cmds":[{"seq":1,"fwd":0,"right":0,"jump":false,"yaw":0,"pitch":0,"hp":100,"alive":true}]}');
     victim.sendRaw('{"t":"heal","hp":100}');
     await victim.nextSnaps(8);
-    assert.equal(victim.me().hp, 75, 'hp is server-authoritative');
+    assert.equal(victim.me().hp, 62.5, 'hp is server-authoritative');
     assert.equal(victim.ofType('welcome').length, 1, 'the second join created nothing');
     assert.equal(victim.closed, false);
+  });
+});
+
+describe('hostile throws (SPEC §15.4, D-015)', () => {
+  const ctx = useServer({});
+
+  it('spamming throw with smuggled fuse/damage/count fields still launches one grenade that waits for its fuse', async () => {
+    const c = await ctx.open();
+    await c.join('Spammer');
+    for (let i = 0; i < 40; i++) c.sendRaw(JSON.stringify({ t: 'throw', fuseMs: 0, damage: 1e6, count: 99, grenades: 99 }));
+    await waitFor(() => c.lastSnap && c.lastSnap.nades.length > 0, { what: 'grenade in a snapshot' });
+    await c.nextSnaps(6);
+    assert.equal(c.lastSnap.nades.length, 1, 'one grenade per life');
+    assert.equal(c.ofType('boom').length, 0, 'no instant detonation');
+    assert.equal(c.closed, false);
+  });
+
+  it('throw before join creates nothing', async () => {
+    const c = await ctx.open();
+    c.sendRaw('{"t":"throw"}');
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(ctx.room.playerCount, 0);
+    assert.equal(c.closed, false);
+  });
+
+  it('a client cannot inject boom or verdict messages', async () => {
+    const a = await ctx.open();
+    const b = await ctx.open();
+    const idA = await a.join('Aaa');
+    await b.join('Bbb');
+    b.sendRaw(JSON.stringify({ t: 'boom', id: 1, owner: 2, at: [0, 0, 0], hits: [{ id: idA, dmg: 100, kill: true }] }));
+    b.sendRaw(JSON.stringify({ t: 'verdict', target: idA, zone: 'head', dmg: 100, kill: true }));
+    await a.nextSnaps(4);
+    assert.equal(a.lastSnap.players.find((p) => p.id === idA).hp, 100);
+    assert.equal(a.ofType('boom').length, 0);
   });
 });

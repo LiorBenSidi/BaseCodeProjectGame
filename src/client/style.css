@@ -13,6 +13,18 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
 #crosshair::after { top: 6px; left: 0; height: 2px; width: 14px; }
 #crosshair.hit::before, #crosshair.hit::after { background: #ff5252; }
+#crosshair.head { transform: scale(1.6) rotate(45deg); }
+#crosshair.head::before, #crosshair.head::after { background: #ffd23f; opacity: 1; }
+
+#hit-info { position: fixed; top: calc(50% + 22px); left: 50%; transform: translateX(-50%); font-weight: 700; letter-spacing: 0.06em; text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+#hit-info.show { opacity: 1; }
+#combat-log { position: fixed; left: 16px; top: 16px; display: grid; gap: 2px; max-width: 46ch; font: 12px/1.35 ui-monospace, monospace; color: #c9d1d9; text-shadow: 0 1px 2px #000; pointer-events: none; }
+#boom { position: fixed; inset: 0; background: radial-gradient(circle, rgba(255, 150, 60, 0.35), transparent 70%); opacity: 0; transition: opacity 0.35s; pointer-events: none; }
+#boom.show { opacity: 1; transition: none; }
+
+#debug-panel { position: fixed; right: 16px; bottom: 16px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 280px; padding: 10px; background: rgba(13, 17, 23, 0.9); border: 1px solid #30363d; border-radius: 8px; }
+#debug-panel strong { width: 100%; font-size: 12px; color: #8b949e; }
+#debug-panel button { padding: 6px 10px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: inherit; cursor: pointer; }
 
 #hp { position: fixed; left: 16px; bottom: 16px; font-size: 28px; font-weight: 700; text-shadow: 0 1px 4px #000; }
 #feed { position: fixed; right: 16px; top: 16px; display: grid; gap: 4px; text-align: right; text-shadow: 0 1px 3px #000; }

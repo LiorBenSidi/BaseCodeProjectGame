@@ -7,6 +7,8 @@ import { MAX_HP, MAX_PLAYERS, PLAYER, RESPAWN_MS, TICK_RATE, WEAPON } from '../.
 
 // ------------------------------------------------------------------ helpers
 const STEP = 7 / 60; // one movement step at full speed, hand computed
+// D-010/D-014: a level eye-height shot at 4-8 m lands in the head zone: 25 x 1.5 = 37.5 (hand computed).
+const LEVEL_HIT = 37.5;
 const near = (a, b, eps = 1e-6, msg = '') =>
   assert.ok(Math.abs(a - b) <= eps, `${msg} expected ${b}, got ${a}`);
 
@@ -530,14 +532,14 @@ test('cmds are applied before shots: a shot in the same tick uses the yaw from t
   s.room.handleInput(s.S.p.id, [cmdf(1, s.line.d.yaw)]);
   s.room.handleShoot(s.S.p.id);
   s.room.tick();
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
 });
 
 // ------------------------------------------------------------------ shooting
-test('a hit removes WEAPON.damage hp from the victim', needOpen, () => {
+test('a level hit removes 37.5 hp (head, close band) from the victim', needOpen, () => {
   const s = scene();
   s.fire();
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
   assert.equal(WEAPON.damage, 25);
 });
 
@@ -651,7 +653,7 @@ test('only the nearest player on the line is hit', needOpen, () => {
   const far = join(s.room, 'Far');
   place(far.p, s.at(8), s.line.d.yaw + Math.PI);
   s.fire();
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
   assert.equal(far.p.hp, MAX_HP);
 });
 
@@ -665,16 +667,16 @@ test('a dead player cannot be hit; the bullet passes through the corpse to a liv
   s.clock.advance(WEAPON.cooldownMs);
   s.fire();
   assert.equal(s.V.p.deaths, 1);
-  assert.equal(far.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(far.p.hp, MAX_HP - LEVEL_HIT);
 });
 
-test('four hits (100 hp) kill; three do not', needOpen, () => {
+test('three level head hits (100 hp) kill; two do not', needOpen, () => {
   const s = scene();
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 2; i++) {
     s.fire();
     s.clock.advance(WEAPON.cooldownMs);
     assert.equal(s.V.p.alive, true, `after hit ${i}`);
-    assert.equal(s.V.p.hp, MAX_HP - i * WEAPON.damage);
+    assert.equal(s.V.p.hp, MAX_HP - i * LEVEL_HIT);
   }
   s.fire();
   assert.equal(s.V.p.alive, false);
@@ -748,7 +750,7 @@ test('at most one pending shot per player: three handleShoot calls fire once', n
   s.room.handleShoot(s.S.p.id);
   s.room.tick();
   assert.equal(s.C.of('shot').length, 1);
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
 });
 
 test('a pending shot is cleared by the tick: the next tick does not fire again', needOpen, () => {
@@ -773,7 +775,7 @@ test('the first shot is allowed even when the clock reads 0', needOpen, () => {
   const s = scene({ start: 0 });
   s.fire();
   assert.equal(s.C.of('shot').length, 1);
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
 });
 
 test('cooldown: a second shot exactly WEAPON.cooldownMs after the first is allowed', needOpen, () => {
@@ -782,7 +784,7 @@ test('cooldown: a second shot exactly WEAPON.cooldownMs after the first is allow
   s.clock.advance(WEAPON.cooldownMs);
   s.fire();
   assert.equal(s.C.of('shot').length, 2);
-  assert.equal(s.V.p.hp, MAX_HP - 2 * WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - 2 * LEVEL_HIT);
   assert.equal(WEAPON.cooldownMs, 150);
 });
 
@@ -792,7 +794,7 @@ test('cooldown: a second shot cooldownMs-1 after the first is rejected', needOpe
   s.clock.advance(WEAPON.cooldownMs - 1);
   s.fire();
   assert.equal(s.C.of('shot').length, 1);
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
 });
 
 test('cooldown is per shooter: the shooters cooldown does not block another players first shot', needOpen, () => {
@@ -801,7 +803,7 @@ test('cooldown is per shooter: the shooters cooldown does not block another play
   s.fire();
   s.room.handleShoot(s.V.p.id); // V shoots back at S, first shot ever
   s.room.tick();
-  assert.equal(s.S.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.S.p.hp, MAX_HP - LEVEL_HIT);
 });
 
 test('the respawn happens at exactly RESPAWN_MS after death, not one ms earlier', needOpen, () => {
@@ -867,7 +869,7 @@ test('a respawned player can be hit and can shoot again', needOpen, () => {
   place(s.V.p, s.at(4), s.line.d.yaw + Math.PI);
   s.clock.advance(WEAPON.cooldownMs);
   s.fire();
-  assert.equal(s.V.p.hp, MAX_HP - WEAPON.damage);
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
 });
 
 test('events precede the snapshot within a tick', needOpen, () => {

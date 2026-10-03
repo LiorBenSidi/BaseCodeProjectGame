@@ -13,6 +13,9 @@
       <div id="crosshair"></div>
       <div id="hp"><span id="hp-value">100</span> HP</div>
       <div id="feed"></div>
+      <div id="hit-info"></div>
+      <div id="combat-log" aria-live="polite"></div>
+      <div id="boom"></div>
       <div id="scoreboard" hidden></div>
       <div id="dead" hidden>You were eliminated. Respawning...</div>
       <div id="notice" hidden></div>
@@ -23,7 +26,7 @@
       <label for="name">Callsign</label>
       <input id="name" name="name" maxlength="16" autocomplete="off" placeholder="Player" />
       <button type="submit">Play</button>
-      <p class="hint">WASD move · Space jump · Mouse aim · Click shoot · Tab scoreboard · Esc release mouse</p>
+      <p class="hint">WASD move · Space jump · Mouse aim · Click shoot · G grenade · Tab scoreboard · Esc release mouse</p>
     </form>
 
     <script type="module" src="/src/client/main.js"></script>

@@ -23,6 +23,12 @@ Rules that keep it swappable:
 4. Performance claims need a measurement first (`node --cpu-prof`, tick-time logging), recorded in
    `docs/` before any rewrite starts.
 
+## Amendment 2026-09-30 (D-010–D-015)
+The surface grows by the combat core: `zoneAt`, `bandDamage`, `shotDamage`, `applyDamage`, `resolveShot`,
+`launchGrenade`, `stepGrenade`, `blastDamage`, and the data `ZONE_MULTIPLIERS`, `ZONE_LAYOUT`, `RIFLE`,
+`GRENADE`. The conformance contract extends to `docs/SPEC.md` §15.1–15.3 and
+`tests/unit/{combat,projectile}.test.js`. The rules above are unchanged.
+
 ## Consequences
 - A future C++/WASM core is a drop-in behind the same functions; the server and client do not change.
 - If a WASM core is added, the C/C++ security tooling from the secure-programming course applies to it:

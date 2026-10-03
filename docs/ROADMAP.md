@@ -7,6 +7,11 @@ starts with a `docs/SPEC.md` change and failing tests.
 Authoritative server, prediction, hit-scan, protocol validation, rate limiting, structured logging,
 policy checker, layered tests, CI + CodeQL, ADRs, threat model.
 
+## Milestone 1 combat slice (done 2026-09-30, D-010–D-015)
+Pulled forward from Phase 2 by the owner: five hit zones, rifle range bands (25/22/18), one grenade with
+self-damage and cover, server verdicts and a bounded combat log. Still open from it: lag compensation must
+rewind zone geometry (Phase 1), delta snapshots before 60/120 Hz ticks (D-003, D-006).
+
 ## Phase 0.5 - TypeScript migration (after the test suites are merged)
 Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan and exit criteria:
 `docs/adr/0003-typescript-migration.md`.
@@ -20,7 +25,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 
 ## Phase 2 - Gameplay
 - Weapons table (rifle, shotgun, sniper) with ammo, reload, spread, recoil.
-- Headshot hitbox (split the AABB), damage falloff.
+- ~~Headshot hitbox (split the AABB), damage falloff.~~ Done in the milestone 1 combat slice.
 - Pickups, respawn logic by safest spawn, spawn protection.
 - Game modes: deathmatch with match timer, then team deathmatch.
 - Movement polish: crouch, slide, step-up, air control.
