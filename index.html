@@ -11,7 +11,24 @@
 
     <div id="hud" hidden>
       <div id="crosshair"></div>
-      <div id="hp"><span id="hp-value">100</span> HP</div>
+      <div id="damage-flash"></div>
+      <div id="damage-indicator"></div>
+      <div id="status">
+        <div id="hp">
+          <div id="hp-bar">
+            <div class="hp-segment"><div class="hp-segment-fill"></div></div>
+            <div class="hp-segment"><div class="hp-segment-fill"></div></div>
+            <div class="hp-segment"><div class="hp-segment-fill"></div></div>
+            <div class="hp-segment"><div class="hp-segment-fill"></div></div>
+            <div class="hp-segment"><div class="hp-segment-fill"></div></div>
+          </div>
+          <div class="readout"><span id="hp-value">100</span><span class="unit">HP</span></div>
+        </div>
+        <div id="ammo">
+          <div class="label">Rifle</div>
+          <div class="readout"><span id="ammo-value">INF / READY</span></div>
+        </div>
+      </div>
       <div id="feed"></div>
       <div id="hit-info"></div>
       <div id="combat-log" aria-live="polite"></div>

@@ -3,6 +3,7 @@ import { stepPlayer } from '../shared/movement.js';
 import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
 import { Hud } from './hud.js';
+import { attributeDamage, calculateDamageAngle, pruneThreats } from './hudModel.js';
 import { Input } from './input.js';
 import { Network } from './net.js';
 import { ActorNetwork, roomIdFromLocation } from './netActor.js';
@@ -37,6 +38,8 @@ export class Game {
   #fps = { on: false, frames: 0, since: performance.now() };
   #lastShot = 0;
   #tracers = [];
+  #threats = [];
+  #lastHp = null;
 
   constructor(canvas) {
     this.#gfx = createScene(canvas);
@@ -107,11 +110,11 @@ export class Game {
   join(name) {
     this.#name = name;
     const handlers = {
-      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#hud.notice(''); this.#hud.show(); },
+      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); },
       snap: (m) => this.#onSnapshot(m),
-      shot: (m) => this.#addTracer(m),
+      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); },
       verdict: (m) => this.#combat.verdict(m),
-      boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); },
+      boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); },
       kill: (m) => this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`),
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
       close: () => { this.#id = null; this.#hud.notice('Disconnected. Reload to rejoin.'); },
@@ -141,7 +144,26 @@ export class Game {
       onGround: mine.g === 1, alive: mine.alive === 1,
     });
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c);
+    this.#onDamage(mine);
     this.#hud.update(mine, snap.players);
+  }
+
+  // SPEC 19.1 damage direction: the server does not tell the victim who hit them, so a drop in our hp
+  // is attributed to the newest remote shot origin or explosion point seen inside the attribution window.
+  #threat(x, z) {
+    const now = performance.now();
+    this.#threats = pruneThreats(this.#threats, now);
+    this.#threats.push({ x, z, at: now });
+  }
+
+  #onDamage(mine) {
+    const prev = this.#lastHp;
+    this.#lastHp = mine.hp;
+    if (prev === null || mine.hp >= prev) return;
+    const now = performance.now();
+    this.#threats = pruneThreats(this.#threats, now);
+    const from = attributeDamage(this.#threats, now);
+    this.#hud.damageFrom(from ? calculateDamageAngle(mine, this.#input.yaw, from) : null);
   }
 
   #addTracer(m) {
@@ -186,6 +208,7 @@ export class Game {
     if (!this.joined || !this.#me.alive || now - this.#lastShot < WEAPON.cooldownMs) return false;
     this.#lastShot = now;
     this.#net.send({ t: 'shoot' });
+    this.#hud.onFire();
     return true;
   }
 

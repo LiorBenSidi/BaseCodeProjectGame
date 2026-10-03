@@ -1,9 +1,12 @@
 import { RESPAWN_MS } from '../shared/constants.js';
 
+// Screen angle of the attacker, clockwise from the top of the screen (0 = straight ahead,
+// +PI/2 = right, PI = behind). The camera looks down -Z at yaw 0 and +yaw turns left
+// (src/shared/movement.js), so turning left by yaw moves a fixed attacker to the right: add yaw.
 export function calculateDamageAngle(player, yaw, attacker) {
   const dx = attacker.x - player.x;
   const dz = attacker.z - player.z;
-  let angle = Math.atan2(dx, -dz) - yaw;
+  let angle = Math.atan2(dx, -dz) + yaw;
 
   while (angle > Math.PI) angle -= 2 * Math.PI;
   while (angle < -Math.PI) angle += 2 * Math.PI;
@@ -68,4 +71,31 @@ export function deriveAmmoStatus() {
     text: 'INF',
     status: 'READY',
   };
+}
+
+export function deriveTeamColor(playerId) {
+  return playerId % 2 === 0 ? 'even' : 'odd';
+}
+
+export function sortScoreboardPlayers(players) {
+  if (!Array.isArray(players)) return [];
+  return [...players].sort((a, b) => b.k - a.k || a.d - b.d || a.id - b.id);
+}
+
+// Damage attribution (SPEC 19.1). The server never tells the victim who hit them: the victim only sees
+// its hp drop in the next snapshot. The client keeps the recent remote shot origins and explosion
+// points as threats; the newest one inside the window is taken as the attacker position.
+export const DAMAGE_ATTRIBUTION_MS = 300;
+
+export function pruneThreats(threats, now, windowMs = DAMAGE_ATTRIBUTION_MS) {
+  return threats.filter((t) => now - t.at <= windowMs);
+}
+
+export function attributeDamage(threats, now, windowMs = DAMAGE_ATTRIBUTION_MS) {
+  let best = null;
+  for (const t of threats) {
+    if (now - t.at > windowMs || now < t.at) continue;
+    if (!best || t.at > best.at) best = t;
+  }
+  return best ? { x: best.x, z: best.z } : null;
 }

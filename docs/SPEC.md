@@ -577,14 +577,27 @@ Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18
 Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layout resolution.
 
 ### 19.1 In-match HUD
-- HUD state derivation lives in `src/client/hudModel.js` (pure logic):
-  - Crosshair state: expanded briefly on fire, flash on hit (headshot vs body).
-  - Health and ammo readouts: health percentage and segment bar; infinite ammo status display (`INF / READY`).
-  - Hit marker: brief flash with headshot differentiation (`head` vs `hit`).
-  - Directional damage indicator: computes relative angle pointing toward attacker from player position, attacker position, and camera yaw.
-  - Kill feed queue: maximum 5 entries, auto-expiring after 5000 ms.
-  - Respawn countdown: displays centered countdown text (`Respawning in X.Xs...`) derived from local death time and `RESPAWN_MS`.
-- Scoreboard polish: Tab / touch score overlay, aligned columns, highlighted self row (`.row.me`), team color chip based on player ID parity.
+- Pure HUD state derivation lives in `src/client/hudModel.js` (unit tested in `tests/unit/hudModel.test.js`):
+  - `deriveHealthSegments(hp, maxHp, segmentsCount)`: health percentage and an array of fill ratios for the segment bar.
+  - `deriveAmmoStatus()`: weapon status object `{ text: "INF", status: "READY" }` (infinite ammo until the weapons table in Phase 2).
+  - `calculateDamageAngle(player, yaw, attacker)`: screen angle of the attacker in radians, clockwise from the top (0 ahead, +PI/2 right, PI behind). The camera looks down -Z at yaw 0 and +yaw turns left (`src/shared/movement.js`, `aimDir` in `src/shared/hitscan.js`), so the relative angle is `atan2(dx, -dz) + yaw`.
+  - `attributeDamage(threats, now, windowMs)` and `pruneThreats(threats, now, windowMs)`: damage attribution, see below. `DAMAGE_ATTRIBUTION_MS = 300`.
+  - `KillFeedQueue`: queue capped at 5 entries with 5000 ms auto-expiry.
+  - `deriveRespawnText(alive, now, deathTime, respawnMs)`: centered countdown string (`Respawning in X.Xs...`) while dead, `null` while alive.
+  - `deriveTeamColor(playerId)`: `even` (blue) or `odd` (red) by player ID parity. Visual only until Phase 2 TDM assigns real teams.
+  - `sortScoreboardPlayers(players)`: kills descending, then deaths ascending, then ID ascending.
+- Damage attribution. The server never tells the victim who hit them (`hit` and `verdict` go to the shooter only); the victim only sees its own `hp` drop in the next snapshot. The client keeps a list of threats from messages every client already receives: the `from` origin of each remote `shot` and the `at` point of each `boom`. When the local `hp` drops between two snapshots, the newest threat inside `DAMAGE_ATTRIBUTION_MS` is taken as the attacker position and the directional indicator rotates to `calculateDamageAngle(me, yaw, threat)`. With no threat inside the window only the non-directional vignette shows. This is a client-side heuristic that can mis-attribute when two players fire inside the same 300 ms window; it never affects gameplay (the server stays authoritative) and it adds no client-reported data. A server-side `attacker` field on a victim-facing message is the Phase 2 upgrade if the heuristic proves too loose in play.
+- Rendering contract (`index.html`, `src/client/hud.js`, `src/client/combatHud.js`, `src/client/style.css`). `hud.js` is thin DOM glue over `hudModel.js`; every string that originates from another player goes through `textContent`.
+  - `#status` (bottom left): `#hp` holding `#hp-bar` with 5 `.hp-segment` elements whose `.hp-segment-fill` is scaled by the fill ratio (`transform: scaleX`), plus `#hp-value` (rounded HP) and the `HP` unit. `#hp.low` is set at `hp <= 25` and turns the segments to `--danger`. `#ammo` holds the weapon label and `#ammo-value` (`INF / READY`).
+  - `#crosshair`: centered. `.expanded` for `HUD_TIMING.fireExpandMs` (100 ms) on each local shot. `.hit` (body, 150 ms) and `.head` (headshot, 150 ms, scaled and rotated 45 degrees) come from the shooter's `verdict` via `combatHud.js`.
+  - `#hit-info`: hit feedback text below the crosshair (`HEADSHOT 25 · KILL`, `BODY 22`), `.show` for 700 ms.
+  - `#damage-flash`: full-screen red vignette, `.show` for `HUD_TIMING.damageFlashMs` (250 ms) on every local hp drop.
+  - `#damage-indicator`: arrow on a ring around the crosshair, rotated by the attributed angle, `.show` for `HUD_TIMING.damageIndicatorMs` (500 ms); only when a threat was attributed.
+  - `#feed` (top right): kill feed rendered from `KillFeedQueue` (max 5, 5000 ms expiry), one row per entry, re-rendered only when the entry count changes or a new kill arrives.
+  - `#dead`: centered respawn overlay with the `deriveRespawnText` countdown; the death time is the local time of the first snapshot with `alive: 0`.
+  - `#scoreboard`: grid rows (`.row`, header `.row.head`) with columns `.col-chip`, `.col-name`, `.col-k`, `.col-d`; the local player's row is `.row.me`; the team chip is `.chip.team-even` / `.chip.team-odd` (colors from `--team-blue` / `--team-red`). Toggled by Tab (desktop) or the `#touch-score` button (touch mode). Rendered only while visible.
+  - All colors come from the theme CSS variables of 19.2 (fallbacks mirror `PALETTE`). The short-landscape media query (phones) shrinks the status block, the ring and the kill feed and keeps them clear of the safe-area insets.
+- Not in this batch: weapon names and ammo counts beyond `INF / READY` (Phase 2 weapons table), real team assignment (Phase 2 TDM), a server-side attacker field.
 
 ### 19.2 Menu and lobby skin (`src/client/theme.js`)
 - Theme tokens exported from `src/client/theme.js` as JS constants (palette, spacing, typography) and injected as CSS variables (`:root`).

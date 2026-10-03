@@ -28,7 +28,8 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 
 #fps { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: calc(60px + env(safe-area-inset-bottom)); z-index: 4; padding: 2px 6px; border-radius: 4px; background: rgba(13, 17, 23, 0.6); font: 12px/1.4 ui-monospace, monospace; color: var(--text-muted, #8b949e); pointer-events: none; }
 
-#crosshair { position: fixed; top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; }
+#crosshair { position: fixed; top: 50%; left: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; pointer-events: none; transition: transform 0.1s; }
+#crosshair.expanded { transform: scale(1.35); }
 #crosshair::before, #crosshair::after { content: ""; position: absolute; background: #fff; opacity: 0.85; }
 #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; }
 #crosshair::after { top: 6px; left: 0; height: 2px; width: 14px; }
@@ -46,12 +47,40 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 #debug-panel strong { width: 100%; font-size: 12px; color: #8b949e; }
 #debug-panel button { padding: 6px 10px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: inherit; cursor: pointer; }
 
-#hp { position: fixed; left: 16px; bottom: 16px; font-size: 28px; font-weight: 700; text-shadow: 0 1px 4px #000; }
-#feed { position: fixed; right: 16px; top: 16px; display: grid; gap: 4px; text-align: right; text-shadow: 0 1px 3px #000; }
-#scoreboard { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); min-width: 320px; padding: 12px 16px; background: rgba(13, 17, 23, 0.85); border-radius: 10px; }
-#scoreboard .row { display: grid; grid-template-columns: 1fr 48px 48px; gap: 8px; }
-#scoreboard .row.me { color: #58a6ff; font-weight: 600; }
+/* In-match HUD (SPEC 19.1). Colors come from the theme variables; the fallbacks mirror PALETTE. */
+#status { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: var(--space-md, 16px); pointer-events: none; }
+#status .readout { font-size: 28px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px #000; }
+#status .unit, #status .label { margin-left: 6px; font-size: var(--font-sm, 12px); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted, #8b949e); }
+#status .label { display: block; margin: 0 0 4px; }
+#hp-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; width: 180px; height: 8px; margin-bottom: 6px; }
+.hp-segment { overflow: hidden; border-radius: 2px; background: rgba(230, 237, 243, 0.18); }
+.hp-segment-fill { width: 100%; height: 100%; background: var(--accent-hover, #2ea043); transform-origin: left; transition: transform 0.15s; }
+#hp.low .hp-segment-fill { background: var(--danger, #da3633); }
+#ammo { padding-left: var(--space-md, 16px); border-left: 1px solid var(--surface-border, #30363d); }
+#ammo .readout { font-size: 18px; color: var(--text, #e6edf3); }
+
+#damage-flash { position: fixed; inset: 0; z-index: 1; background: radial-gradient(ellipse at center, transparent 55%, rgba(218, 54, 51, 0.45) 100%); opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+#damage-flash.show { opacity: 1; transition: none; }
+#damage-indicator { position: fixed; top: 50%; left: 50%; width: 160px; height: 160px; margin: -80px 0 0 -80px; z-index: 1; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+#damage-indicator::before { content: ""; position: absolute; left: 50%; top: 0; width: 56px; height: 14px; margin-left: -28px; background: var(--danger, #da3633); clip-path: polygon(0 100%, 50% 0, 100% 100%, 50% 60%); filter: drop-shadow(0 0 6px rgba(218, 54, 51, 0.8)); }
+#damage-indicator.show { opacity: 0.95; transition: none; }
+
+#feed { position: fixed; right: calc(16px + env(safe-area-inset-right)); top: calc(16px + env(safe-area-inset-top)); display: grid; gap: 4px; text-align: right; text-shadow: 0 1px 3px #000; pointer-events: none; }
+#feed > div { padding: 3px 8px; border-radius: 6px; background: rgba(13, 17, 23, 0.55); font-size: var(--font-md, 14px); }
+
+#scoreboard { position: fixed; top: 20%; left: 50%; transform: translateX(-50%); min-width: 340px; padding: var(--space-sm, 8px) var(--space-md, 16px) var(--space-md, 16px); background: rgba(13, 17, 23, 0.9); border: 1px solid var(--surface-border, #30363d); border-radius: 10px; z-index: 4; font-variant-numeric: tabular-nums; }
+#scoreboard .row { display: grid; grid-template-columns: 20px 1fr 48px 48px; gap: var(--space-sm, 8px); align-items: center; padding: 6px 4px; border-bottom: 1px solid rgba(48, 54, 61, 0.6); }
+#scoreboard .row:last-child { border-bottom: 0; }
+#scoreboard .row.head { font-size: var(--font-sm, 12px); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted, #8b949e); }
+#scoreboard .row.me { color: var(--text, #e6edf3); font-weight: 600; background: rgba(46, 160, 67, 0.16); border-radius: 6px; }
+#scoreboard .col-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#scoreboard .col-k, #scoreboard .col-d { text-align: right; }
+#scoreboard .chip { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+#scoreboard .chip.team-even { background: var(--team-blue, #38bdf8); }
+#scoreboard .chip.team-odd { background: var(--team-red, #f87171); }
+
 #dead, #notice { position: fixed; top: 40%; left: 50%; transform: translateX(-50%); padding: 10px 18px; background: rgba(0, 0, 0, 0.6); border-radius: 8px; font-size: 18px; }
+#dead { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; border: 1px solid var(--danger, #da3633); }
 #notice { top: 12px; font-size: 14px; }
 
 /* Touch controls and landscape fit (docs/SPEC.md §16, D-016). */
@@ -72,11 +101,17 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 
 /* Short landscape screens (phones): smaller HUD, kept clear of the notch. */
 @media (orientation: landscape) and (max-height: 500px) {
-  #hp { left: calc(12px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); font-size: 18px; }
+  #status { left: calc(12px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); gap: 10px; }
+  #status .readout { font-size: 18px; }
+  #hp-bar { width: 120px; height: 6px; margin-bottom: 4px; }
+  #ammo .readout { font-size: 13px; }
+  #ammo { padding-left: 10px; }
+  #damage-indicator { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
   #combat-log { left: calc(10px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); font-size: 10px; max-width: 34ch; }
   #combat-log > :nth-last-child(n + 5) { display: none; }
-  #feed { right: calc(10px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); font-size: 11px; }
-  #scoreboard { top: 10%; min-width: 260px; font-size: 12px; z-index: 4; }
+  #feed { right: calc(10px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); }
+  #feed > div { font-size: 11px; padding: 2px 6px; }
+  #scoreboard { top: 10%; min-width: 260px; font-size: 12px; }
   #dead { font-size: 15px; }
   #notice { font-size: 12px; }
   #menu { width: min(320px, 80vw); padding: 14px; gap: 6px; }
