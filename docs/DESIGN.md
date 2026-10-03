@@ -47,6 +47,22 @@ decision cite its ID.
 - Supersedes: (none)
 -->
 
+### D-018 (T, N) Event-driven clock in the Match actor
+- Status: decided
+- Date: 2026-10-03
+- Decision: The deployed actor does not depend on the platform's managed ticker. Wall time is sampled on every
+  actor event and the simulation steps that are due run then (`MatchHost.advance()`, at most 3 per event, then
+  time is dropped and the clock re-anchors). A platform schedule (`"clock"`, every 500 ms while a player is
+  seated) wakes an otherwise idle room. The Node/ws server keeps its `setInterval` ticker.
+- Why / options considered: on the first deploy (2026-10-03) `handleTick` never fired in production while
+  connect, join, messages and storage all worked; timers inside the object were not observed to run. Waiting
+  for a platform fix would have blocked every batch after the hotfix. Rejected: a 30 Hz alarm (two storage
+  writes per tick per room, and alarm latency is not a 33 ms clock); client-driven ticks only (an idle room
+  would never respawn anyone).
+- Affects: docs/SPEC.md §17.3; `base44/actors/Match/entry.ts`, `base44/actors/Match/matchHost.js`;
+  `tests/unit/matchHost.test.js`, `tests/unit/actorBundle.test.js`.
+- Supersedes: the "managed ticker at `TICK_RATE`" wording of D-017 (the rate is unchanged, the driver is not).
+
 ### D-017 (T, E) Hosting: a Base44 app (site + Match actor), Node server kept for development
 - Status: decided
 - Date: 2026-10-03

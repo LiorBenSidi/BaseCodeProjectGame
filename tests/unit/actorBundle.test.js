@@ -56,9 +56,13 @@ test('entry.ts default-exports a class extending Actor and sets the tick interva
   assert.match(text, /import \{ Actor \} from "base44:runtime\/actors"/);
   assert.match(text, /export default class \w+ extends Actor/);
   assert.match(text, /tickIntervalMs = 1000 \/ TICK_RATE/);
-  for (const hook of ['handleStart', 'shouldTick', 'handleConnect', 'handleMessage', 'handleTick', 'handleClose']) {
+  for (const hook of ['handleStart', 'shouldTick', 'handleConnect', 'handleMessage', 'handleTick', 'handleClose', 'handleWake']) {
     assert.match(text, new RegExp(`\\b${hook}\\(`), `entry.ts lacks ${hook}`);
   }
+  // SPEC 17.3 clock: the heartbeat is a platform schedule, the steps run in host.advance().
+  assert.match(text, /const CLOCK_KEY = "clock"/, 'entry.ts does not name the clock schedule key');
+  assert.match(text, /this\.schedule\(CLOCK_KEY, /, 'entry.ts does not arm the clock schedule');
+  assert.match(text, /host\.advance\(\)/, 'entry.ts does not advance the clock');
 });
 
 test('entry.ts never reads this.instanceId / this.name from a class field initializer (runtime sets them after construction)', () => {

@@ -438,6 +438,21 @@ by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
 ### 17.3 `base44/actors/Match/` — the actor
 - `entry.ts` default-exports `class Match extends Actor` with `tickIntervalMs = 1000 / TICK_RATE` and delegates
   every hook to `matchHost.js`. `shouldTick()` is `playerCount > 0` (the platform also requires a live socket).
+- **Event-driven clock (D-018).** The managed ticker is declared but never relied on: in the deployed actor
+  `handleTick` was observed not to fire (2026-10-03). Instead every hook (`handleStart`, `handleConnect`,
+  `handleMessage`, `handleClose`, `handleTick`, `handleWake`) ends in `MatchHost.advance()`, which samples
+  `now()` and runs the simulation steps due since a fixed anchor: `floor((now - anchor) / TICK_MS)` minus the
+  steps already run, at most `MAX_CATCHUP = 3` per event; when more are due the remainder is dropped and the
+  clock re-anchors to `now` (the same rule as the platform `TickLoop`). The first step of a room that just got
+  its first seated player runs at once, so the first `snap` leaves with the `welcome`. An empty room resets
+  the anchor, so the next first player never pays a catch-up for idle time. The managed `handleTick`, if it
+  ever runs, goes through the same gate and cannot double step.
+- **Idle heartbeat.** While `shouldTick()` is true the actor keeps one platform schedule armed
+  (`this.schedule("clock", now + CLOCK_WAKE_MS)`, `CLOCK_WAKE_MS = 500`), delivered through `handleWake`.
+  Active play never needs it (each player's `input` message advances the room, 60 Hz per player); it bounds how
+  long a room with only idle players stands still (respawn timers, grenade fuses). Schedules are Durable Object
+  alarms: they survive hibernation and cost two storage writes per arm, which is why the period is coarse and
+  re-arming only moves the one key.
 - `handleStart` runs on every wake. A hibernation wake keeps sockets attached without `handleConnect`, so
   `MatchHost.wake(conns)` re-registers them and calls `requestRejoin()`; the client answers with a new `join`
   and gets a new `welcome` (a new id, a fresh spawn: match state is not persisted in this slice).
