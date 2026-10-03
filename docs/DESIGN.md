@@ -61,7 +61,9 @@ decision cite its ID.
   carrying every decision made so far; after the builder confirmed Actors fit the authoritative-room model.
 - Constraints read from the platform (actor runtime, 2026-10-03): JSON text frames only (the binary wire format
   of Phase 1 is replaced by delta snapshots), at most 3 catch-up ticks after a stall, room state is lost on a
-  wake unless persisted, no minimum tick interval (60 and 120 Hz are a measurement, not a rule).
+  wake unless persisted, no minimum tick interval (60 and 120 Hz are a measurement, not a rule), a room is
+  placed near its first joiner for life (region goes into the room id), inbound frames are capped only at
+  Cloudflare's 32 MiB (the 4 KB rule is re-applied in `MatchSession`).
 - Affects: docs/SPEC.md §17; docs/adr/0004; `base44/`, `src/server/matchSession.js`, `src/client/netActor.js`,
   `src/client/game.js`; ROADMAP phases 5 and 6; one new dependency `@base44/sdk` (owner approval recorded here).
 - Implementation status: scaffolded 2026-10-03 on branch `base44-app`; first deploy pending the app creation.

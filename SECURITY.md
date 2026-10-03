@@ -56,6 +56,7 @@ means having the access.
 | CSP and frame headers are production-only | They would break Vite HMR and the Base Code preview iframe | Preview and prod are separated |
 | No lag compensation | Adds complexity; needed for fairness at high latency | Roadmap phase 2 |
 | Per-IP limits use the socket address | Behind a reverse proxy every client shares its IP. `X-Forwarded-For` is spoofable, so it is deliberately not trusted | A trusted proxy is configured |
+| On Base44 a hostile client can send one frame of up to 32 MiB before our code sees it | Cloudflare's received-message limit for Durable Objects; Base44 adds no smaller cap. `MatchSession` re-measures the parsed object and strikes above 4 KB; the token bucket bounds how many such frames a connection can send before it is closed | Base44 exposes a per-actor frame cap |
 | On Base44 there is no per-IP connection cap and no `Origin` check of ours | The platform mints a token per connection and limits connection attempts per actor (300 per minute); the in-room limits (16 players, per-connection budget, strikes) still apply | The platform exposes per-client limits |
 | Hosted client has no CSP from `server.js` | Site response headers are the platform's; `check-policy.mjs` still bans every HTML sink | Base44 offers per-site headers |
 | JSON wire format is larger than binary | Debuggability first | Measured bandwidth problem |

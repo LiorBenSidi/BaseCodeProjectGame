@@ -10,7 +10,10 @@
 //   - Messages are JSON text in both directions; conn.send stringifies, handleMessage gets the
 //     parsed object. Every incoming object still goes through validateClientMessage.
 //   - Origin checks, connection tokens and the per-script connection rate limit are the
-//     platform's; the per-connection message budget and protocol strikes stay ours.
+//     platform's; the per-connection message budget, protocol strikes and the 4 KB message
+//     rule (re-measured on the parsed object, frames are capped at 32 MiB upstream) stay ours.
+//   - The room object is created near its first joiner and never moves (idFromName, no
+//     location hint): the lobby must encode the region in the room id.
 //
 // Everything under ./server and ./shared is generated from src/ by base44/tools/sync-actor.mjs.
 // Edit the originals in src/, then run the sync; tests/unit/actorBundle.test.js enforces it.

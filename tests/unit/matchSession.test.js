@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameRoom } from '../../src/server/GameRoom.js';
-import { MatchSession, MAX_PROTOCOL_STRIKES, BUCKET } from '../../src/server/matchSession.js';
+import { MatchSession, MAX_PROTOCOL_STRIKES, BUCKET, exceedsMessageBytes } from '../../src/server/matchSession.js';
+import { MAX_MESSAGE_BYTES } from '../../src/server/protocol.js';
 import { MAX_PLAYERS } from '../../src/shared/constants.js';
 
 function fakeConn(id) {
@@ -172,4 +173,26 @@ test('two connections see each other in snapshots (the two-tab check, in process
   session.tick();
   const snapB = b.sent.find((m) => m.t === 'snap');
   assert.equal(snapB.players.length, 2);
+});
+
+test('an oversized parsed message is a strike even though the platform already parsed it', () => {
+  const { session } = setup();
+  const c = fakeConn('a');
+  session.connect(c);
+  session.message(c, { t: 'join', name: 'Ada' });
+  const padding = 'x'.repeat(MAX_MESSAGE_BYTES);
+  for (let i = 0; i < MAX_PROTOCOL_STRIKES; i++) session.message(c, { t: 'shoot', padding });
+  assert.equal(c.closed, 'protocol_violations');
+  assert.equal(session.playerCount, 0);
+});
+
+test('exceedsMessageBytes: scalars are not measured, 4 KB is the boundary, unserialisable counts as too large', () => {
+  assert.equal(exceedsMessageBytes(null), false);
+  assert.equal(exceedsMessageBytes('x'.repeat(10_000)), false, 'a string fails bad_shape instead');
+  const exact = { t: 'shoot', p: 'x'.repeat(MAX_MESSAGE_BYTES - JSON.stringify({ t: 'shoot', p: '' }).length) };
+  assert.equal(JSON.stringify(exact).length, MAX_MESSAGE_BYTES);
+  assert.equal(exceedsMessageBytes(exact), false);
+  exact.p += 'x';
+  assert.equal(exceedsMessageBytes(exact), true);
+  assert.equal(exceedsMessageBytes({ n: 1n }), true);
 });

@@ -16,11 +16,21 @@
 //   'rate_limit' | 'protocol_violations' | 'room_full' | 'text_only'
 // (ws uses 1008 / 1013, the actor uses 4008 / 4013: Cloudflare rejects some 1xxx codes).
 
-import { validateClientMessage } from './protocol.js';
+import { MAX_MESSAGE_BYTES, validateClientMessage } from './protocol.js';
 import { TokenBucket } from './rateLimit.js';
 
 export const MAX_PROTOCOL_STRIKES = 5;
 export const BUCKET = Object.freeze({ capacity: 120, refillPerSec: 100 });
+
+/** True when the JSON text of `data` would exceed MAX_MESSAGE_BYTES (or cannot be serialised). */
+export function exceedsMessageBytes(data) {
+  if (data === null || typeof data !== 'object') return false; // scalars fail the shape check anyway
+  try {
+    return JSON.stringify(data).length > MAX_MESSAGE_BYTES;
+  } catch {
+    return true;
+  }
+}
 
 export class MatchSession {
   #room;
@@ -74,7 +84,10 @@ export class MatchSession {
       this.#drop(s, 'rate_limit');
       return;
     }
-    const parsed = validateClientMessage(data);
+    // The actor platform hands us parsed JSON and caps a frame at 32 MiB (Cloudflare), not at our
+    // 4 KB. Re-measure here so the 4 KB rule of section 5 holds on both transports; on the ws path
+    // parseClientMessage already refused anything larger, so this is a cheap no-op there.
+    const parsed = exceedsMessageBytes(data) ? { ok: false, reason: 'too_large' } : validateClientMessage(data);
     if (!parsed.ok) {
       this.#log?.debug('bad client message', { reason: parsed.reason });
       s.strikes += 1;

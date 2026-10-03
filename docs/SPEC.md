@@ -417,6 +417,11 @@ layer so their behaviour cannot drift.
 - Per connection: a `TokenBucket({ capacity: 120, refillPerSec: 100 })` (`BUCKET`) and a strike counter.
   Over budget → `close('rate_limit')`. Every message goes through `validateClientMessage` (§5 whitelist,
   same reasons); a rejected message is a strike, `MAX_PROTOCOL_STRIKES = 5` → `close('protocol_violations')`.
+- Size: `exceedsMessageBytes(data)` re-measures a parsed object as JSON text against `MAX_MESSAGE_BYTES`
+  (4096) and counts a larger one as a `too_large` strike. Needed because the actor transport delivers parsed
+  objects and the platform's own frame cap is Cloudflare's 32 MiB for received WebSocket messages, with no
+  smaller cap in Base44's dispatcher or runtime shim (verified 2026-10-03). On the ws path
+  `parseClientMessage` has already refused anything larger, so the check is a no-op there.
 - `join` before a seat creates the player (`GameRoom.addPlayer`); a second `join` on the same connection is
   ignored. A full room sends `{ t: 'error', reason: 'room_full' }` then `close('room_full')`.
 - `input`, `shoot`, `throw` without a seat are dropped. Messages from an unregistered connection are ignored.
@@ -427,8 +432,8 @@ layer so their behaviour cannot drift.
 ### 17.2 `src/server/protocol.js` — `validateClientMessage(data)`
 Object-level entry to the §5 whitelist for transports that already decoded the JSON. Never throws
 (`bad_shape` on anything unexpected). `parseClientMessage(raw)` is now `size check → JSON.parse →
-validateClientMessage`; its behaviour and reasons are unchanged. The byte cap is the transport's job on the
-actor path (the platform caps frames; `ws` keeps `maxPayload`).
+validateClientMessage`; its behaviour and reasons are unchanged. On the actor path the byte cap is applied
+by `MatchSession` after the fact (§17.1); `ws` keeps `maxPayload`.
 
 ### 17.3 `base44/actors/Match/` — the actor
 - `entry.ts` default-exports `class Match extends Actor` with `tickIntervalMs = 1000 / TICK_RATE` and delegates
@@ -441,6 +446,11 @@ actor path (the platform caps frames; `ws` keeps `maxPayload`).
   imports anything but `./`, `../` or `base44:runtime/actors`, when `Deno.*` appears, or when a helper is
   named `entry`.
 - Room id: `?room=<id>` on the page URL, `^[A-Za-z0-9_-]{1,64}$`, default `arena-1`.
+- Placement: the platform resolves a room with `idFromName(room)` and no location hint or jurisdiction
+  (bundler `actor-compat.ts`, verified 2026-10-03). Cloudflare therefore creates the object close to the
+  **first** `get()` for that id and does not move it afterwards. A room id is pinned for life to the region of
+  its first ever joiner; a lobby must put the region in the id (for example `eu-arena-1`) rather than reuse
+  one global name.
 
 ### 17.4 `src/client/netActor.js` — `ActorNetwork(handlers, { appId, roomId })`
 - Same handler contract as `Network` (§12 client side). Chosen by `game.js` when `VITE_BASE44_APP_ID` is set
@@ -454,5 +464,7 @@ actor path (the platform caps frames; `ws` keeps `maxPayload`).
 ### 17.5 What the platform owns on this path (not re-implemented)
 Origin check and connection tokens (minted per connection by the SDK), the per-actor connection-attempt rate
 limit (300 per 60 s per actor script), reconnect supersede (a returning connection id replaces a stale socket
-without a `handleClose`), hibernation and eviction. The per-IP connection cap of §12 has no equivalent; the
-16-player room cap and the per-connection budget remain the in-room limits.
+without a `handleClose`), hibernation and eviction, object placement (§17.3). The per-IP connection cap of
+§12 has no equivalent; the 16-player room cap, the per-connection budget and the 4 KB message rule (re-applied
+in §17.1) remain the in-room limits. Not owned by anyone below 32 MiB: the inbound frame size, which is why
+§17.1 measures it.

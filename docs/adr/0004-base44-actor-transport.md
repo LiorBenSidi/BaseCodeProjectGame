@@ -38,6 +38,12 @@ The owner wants the project to be a regular Base44 app in his workspace, carryin
 - Tick timing is `setTimeout`-driven with at most 3 catch-up ticks. 60 Hz (D-006) and 120 Hz (D-003) stay
   measurements to make, with tick jitter and per-player snapshot bytes as the numbers that decide.
 - The 300 connection attempts per minute per actor limit is a platform number to design the lobby around.
+- Rooms are placed by Cloudflare near the first joiner and never move (the platform calls `idFromName(room)`
+  with no location hint; verified in the bundler's `actor-compat.ts`). Region belongs in the room id, chosen
+  by the lobby (Phase 3), never a single global `arena-1` for everyone.
+- The platform caps a received WebSocket frame at Cloudflare's 32 MiB and parses it before our code runs. The
+  4 KB rule is re-applied in `MatchSession` by measuring the parsed object; the parse cost of a hostile large
+  frame is the platform's and is bounded by the per-connection message budget.
 - One new runtime dependency, `@base44/sdk` (adds about 43 kB gzip to the client bundle; the three.js chunk is
   the large one either way). Dependency approval is recorded in D-017.
 
