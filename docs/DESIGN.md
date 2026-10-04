@@ -274,3 +274,11 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
 - Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
 
+
+### D-029 (P3) BO6 omnimovement and feel
+- Status: decided
+- Date: 2026-10-04
+- Decision: Retune movement to the Black Ops 6 reference (5.6 / 7.2 / 8.5 m/s, 1.0 m jump), add omnidirectional sprint and slide, tactical sprint, dive, slide cancel, per weapon ADS time and sensitivity, 120 ms recoil recovery, camera feel, gamepad support and aim assist for sticks and touch only. All movement stays in the shared deterministic step; all feel stays client side.
+- Source: owner's Pro program approval 2026-10-04 ("Approve all six"), BO6 as the feel reference.
+- Affects: docs/SPEC.md section 32 (amends 23.2); `src/shared/{constants,movement,weapons}.js`, `src/server/protocol.js`, `src/client/{input,aim,bindings,cameraFeel,aimAssist,eventBus,touch,remote,game}.js`.
+- Alternatives: keep the Batch 3d arcade tuning (rejected: floaty against the reference); sync tac and dive timers in the snapshot (rejected for now: the slide already works client local, and the snapshot stays small).

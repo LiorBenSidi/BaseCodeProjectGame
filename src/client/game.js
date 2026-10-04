@@ -16,7 +16,14 @@ import { ActorNetwork, roomIdFromLocation } from './netActor.js';
 import { createClient } from '@base44/sdk';
 import { MAP } from '../shared/map.js';
 import { Audio, cueFor, falloff } from './audio.js';
-import { targetFov, sensitivityScale, stepFov, isScoped, DEFAULT_FOV } from './aim.js';
+import { targetFov, adsSensitivity, stepFovFor, isScoped, DEFAULT_FOV } from './aim.js';
+// PRO-feel begin (SPEC 32, D-029)
+import { isBound } from './bindings.js';
+import { CameraFeel } from './cameraFeel.js';
+import { applyAimAssist } from './aimAssist.js';
+import { eventBus } from './eventBus.js';
+import { RECOIL_RECOVERY_MS } from '../shared/weapons.js';
+// PRO-feel end
 import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
@@ -70,6 +77,14 @@ export class Game {
   #threats = [];
   #lastHp = null;
   #eyeY = null; // SPEC 23 smoothed camera height
+  // PRO-feel begin
+  #feel = new CameraFeel(); // SPEC 32.3 landing dip, head bob, sprint fov, slide tilt, dive, mantle dip
+  #wasGround = true;
+  #lastVy = 0;
+  #fovKick = 0;
+  #team = -1; // own team from the last snapshot, so the aim assist ignores teammates
+  #gpScoreboard = false;
+  // PRO-feel end
 
   constructor(canvas) {
     this.#gfx = createScene(canvas);
@@ -80,25 +95,36 @@ export class Game {
     this.#effects = new Effects(this.#gfx.scene); // SPEC 24.5
     this.#weaponView = new WeaponView(this.#gfx.camera); // SPEC 29.4
     this.#gfx.scene.add(this.#gfx.camera); // the view model is a child of the camera
+    // PRO-feel begin: keys read through bindings.js (SPEC 32.6) so the settings UI can remap them
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Tab') { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
-      if (e.code === 'KeyG' && !e.repeat && this.#input.locked) this.throwGrenade();
+      if (isBound('scoreboard', e.code)) { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
+      if (isBound('grenade', e.code) && !e.repeat && this.#input.locked) this.throwGrenade();
       // SPEC 20.3: weapon intents; the server's state machine decides whether they take effect.
-      if (e.code === 'KeyR' && !e.repeat && this.#input.locked) this.reload();
-      if (e.code === 'Digit1' && this.#input.locked) this.switchWeapon('primary');
-      if (e.code === 'Digit2' && this.#input.locked) this.switchWeapon('sidearm');
+      if (isBound('reload', e.code) && !e.repeat && this.#input.locked) this.reload();
+      if (isBound('weapon1', e.code) && this.#input.locked) this.switchWeapon('primary');
+      if (isBound('weapon2', e.code) && this.#input.locked) this.switchWeapon('sidearm');
       // SPEC 24.1: Q / E abilities; SPEC 25.3: 3 / 4 pick a perk from the open offer
-      if (e.code === 'KeyQ' && !e.repeat && this.#input.locked) this.useAbility(0);
-      if (e.code === 'KeyE' && !e.repeat && this.#input.locked) this.useAbility(1);
-      if (e.code === 'Digit3' && !e.repeat) this.pickPerk(0);
-      if (e.code === 'Digit4' && !e.repeat) this.pickPerk(1);
+      if (isBound('ability1', e.code) && !e.repeat && this.#input.locked) this.useAbility(0);
+      if (isBound('ability2', e.code) && !e.repeat && this.#input.locked) this.useAbility(1);
+      if (isBound('perk1', e.code) && !e.repeat) this.pickPerk(0);
+      if (isBound('perk2', e.code) && !e.repeat) this.pickPerk(1);
+      if (isBound('inspect', e.code) && !e.repeat && this.#input.locked) this.#weaponView?.inspect?.();
     });
+    // SPEC 32.5: aim assist for sticks and touch only; the targets are the live enemies of the last snapshot
+    this.#input.aimAssist = (dyaw, dpitch, type) => applyAimAssist({
+      inputType: type,
+      aimDelta: { dyaw, dpitch },
+      player: { x: this.#me.x, y: this.#me.y + eyeOf(this.#me), z: this.#me.z, yaw: this.#input.yaw, pitch: this.#input.pitch },
+      targets: this.#me.alive ? this.#remote.latest().filter((t) => this.#team < 0 || t.team !== this.#team) : [],
+      moving: Math.hypot(this.#me.vx ?? 0, this.#me.vz ?? 0) > 0.5,
+    });
+    // PRO-feel end
     window.addEventListener('wheel', (e) => {
       if (!this.#input.locked || e.deltaY === 0) return;
       this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary');
     }, { passive: true });
     window.addEventListener('keyup', (e) => {
-      if (e.code === 'Tab') this.#hud.setScoreboardVisible(false);
+      if (isBound('scoreboard', e.code)) this.#hud.setScoreboardVisible(false);
     });
     this.#touch = new TouchControls(this.#input, {
       grenade: () => this.throwGrenade(),
@@ -122,7 +148,7 @@ export class Game {
   /** SPEC 19.2: mouse sensitivity from the settings panel, applied to the next mouse move. */
   setSensitivity(value) {
     this.#sensitivity = value;
-    this.#input.sensitivity = value * sensitivityScale(this.#fov, this.#baseFov);
+    this.#input.sensitivity = value * adsSensitivity(this.#fov, this.#baseFov, this.#weapon.id, this.#input.ads);
   }
 
   setFov(value) {
@@ -242,13 +268,14 @@ export class Game {
       pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
       snap: (m) => this.#onSnapshot(m),
       shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
-      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit'); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
         if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
         if (m.killer === this.#id) { this.#cue('kill', { mine: true }); const b = m.multiText ?? m.streakText; if (b) this.#hud.banner(b); } else if (m.streakText && m.streak >= 5) this.#hud.killFeed(`${m.killerName} is on a ${m.streak} kill streak: ${m.streakText}`);
         if (m.victim === this.#id) this.#cue('death');
+        eventBus.emit('kill', { ...m, mine: m.killer === this.#id, me: m.victim === this.#id }); // PRO-feel
       },
       chat: (m) => this.#hud.chat({ name: m.name, team: m.team, text: m.text }),
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id); this.#cue('matchEnd'); }, // SPEC 22
@@ -292,6 +319,7 @@ export class Game {
       dash: snap.self?.dash ?? 0, dashDx: snap.self?.dashDx ?? 0, dashDz: snap.self?.dashDz ?? 0,
     });
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c, this.#map.boxes, this.#map.half);
+    if (typeof mine.tm === 'number') this.#team = mine.tm; // PRO-feel
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
     this.#weaponView?.setWeapon(this.#weapon.id);
     if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
@@ -343,8 +371,11 @@ export class Game {
     while (this.#accumulator >= INPUT_DT) {
       this.#accumulator -= INPUT_DT;
       const s = this.#input.sample();
-      const cmd = { seq: ++this.#seq, fwd: s.fwd, right: s.right, jump: s.jump, sprint: s.sprint, crouch: s.crouch, yaw: this.#input.yaw, pitch: this.#input.pitch };
-      if (this.#me.alive) stepPlayer(this.#me, cmd, this.#map.boxes, this.#map.half);
+      const cmd = { seq: ++this.#seq, fwd: s.fwd, right: s.right, jump: s.jump, sprint: s.sprint, crouch: s.crouch, dive: s.dive, tac: s.tac, yaw: this.#input.yaw, pitch: this.#input.pitch };
+      if (this.#me.alive) {
+        stepPlayer(this.#me, cmd, this.#map.boxes, this.#map.half);
+        if (this.#me.mantled) this.#feel.onMantle(); // PRO-feel: SPEC 32.3 mantle camera dip
+      }
       this.#pending.push(cmd);
       outgoing.push(cmd);
     }
@@ -352,12 +383,22 @@ export class Game {
     // SPEC 18.1: the stamp lets the room's ClockSource advance from client time when the runtime clock is frozen.
     if (outgoing.length) this.#net.send({ t: 'input', cmds: outgoing, ts: Date.now() });
 
-    if (this.#input.firing && this.#input.locked) this.#tryFire(now);
+    // PRO-feel begin: SPEC 32.6 gamepad buttons map onto the same intents as the keys
+    for (const a of this.#input.takeGamepadActions()) {
+      if (a === 'reload') this.reload();
+      else if (a === 'switch') this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary');
+      else if (a === 'ability1') this.useAbility(0);
+      else if (a === 'ability2') this.useAbility(1);
+      else if (a === 'grenade') this.throwGrenade();
+      else if (a === 'scoreboard') { this.#gpScoreboard = !this.#gpScoreboard; this.#hud.setScoreboardVisible(this.#gpScoreboard); }
+    }
+    // PRO-feel end
+    if (this.#input.firing && this.#input.active) this.#tryFire(now);
     this.#recoverRecoil(dt);
   }
 
   #recoverRecoil(dt) {
-    const k = Math.min(1, dt * 12);
+    const k = Math.min(1, dt * (1000 / RECOIL_RECOVERY_MS)); // SPEC 32.4: the kick recovers over RECOIL_RECOVERY_MS
     const dp = this.#recoil.pitch * k;
     const dy = this.#recoil.yaw * k;
     if (dp === 0 && dy === 0) return;
@@ -429,16 +470,31 @@ export class Game {
     // SPEC 23: the eye follows the crouch height; smoothed so a slide does not snap the camera
     const eyeTarget = this.#me.y + eyeOf(this.#me);
     this.#eyeY = this.#eyeY === null ? eyeTarget : this.#eyeY + (eyeTarget - this.#eyeY) * Math.min(1, dt * 14);
-    camera.position.set(this.#me.x, this.#eyeY, this.#me.z);
-    camera.rotation.set(this.#input.pitch, this.#input.yaw, 0);
-    // SPEC 29.3: ADS eases the fov toward the weapon's zoom and scales the mouse to match
     const ads = this.#input.ads && this.#me.alive;
-    const fovTarget = targetFov(this.#baseFov, this.#weapon.id, ads);
-    const nextFov = stepFov(this.#fov, fovTarget, dt);
-    if (Math.abs(nextFov - this.#fov) > 1e-3 || Math.abs(camera.fov - nextFov) > 1e-3) { this.#fov = nextFov; camera.fov = nextFov; camera.updateProjectionMatrix(); this.#input.sensitivity = this.#sensitivity * sensitivityScale(this.#fov, this.#baseFov); }
+    const speed = Math.hypot(this.#me.vx ?? 0, this.#me.vz ?? 0);
+    // PRO-feel begin: SPEC 32.3 camera feel on top of the smoothed eye height
+    if (this.#me.onGround && !this.#wasGround) this.#feel.onLanding(this.#lastVy);
+    this.#wasGround = !!this.#me.onGround;
+    if (!this.#me.onGround) this.#lastVy = this.#me.vy ?? 0;
+    const sprinting = this.#me.alive && this.#me.onGround && speed > PLAYER.speed + 0.3 && !(this.#me.slide > 0) && !(this.#me.dive > 0);
+    const feel = this.#feel.step(dt, {
+      speed: this.#me.onGround ? speed : 0, baseSpeed: PLAYER.speed, isAds: ads,
+      isSprinting: sprinting, isTacSprinting: sprinting && this.#me.tac > 0,
+      isSliding: this.#me.slide > 0, isDiving: this.#me.dive > 0,
+    });
+    this.#fovKick += (feel.fovKick - this.#fovKick) * Math.min(1, dt * 8);
+    const sideX = Math.cos(this.#input.yaw) * feel.offsetX;
+    const sideZ = -Math.sin(this.#input.yaw) * feel.offsetX;
+    camera.position.set(this.#me.x + sideX, this.#eyeY + feel.offsetY, this.#me.z + sideZ);
+    camera.rotation.set(this.#input.pitch, this.#input.yaw, feel.rollTilt);
+    // SPEC 29.3: ADS eases the fov toward the weapon's zoom and scales the mouse to match; SPEC 32.4 sets the
+    // pace per weapon and the sprint kick widens the view a little.
+    const fovTarget = targetFov(this.#baseFov, this.#weapon.id, ads) + (ads ? 0 : this.#fovKick);
+    const nextFov = stepFovFor(this.#fov, fovTarget, dt, this.#weapon.id);
+    if (Math.abs(nextFov - this.#fov) > 1e-3 || Math.abs(camera.fov - nextFov) > 1e-3) { this.#fov = nextFov; camera.fov = nextFov; camera.updateProjectionMatrix(); this.#input.sensitivity = this.#sensitivity * adsSensitivity(this.#fov, this.#baseFov, this.#weapon.id, ads); }
+    // PRO-feel end
     const scoped = isScoped(this.#weapon.id, ads) && this.#fov < this.#baseFov * 0.6;
     this.#hud.setScoped(scoped);
-    const speed = Math.hypot(this.#me.vx ?? 0, this.#me.vz ?? 0);
     this.#weaponView?.setVisible(this.#me.alive && !scoped);
     this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
     this.#footsteps(dt, speed);

@@ -125,6 +125,15 @@ export class RemotePlayers {
   }
 
   // SPEC 29.5: visible remote players moving faster than 1 m/s, with their interpolated position.
+  // SPEC 32.5 (PRO-feel): live others from the latest snapshot, eye height included, for the aim assist cone.
+  latest() {
+    const last = this.#buffer[this.#buffer.length - 1];
+    if (!last) return [];
+    const out = [];
+    for (const p of last.players.values()) if (p.alive === 1) out.push({ id: p.id, x: p.x, y: p.y + 1.4, z: p.z, team: p.tm });
+    return out;
+  }
+
   moving(now) {
     const buf = this.#buffer;
     if (buf.length < 2) return [];

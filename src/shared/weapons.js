@@ -9,6 +9,9 @@ const W = (o) => Object.freeze({ ...o, bands: Object.freeze(o.bands.map((b) => O
 
 // bands use the combat.js shape { below, damage } so bandDamage/shotDamage apply unchanged.
 // The rifle is byte for byte the Milestone 1 weapon (RIFLE in combatData.js): same interval, same bands.
+// SPEC 32.4: the cosmetic recoil kick of every weapon recovers over this time (client camera only).
+export const RECOIL_RECOVERY_MS = 120;
+
 export const WEAPONS = Object.freeze({
   rifle: W({
     id: 'rifle', name: 'Rifle', slot: 'primary', fireIntervalMs: RIFLE.cooldownMs, range: RIFLE.range,

@@ -1,199 +1,188 @@
 import { getSensitivity } from './settings.js';
-import { bind } from './bindings.js';
+import { bind, isBound } from './bindings.js';
 
 const MAX_PITCH = 1.5533; // keep in sync with server/protocol.js clamp
 const GAMEPAD_DEADZONE = 0.15;
+const DOUBLE_TAP_MS = 300; // SPEC 32.6: two presses inside this window are a double tap
 
 const clamp1 = (v) => Math.max(-1, Math.min(1, v));
 
-function applyDeadzone(v, dz = GAMEPAD_DEADZONE) {
-  if (Math.abs(v) < dz) return 0;
-  const sign = Math.sign(v);
-  return sign * ((Math.abs(v) - dz) / (1 - dz));
+// Radial deadzone, re-scaled so the first usable value starts at 0 instead of jumping to the deadzone edge.
+export function applyDeadzone(v, dz = GAMEPAD_DEADZONE) {
+  if (!(Math.abs(v) >= dz)) return 0;
+  return Math.sign(v) * ((Math.abs(v) - dz) / (1 - dz));
 }
 
-// Keyboard + Mouse + Gamepad state.
+// SPEC 32.6 stick response: a power curve keeps small deflections fine and the edge fast.
+export function stickCurve(v, power = 1.5) {
+  return Math.sign(v) * Math.abs(v) ** power;
+}
+
+// Keyboard + mouse (+ touch, see touch.js; + gamepad, SPEC 32.6) state. Aim (yaw/pitch) is accumulated here;
+// movement is sampled per command. Keys are read through bindings.js so the settings UI can remap them.
 export class Input {
   yaw = 0;
   pitch = 0;
   firing = false;
-  touch = { active: false, fwd: 0, right: 0, jump: false, sprint: false, crouch: false, dive: false, tacSprint: false };
-  ads = false; // SPEC 29.3 right mouse held
+  touch = { active: false, fwd: 0, right: 0, jump: false, sprint: false, crouch: false, dive: false, tac: false };
+  ads = false; // SPEC 29.3 right mouse held (or LT)
   chatOpen = false; // SPEC 29.1: while typing, movement keys are ignored
   sensitivity = getSensitivity();
-  gamepadSensitivity = 0.03;
-  inputType = 'mouse'; // 'mouse' | 'gamepad' | 'touch'
+  gamepadSensitivity = 0.045; // radians per frame at full deflection, before the curve
+  inputType = 'mouse'; // 'mouse' | 'gamepad' | 'touch': the last device that aimed (aim assist is never for mouse)
+  // SPEC 32.5: game.js installs this to bend non-mouse aim toward targets; the raw turn() stays for recoil.
+  aimAssist = null;
   #keys = new Set();
   #canvas;
-  #lastCrouchPress = 0;
-  #lastSprintPress = 0;
-  #diveTriggered = false;
-  #tacSprintTriggered = false;
+  #mouseFire = false;
+  #mouseAds = false;
+  #lastCrouchTap = 0;
+  #lastSprintTap = 0;
+  #dive = false; // one-command pulses, consumed by sample()
+  #tac = false;
+  #gpPrev = {}; // previous gamepad button state for edge detection
+  #gpEdges = []; // actions pressed this frame on the gamepad, consumed by takeGamepadActions()
 
   constructor(canvas) {
     this.#canvas = canvas;
     window.addEventListener('keydown', (e) => {
-      if (!e.repeat) {
-        this.#keys.add(e.code);
-        this.inputType = 'mouse';
-
-        const now = performance.now();
-        // Double-tap crouch for dive
-        if (e.code === bind('crouch') || e.code === bind('crouchAlt')) {
-          if (now - this.#lastCrouchPress < 300) {
-            this.#diveTriggered = true;
-          }
-          this.#lastCrouchPress = now;
-        }
-
-        // Double-tap sprint for tac sprint
-        if (e.code === bind('sprint')) {
-          if (now - this.#lastSprintPress < 300) {
-            this.#tacSprintTriggered = true;
-          }
-          this.#lastSprintPress = now;
-        }
-
-        // Dedicated keys
-        if (e.code === bind('dive')) this.#diveTriggered = true;
-        if (e.code === bind('tacSprint')) this.#tacSprintTriggered = true;
+      if (e.repeat) return;
+      this.#keys.add(e.code);
+      const now = performance.now();
+      // SPEC 32.6: a double tap on crouch dives, a double tap on sprint starts the tactical sprint
+      if (isBound('crouch', e.code)) {
+        if (now - this.#lastCrouchTap < DOUBLE_TAP_MS) this.#dive = true;
+        this.#lastCrouchTap = now;
       }
+      if (isBound('sprint', e.code)) {
+        if (now - this.#lastSprintTap < DOUBLE_TAP_MS) this.#tac = true;
+        this.#lastSprintTap = now;
+      }
+      if (isBound('dive', e.code)) this.#dive = true;
     });
-
     window.addEventListener('keyup', (e) => this.#keys.delete(e.code));
-    window.addEventListener('blur', () => { this.#keys.clear(); this.firing = false; this.ads = false; });
+    window.addEventListener('blur', () => { this.#keys.clear(); this.#mouseFire = false; this.#mouseAds = false; this.firing = false; this.ads = false; });
     window.addEventListener('mousemove', (e) => {
+      if (!this.locked) return;
       this.inputType = 'mouse';
-      if (this.locked) this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity);
+      this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity);
     });
     window.addEventListener('mousedown', (e) => {
-      this.inputType = 'mouse';
-      if (e.button === 0 && this.locked) this.firing = true;
-      if (e.button === 2 && this.locked) this.ads = true;
+      if (!this.locked) return;
+      if (e.button === 0) { this.#mouseFire = true; this.firing = true; }
+      if (e.button === 2) { this.#mouseAds = true; this.ads = true; }
     });
     window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.firing = false;
-      if (e.button === 2) this.ads = false;
+      if (e.button === 0) { this.#mouseFire = false; this.firing = false; }
+      if (e.button === 2) { this.#mouseAds = false; this.ads = false; }
     });
-    window.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); });
+    window.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); }); // SPEC 29.3: right mouse aims
   }
 
   get locked() {
     return document.pointerLockElement === this.#canvas;
   }
 
+  // Pointer captured (desktop), touch controls enabled (mobile), or a gamepad connected.
   get active() {
-    return this.locked || this.touch.active || this.#hasActiveGamepad();
+    return this.locked || this.touch.active || this.#gamepad() !== null;
   }
 
-  #hasActiveGamepad() {
-    if (typeof navigator === 'undefined' || !navigator.getGamepads) return false;
-    const gps = navigator.getGamepads();
-    for (let i = 0; i < gps.length; i++) {
-      if (gps[i] && gps[i].connected) return true;
-    }
-    return false;
-  }
-
+  // Raw camera turn: mouse, recoil, recovery. No assist.
   turn(dyaw, dpitch) {
     this.yaw += dyaw;
     this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch + dpitch));
+  }
+
+  // SPEC 32.5: a turn that came from a stick or a touch drag; the installed aim assist may bend it.
+  aimTurn(dyaw, dpitch, type) {
+    this.inputType = type;
+    if (this.aimAssist && type !== 'mouse') {
+      const a = this.aimAssist(dyaw, dpitch, type);
+      dyaw = a.dyaw;
+      dpitch = a.dpitch;
+    }
+    this.turn(dyaw, dpitch);
   }
 
   has(code) {
     return this.#keys.has(code);
   }
 
-  // Polls connected gamepads for stick/button inputs
-  pollGamepad() {
+  #gamepad() {
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
-    const gps = navigator.getGamepads();
-    let gp = null;
-    for (let i = 0; i < gps.length; i++) {
-      if (gps[i] && gps[i].connected) { gp = gps[i]; break; }
-    }
+    for (const gp of navigator.getGamepads()) if (gp && gp.connected) return gp;
+    return null;
+  }
+
+  // SPEC 32.6 standard mapping: left stick move, right stick aim, RT shoot, LT ADS, A jump, B crouch (double tap
+  // dives), X reload, Y switch, LB / RB abilities, right stick click tactical sprint. Called once per command.
+  #pollGamepad() {
+    const gp = this.#gamepad();
     if (!gp) return null;
-
-    // Left stick: move
-    const lsX = applyDeadzone(gp.axes[0] ?? 0);
-    const lsY = applyDeadzone(gp.axes[1] ?? 0);
-
-    // Right stick: aim
+    const btn = (i) => !!gp.buttons[i]?.pressed || (gp.buttons[i]?.value ?? 0) > 0.5;
     const rsX = applyDeadzone(gp.axes[2] ?? 0);
     const rsY = applyDeadzone(gp.axes[3] ?? 0);
-
-    if (Math.abs(rsX) > 0 || Math.abs(rsY) > 0) {
-      this.inputType = 'gamepad';
-      // Quadratic curve for finer control
-      const aimX = Math.sign(rsX) * Math.pow(Math.abs(rsX), 1.5) * this.gamepadSensitivity;
-      const aimY = Math.sign(rsY) * Math.pow(Math.abs(rsY), 1.5) * this.gamepadSensitivity;
-      this.turn(-aimX, -aimY);
+    if (rsX !== 0 || rsY !== 0) {
+      this.aimTurn(-stickCurve(rsX) * this.gamepadSensitivity, -stickCurve(rsY) * this.gamepadSensitivity, 'gamepad');
     }
-
-    const btn = (i) => gp.buttons[i]?.pressed ?? false;
-
-    // RT/LT
     const rt = (gp.buttons[7]?.value ?? 0) > 0.2 || btn(7);
     const lt = (gp.buttons[6]?.value ?? 0) > 0.2 || btn(6);
-
-    if (rt) this.firing = true;
-    this.ads = lt;
-
+    this.firing = this.#mouseFire || rt;
+    this.ads = this.#mouseAds || lt;
+    const now = performance.now();
+    const edge = (name, down) => { const was = !!this.#gpPrev[name]; this.#gpPrev[name] = down; return down && !was; };
+    if (edge('crouch', btn(1))) {
+      if (now - this.#lastCrouchTap < DOUBLE_TAP_MS) this.#dive = true;
+      this.#lastCrouchTap = now;
+    }
+    if (edge('tac', btn(11))) this.#tac = true;
+    if (edge('reload', btn(2))) this.#gpEdges.push('reload');
+    if (edge('switch', btn(3))) this.#gpEdges.push('switch');
+    if (edge('ability1', btn(4))) this.#gpEdges.push('ability1');
+    if (edge('ability2', btn(5))) this.#gpEdges.push('ability2');
+    if (edge('grenade', btn(9))) this.#gpEdges.push('grenade'); // Start / Menu doubles as grenade on pads without extra buttons
+    if (edge('scoreboard', btn(8))) this.#gpEdges.push('scoreboard');
     return {
-      fwd: -lsY,
-      right: lsX,
-      jump: btn(0), // A
-      crouch: btn(1), // B
-      reload: btn(2), // X
-      switch: btn(3), // Y
-      lb: btn(4),
-      rb: btn(5),
-      tacSprint: btn(11), // RS click
+      fwd: -applyDeadzone(gp.axes[1] ?? 0),
+      right: applyDeadzone(gp.axes[0] ?? 0),
+      jump: btn(0),
+      crouch: btn(1),
     };
   }
 
-  // Movement intent for one command.
+  // Gamepad button presses since the last call (reload, switch, ability1, ability2, grenade, scoreboard).
+  takeGamepadActions() {
+    if (this.#gpEdges.length === 0) return [];
+    const out = this.#gpEdges;
+    this.#gpEdges = [];
+    return out;
+  }
+
+  // Movement intent for one command. Zero while input is not active (menu, Esc).
   sample() {
-    if (this.touch.active) this.inputType = 'touch';
-
+    if (this.touch.active) this.inputType = this.inputType === 'gamepad' ? 'gamepad' : 'touch';
     if (!this.active || this.chatOpen) {
-      this.#diveTriggered = false;
-      this.#tacSprintTriggered = false;
-      return { fwd: 0, right: 0, jump: false, sprint: false, crouch: false, dive: false, tacSprint: false };
+      this.#dive = false;
+      this.#tac = false;
+      return { fwd: 0, right: 0, jump: false, sprint: false, crouch: false, dive: false, tac: false };
     }
-
-    const gp = this.pollGamepad();
-
+    const gp = this.#pollGamepad();
     const k = (action) => (this.#keys.has(bind(action)) ? 1 : 0);
-
-    const fwdKey = clamp1(k('fwd') - k('back'));
-    const rightKey = clamp1(k('right') - k('left'));
-
-    const gpFwd = gp ? gp.fwd : 0;
-    const gpRight = gp ? gp.right : 0;
-
-    const fwd = clamp1(fwdKey + gpFwd + this.touch.fwd);
-    const right = clamp1(rightKey + gpRight + this.touch.right);
-
-    const jump = this.#keys.has(bind('jump')) || (gp ? gp.jump : false) || this.touch.jump;
-    const sprint = this.#keys.has(bind('sprint')) || !!this.touch.sprint;
-    const crouch = this.#keys.has(bind('crouch')) || this.#keys.has(bind('crouchAlt')) || (gp ? gp.crouch : false) || !!this.touch.crouch;
-
-    const dive = this.#diveTriggered || this.touch.dive;
-    const tacSprint = this.#tacSprintTriggered || (gp ? gp.tacSprint : false) || this.touch.tacSprint;
-
-    // Reset single-frame triggers
-    this.#diveTriggered = false;
-    this.#tacSprintTriggered = false;
-
+    const held = (action) => this.#keys.has(bind(action)) || this.#keys.has(bind(`${action}Alt`));
+    const dive = this.#dive || !!this.touch.dive;
+    const tac = this.#tac || !!this.touch.tac;
+    this.#dive = false;
+    this.#tac = false;
     return {
-      fwd,
-      right,
-      jump,
-      sprint,
-      crouch,
-      dive,
-      tacSprint,
+      fwd: clamp1(k('fwd') - k('back') + (gp?.fwd ?? 0) + this.touch.fwd),
+      right: clamp1(k('right') - k('left') + (gp?.right ?? 0) + this.touch.right),
+      jump: held('jump') || !!gp?.jump || !!this.touch.jump,
+      // SPEC 23 / 32: Shift sprints (any direction), C or Ctrl crouches (tap while sprinting to slide)
+      sprint: held('sprint') || !!this.touch.sprint,
+      crouch: held('crouch') || !!gp?.crouch || !!this.touch.crouch,
+      dive, // SPEC 32.2 one-command pulse
+      tac,
     };
   }
 }
