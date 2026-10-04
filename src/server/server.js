@@ -224,6 +224,8 @@ export async function startServer(options = {}) {
         room.handleReload(player.id);
       } else if (player && msg.t === 'switch') {
         room.handleSwitch(player.id, msg.slot);
+      } else if (player && msg.t === 'chat') {
+        room.handleChat(player.id, msg.text); // SPEC 29.1
       } else if (player && msg.t === 'ability') {
         room.handleAbility(player.id, msg.slot);
       } else if (player && msg.t === 'kit') {

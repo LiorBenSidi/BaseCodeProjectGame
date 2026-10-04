@@ -62,6 +62,20 @@ describe('join / welcome / snapshot flow', () => {
     assert.equal(ctx.room.playerCount, 2);
   });
 
+  it('SPEC 29.1: a chat line is sanitized and relayed to both clients with the sender name', async () => {
+    const a = await ctx.open();
+    const b = await ctx.open();
+    const idA = await a.join('Alpha');
+    await b.join('Beta');
+    a.send({ t: 'chat', text: '  gg \u0007 wp ' });
+    await waitFor(() => b.ofType('chat').length === 1, { what: 'B receives the chat line' });
+    assert.deepEqual(b.ofType('chat')[0], { t: 'chat', id: idA, name: 'Alpha', team: -1, text: 'gg   wp' });
+    await waitFor(() => a.ofType('chat').length === 1, { what: 'A receives its own line' });
+    a.send({ t: 'chat', text: 'too fast' });
+    await a.nextSnaps(5);
+    assert.equal(b.ofType('chat').length, 1, 'a second line inside one second is dropped');
+  });
+
   it('a second join on the same socket is ignored (one player, one welcome, name unchanged)', async () => {
     const c = await ctx.open();
     await c.join('Ann');
