@@ -6,6 +6,7 @@ export const MIN_SENSITIVITY = 0.0005;
 export const MAX_SENSITIVITY = 0.01;
 
 export const KEYS = {
+  quality: 'bca.quality', // SPEC 30.5: 'low' | 'medium' | 'high' | null (auto)
   SENSITIVITY: 'bca.sensitivity',
   TOUCH_CONTROLS: 'bca.touchControls',
   SHOW_FPS: 'bca.showFps',
@@ -139,3 +140,18 @@ export function setFov(storage, value) {
   return v;
 }
 
+
+// SPEC 30.5 quality tier; null means automatic (themes.js qualityTierFor).
+export function getQuality(storage = (typeof window !== 'undefined' ? window.localStorage : null)) {
+  try {
+    const v = storage?.getItem(KEYS.quality);
+    return v === 'low' || v === 'medium' || v === 'high' ? v : null;
+  } catch { return null; }
+}
+
+export function setQuality(storage = (typeof window !== 'undefined' ? window.localStorage : null), value) {
+  try {
+    if (value === 'low' || value === 'medium' || value === 'high') storage?.setItem(KEYS.quality, value);
+    else storage?.removeItem(KEYS.quality);
+  } catch { /* storage unavailable: the choice lasts for the session */ }
+}

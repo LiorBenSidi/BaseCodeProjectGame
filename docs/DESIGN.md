@@ -281,3 +281,5 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Upgrade environment visuals from flat boxes to browser-tier PBR materials, HDRI lighting, glTF props, post-processing, and enhanced combat particles. Pure map data in `src/shared/maps.js` holds visual prop positions without touching collision boxes. Tiling uses world scale UV repeats. Assets are CC0 licensed from Poly Haven, ambientCG, and Kenney with full fallback to flat procedural visuals on failure. Quality settings adapt to device tiers automatically via `deviceMode.js`.
 - Source: Pro brief approval 2026-10-04 (Batch P1, SPEC section 30).
 - Affects: docs/SPEC.md section 30; `docs/ART_DIRECTION.md`, `docs/ASSETS.md`, `src/shared/maps.js`, `src/client/{scene,arenaStyle,effects,pickups,theme}.js`, `public/assets/env/**`.
+- Amendment 2026-10-05: shipped as procedural generation (textures, sky, props, pickup models) instead of downloaded glTF / HDRI assets: zero licensing surface, offline, nothing but code in the bundle. The CC0 rule stays for any future download.
+

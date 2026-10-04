@@ -927,37 +927,36 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 `tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
 
 
-## 30. Pro Environment and Graphics (Batch 1, D-027)
+## 30. Pro environment and graphics (Pro batch P1, D-027)
 
-### 30.1 Art Direction and Style Guide
-Defined in docs/ART_DIRECTION.md. Maps feature distinct PBR visual themes:
-- Arena: Clean industrial concrete and slate metal.
-- Foundry: Rusted steel, oxidized copper, dark industrial iron.
-- Crossfire: Desert sandstone, weathered masonry, terracotta.
-Gameplay readability: Team colors (blue/red) and high-contrast player silhouettes strictly take visual priority over environment props and textures.
+Everything in this section is client rendering (`src/client/`), except the pure props data in `src/shared/props.js`.
+No asset is downloaded: every texture, sky and prop is generated procedurally at load, so the game has no licensing
+surface, works offline and ships nothing but code (docs/ASSETS.md records this).
 
-### 30.2 PBR Textured Materials
-World-space tiled PBR textures (diffuse/albedo, normal, roughness) for floors, walls, and box tops/sides.
-Loaded via TextureLoader with graceful fallback to flat procedural colors (boxMaterialParams / FLOOR) when textures are unavailable or fail to load.
-Textures tile by world dimensions using UV repeat = surface size / tile scale.
+### 30.1 Art direction
+docs/ART_DIRECTION.md. Three themes in `src/client/themes.js`, keyed by map id, arena as the fallback:
+- Arena: clean industrial dusk, concrete floor and walls, slate metal cover, blue accent lamps.
+- Foundry: rusted steel and oxidised copper under a hot orange horizon, orange accents.
+- Crossfire: desert sandstone and weathered masonry under a hard noon sun, no grid.
+Team colors and player silhouettes (arenaStyle.js, SPEC 19.3 / 22) stay above every theme: a theme never uses the team hues (tested).
 
-### 30.3 Sky and HDRI Environment
-Equirectangular HDRI / sky texture per map loaded into environment lighting and sky dome.
-Fallback to procedural gradient sky (buildSky) if HDRI texture fails or is disabled.
+### 30.2 Procedural PBR surfaces (`src/client/textures.js`)
+Five surface recipes (`concrete`, `metal`, `rust`, `sand`, `masonry`) built from a tiling, seeded value noise (`hash2`, `valueNoise`, `fbm`): an albedo tile the theme color tints, and a roughness map, with the recipe's metalness. Plates and bricks get a darker mortar grid with per plate tone; speckle adds grain. Tiles repeat by world size (`tileRepeat(w, h, tile)`, half tile steps, never below one), sides and tops of a box get their own repeat so tall walls do not stretch. Textures are cached per surface and size (256 px on low, 512 px otherwise); without a DOM the material falls back to a flat color (tests run without a GPU).
 
-### 30.4 Visual Props
-MAPS in src/shared/maps.js includes a pure props array per map entry defining visual-only glTF props ({ id, assetId, position: [x, y, z], rotation: [rx, ry, rz], scale: [sx, sy, sz] }).
-Props have no physics collision (physics box geometry remains unchanged).
+### 30.3 Sky and lighting
+Per theme: a vertex colored dome graded horizon to zenith with a sun disc and halo along `sky.sunDir`, fog, a shadow casting sun, a hemisphere light and a colored fill, `renderer.toneMappingExposure` per theme. `setMap` rebuilds sky, lights, arena and props together; the previous meshes, materials and textures are disposed.
 
-### 30.5 Post-Processing Pipeline
-EffectComposer pipeline with ACES Filmic tonemapping, subtle bloom, ambient occlusion (cheap AO/SSAO), and FXAA antialiasing.
-Exported as setQuality('low' | 'medium' | 'high') with automatic quality tier defaulting based on device capability via deviceMode.js.
+### 30.4 Visual props (`src/shared/props.js`, `src/client/props.js`)
+`propsFor(map)` derives props deterministically from the collision boxes: lamps on the inner face of the four perimeter walls every 16 m at 3.5 m (above head height), a trim strip along each wall top, and crates or barrels on top of cover between 2 m and 5 m high with a footprint of at least 3 x 3 m, never within 1.5 m of a spawn. Nothing is placed on the floor, so no prop needs collision. `propIsValid` is the invariant (inside the arena, 2 m or higher). Lamps carry a point light on medium and high quality (at most 8).
 
-### 30.6 Combat Visuals
-Enhanced muzzle flashes (sprite + point light flicker), bullet tracers, capped impact decal sprites with spark particles, and grenade explosion lighting with smoke puffs in src/client/effects.js.
+### 30.5 Post-processing and quality tiers (`src/client/post.js`, `themes.js`)
+EffectComposer: render pass, UnrealBloom (strength 0.22, radius 0.35, threshold 0.85), FXAA, OutputPass (ACES filmic, sRGB). Tiers: `low` (no composer, no shadows, pixel ratio 1, 256 px textures), `medium` (shadows 1024, bloom, pixel ratio up to 1.5), `high` (shadows 2048, bloom, pixel ratio up to 2). `qualityTierFor` picks automatically from touch, cores, memory and resolution; `settings.getQuality / setQuality` (`bca.quality`) persist an override, `Game.setQuality(tier)` applies it live. The settings control arrives with batch P4.
 
-### 30.7 Pickup Models
-3D prop models for pickup spots (medkit crate for health, ammo box for ammo, weapon crates/models for weapons) with smooth rotation and vertical bobbing.
+### 30.6 Combat visuals (`src/client/combatFx.js`)
+Pooled and capped: 6 muzzle flash point lights (70 ms, flicker down), 24 additive spark sprites at the impact point (320 ms, rising then falling), explosion light (260 ms, orange, 18 m). Fed from the replicated `shot` and `boom` messages in `game.js` (`// PRO-env`), so every client sees the same flashes.
 
-### 30.8 Dynamic Shadow and Sun Lighting
-Map-specific directional sun position and color, hemisphere ambient fill, and player-centered shadow map updates.
+### 30.7 Pickup models (`src/client/pickups.js`)
+Medkit case with a cross on both faces, ammo can with three brass tips, gun silhouette with grip and magazine; the accent material colors the recognisable part only. Spin and bob unchanged from SPEC 21.1.
+
+### 30.8 Tests
+`tests/unit/proEnv.test.js` (6: themes and team color separation, surface kinds and tiling, noise determinism and periodicity, texel rules, props invariants on every map, quality tiers and persistence).

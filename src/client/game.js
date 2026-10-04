@@ -20,6 +20,7 @@ import { targetFov, sensitivityScale, stepFov, isScoped, DEFAULT_FOV } from './a
 import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
+import { CombatFx } from './combatFx.js'; // PRO-env: SPEC 30.6
 import { TouchControls } from './touch.js';
 
 const TRACER_MS = 90;
@@ -54,6 +55,7 @@ export class Game {
   #tracers = [];
   #pickups;
   #effects;
+  #fx = null; // PRO-env: SPEC 30.6 muzzle flashes, sparks, explosion light
   #kit = 'vanguard';
   #self = null; // SPEC 24.5 private block of the last snapshot
   #sdk = null;
@@ -78,6 +80,7 @@ export class Game {
     this.#grenades = new Grenades(this.#gfx.scene);
     this.#pickups = new Pickups(this.#gfx.scene); // SPEC 21.1
     this.#effects = new Effects(this.#gfx.scene); // SPEC 24.5
+    this.#fx = new CombatFx(this.#gfx.scene); // PRO-env
     this.#weaponView = new WeaponView(this.#gfx.camera); // SPEC 29.4
     this.#gfx.scene.add(this.#gfx.camera); // the view model is a child of the camera
     window.addEventListener('keydown', (e) => {
@@ -127,6 +130,15 @@ export class Game {
 
   setFov(value) {
     this.#baseFov = value;
+  }
+
+  // PRO-env: SPEC 30.5 quality tier from the settings panel (P4 adds the control); an unknown tier returns to automatic.
+  setQuality(tier) {
+    this.#gfx.setQuality(tier);
+  }
+
+  get quality() {
+    return this.#gfx.quality;
   }
 
   // SPEC 29.1: chat input; the caller (main.js) owns the DOM element and the Enter key.
@@ -241,9 +253,11 @@ export class Game {
       welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#setMap(m.map); this.#pickups.setSpots(m.pickups); },
       pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
       snap: (m) => this.#onSnapshot(m),
-      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
+      shot: (m) => { this.#addTracer(m); this.#fx.shot(m.from, m.to, performance.now(), m.id === this.#id); // PRO-env
+  if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
       verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
-      boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
+      boom: (m) => { this.#fx.boom(m.at, performance.now()); this.#combat.boom(m, this.#id); // PRO-env
+  this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
         if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
@@ -423,9 +437,10 @@ export class Game {
 
     this.#remote.update(now);
     this.#updateTracers(now);
+    this.#fx.update(now); // PRO-env
     this.#grenades.update(now);
     this.#pickups.update(now);
-    const { camera, renderer, scene } = this.#gfx;
+    const { camera } = this.#gfx;
     // SPEC 23: the eye follows the crouch height; smoothed so a slide does not snap the camera
     const eyeTarget = this.#me.y + eyeOf(this.#me);
     this.#eyeY = this.#eyeY === null ? eyeTarget : this.#eyeY + (eyeTarget - this.#eyeY) * Math.min(1, dt * 14);
@@ -442,6 +457,6 @@ export class Game {
     this.#weaponView?.setVisible(this.#me.alive && !scoped);
     this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
     this.#footsteps(dt, speed);
-    renderer.render(scene, camera);
+    this.#gfx.render(); // PRO-env: SPEC 30.5 post pipeline (bloom, FXAA, output); low quality renders directly
   }
 }
