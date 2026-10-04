@@ -22,6 +22,8 @@ function parseCmd(c) {
     fwd: clamp(c.fwd, -1, 1),
     right: clamp(c.right, -1, 1),
     jump: !!c.jump,
+    sprint: !!c.sprint, // SPEC 23
+    crouch: !!c.crouch, // SPEC 23
     yaw: c.yaw,
     pitch: clamp(c.pitch, -MAX_PITCH, MAX_PITCH),
   };

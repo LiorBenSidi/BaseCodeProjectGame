@@ -32,7 +32,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - ~~Headshot hitbox (split the AABB), damage falloff.~~ Done in the milestone 1 combat slice.
 - ~~Pickups, respawn logic by safest spawn, spawn protection.~~ Done 2026-10-04 (D-020).
 - ~~Game modes: deathmatch with match timer, then team deathmatch.~~ Done 2026-10-04 (D-021).
-- Movement polish: crouch, slide, step-up, air control.
+- ~~Movement polish: crouch, slide, step-up, air control.~~ Done 2026-10-04 (D-022), plus sprint, mantle and wall jump.
 
 ## Phase 3 - Rooms and lobby
 - Multiple `GameRoom` instances, lobby list, matchmaking by capacity.

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NAME_TAG, nameTagLayout, teamColorHex } from './arenaStyle.js';
+import { PLAYER } from '../shared/constants.js';
 
 const INTERP_DELAY_MS = 100; // render remote players ~3 ticks in the past so there is always a pair to blend
 
@@ -74,6 +75,9 @@ export class RemotePlayers {
       mesh.visible = pb.alive === 1;
       if (mesh.userData.name !== pb.name) this.#setTag(mesh, pb.name);
       if (mesh.userData.team !== pb.tm) this.#setTeam(mesh, id, pb.tm);
+      // SPEC 23: a crouched or sliding body is squashed to its hitbox height; the tag stays above the head.
+      const hk = typeof pb.h === 'number' ? Math.max(0.3, pb.h / PLAYER.height) : 1;
+      if (mesh.userData.hk !== hk) this.#setHeight(mesh, hk);
     }
     for (const [id, mesh] of this.#meshes) {
       if (seen.has(id)) continue;
@@ -88,6 +92,14 @@ export class RemotePlayers {
     mesh.userData.bodyMaterial?.color.set(teamColorHex(id, team));
   }
 
+  #setHeight(mesh, hk) {
+    mesh.userData.hk = hk;
+    const body = mesh.userData.body;
+    if (body) body.scale.y = hk;
+    const tag = mesh.getObjectByName('tag');
+    if (tag) tag.position.y = NAME_TAG.y * hk;
+  }
+
   #create(id) {
     const group = new THREE.Group();
     const color = new THREE.Color(teamColorHex(id));
@@ -100,7 +112,10 @@ export class RemotePlayers {
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.05), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 }));
     visor.position.set(0, 1.58, -0.22); // faces -Z, the direction yaw 0 looks
     for (const m of [body, head, visor]) { m.castShadow = true; m.receiveShadow = true; }
-    group.add(body, head, visor);
+    const bodyGroup = new THREE.Group();
+    bodyGroup.add(body, head, visor);
+    group.add(bodyGroup);
+    group.userData.body = bodyGroup;
     this.#scene.add(group);
     this.#meshes.set(id, group);
     return group;
@@ -114,7 +129,7 @@ export class RemotePlayers {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthWrite: false, fog: false }));
     sprite.name = 'tag';
     sprite.scale.set(...scale);
-    sprite.position.y = NAME_TAG.y;
+    sprite.position.y = NAME_TAG.y * (group.userData.hk ?? 1);
     group.add(sprite);
   }
 }

@@ -153,7 +153,17 @@ test('a valid single-command input message is accepted with all fields preserved
   const c = goodCmd({ seq: 7, fwd: 1, right: -1, jump: true, yaw: 1.25, pitch: 0.5 });
   const r = parseClientMessage(input([c]));
   assert.equal(r.ok, true);
-  assert.deepEqual(r.msg, { t: 'input', cmds: [c] });
+  assert.deepEqual(r.msg, { t: 'input', cmds: [{ ...c, sprint: false, crouch: false }] }); // SPEC 23: absent stance flags are false
+});
+
+test('SPEC 23: sprint and crouch are coerced to booleans and never anything else', () => {
+  const c = goodCmd({ sprint: 1, crouch: 'yes' });
+  const r = parseClientMessage(input([c]));
+  assert.equal(r.msg.cmds[0].sprint, true);
+  assert.equal(r.msg.cmds[0].crouch, true);
+  const z = parseClientMessage(input([goodCmd({ sprint: 0, crouch: null })]));
+  assert.equal(z.msg.cmds[0].sprint, false);
+  assert.equal(z.msg.cmds[0].crouch, false);
 });
 
 test('input commands preserve order', () => {
@@ -308,7 +318,7 @@ test('command extra fields are dropped and __proto__ inside a command has no eff
   const raw = '{"t":"input","cmds":[{"seq":1,"fwd":0,"right":0,"yaw":0,"pitch":0,"isAdmin":true,"hp":500,"__proto__":{"jump":true}}]}';
   const r = parseClientMessage(raw);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.msg.cmds[0], { seq: 1, fwd: 0, right: 0, jump: false, yaw: 0, pitch: 0 });
+  assert.deepEqual(r.msg.cmds[0], { seq: 1, fwd: 0, right: 0, jump: false, sprint: false, crouch: false, yaw: 0, pitch: 0 });
   assert.equal(r.msg.isAdmin, undefined);
 });
 

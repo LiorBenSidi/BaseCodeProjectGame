@@ -1,6 +1,7 @@
 // Hit-scan helpers (server-side authority; the client only uses aimDir for nothing critical).
 
 import { PLAYER } from './constants.js';
+import { heightOf } from './movement.js';
 
 // Direction for camera rotation order YXZ (yaw about Y, then pitch about X). Matches movement.js.
 export function aimDir(yaw, pitch) {
@@ -10,7 +11,7 @@ export function aimDir(yaw, pitch) {
 
 export function playerBox(p) {
   const R = PLAYER.radius;
-  return { min: [p.x - R, p.y, p.z - R], max: [p.x + R, p.y + PLAYER.height, p.z + R] };
+  return { min: [p.x - R, p.y, p.z - R], max: [p.x + R, p.y + heightOf(p), p.z + R] }; // SPEC 23: crouch lowers the box
 }
 
 // Slab test. Returns distance t >= 0 along a normalised dir, or null on miss.
