@@ -1,0 +1,12 @@
+[
+ {"goto":"http://localhost:8820/","wait":3000},
+ {"name":"reset tutorial + pick range","eval":"(()=>{for (const k of Object.keys(localStorage)) if (/tut/i.test(k)) localStorage.removeItem(k); document.getElementById('create-mode').value='range'; document.getElementById('create-room').click(); return 'room-line: '+document.getElementById('room-line').textContent.trim().slice(0,80)+' | hidden='+document.getElementById('room-line').hidden;})()","sleep":500},
+ {"name":"play range","eval":"(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()","sleep":4000,"shot":"11-range"},
+ {"name":"range state","eval":"JSON.stringify({hudHidden: document.getElementById('hud').hidden, tutorial: document.getElementById('tutorial').hidden ? 'hidden' : document.getElementById('tutorial').textContent.replace(/\\s+/g,' ').trim().slice(0,140), status: document.getElementById('status').textContent.replace(/\\s+/g,' ').trim().slice(0,80), scoreboard: (document.getElementById('scoreboard').textContent.match(/\\[BOT\\]/g)||[]).length+' bots', skipBtn: !!document.querySelector('#tutorial button')})"},
+ {"name":"move (tutorial step 1)","eval":"(()=>{const k=(t,c)=>{const e=new KeyboardEvent(t,{code:c,key:c,bubbles:true}); window.dispatchEvent(e); document.dispatchEvent(e);}; k('keydown','KeyW'); setTimeout(()=>k('keyup','KeyW'),2500); return 'moving';})()","sleep":3500},
+ {"name":"tutorial after move","eval":"document.getElementById('tutorial').hidden ? 'hidden' : document.getElementById('tutorial').textContent.replace(/\\s+/g,' ').trim().slice(0,140)","shot":"12-range-tut"},
+ {"name":"skip tutorial","eval":"(()=>{const b=[...document.querySelectorAll('button')].find(b=>/skip tutorial/i.test(b.textContent)); if(!b) return 'no skip'; b.click(); return 'skipped';})()","sleep":800},
+ {"name":"after skip","eval":"JSON.stringify({tutorial: document.getElementById('tutorial').hidden, hp: document.getElementById('hp-value').textContent, fps: document.getElementById('fps').textContent})"},
+ {"sleep":8000},
+ {"name":"range 8s later (dummies must not shoot)","eval":"JSON.stringify({hp: document.getElementById('hp-value').textContent, scoreboard: document.getElementById('scoreboard').textContent.replace(/\\s+/g,' ').trim().slice(0,160), matchEnd: document.getElementById('match-end').hidden})","shot":"13-range-later"}
+]

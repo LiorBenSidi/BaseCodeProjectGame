@@ -1122,3 +1122,6 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 - `tests/latency/tickBudget.test.js`: a 16 seat room (12 humans sending every tick, 4 medium bots), 600 ticks, p99 per tick under 6 ms (measured locally: p50 0.08 ms, p99 0.7 ms).
 - `test:dry` includes regression; the two CI steps (`npm run test:regression`, `npm run test:latency`) are listed in docs/TESTING.md for the owner to add to ci.yml (the agent token cannot edit workflows).
 - `.env.example` documents every variable `config.js` validates. `CLAUDE.md` points AI tools at AGENTS.md.
+
+### 36.8 Browser smoke run (D-035)
+`scripts/smoke-browser.mjs <steps.json> [baseUrl]` drives the built client in headless Chrome over the DevTools protocol (no new dependency) and prints what each step read from the DOM. Step files live in docs/smoke: `settings.json` (every tab, keybinds, video fields, the search bar), `deathmatch.json` (join, HUD, telemetry row, scoreboard with a bot, bots fighting back, minimap), `range-tutorial.json` (range room, tutorial steps, dummies). The Node dev server hosts one deathmatch room, so the range and tutorial files only mean something against the live actor. The first run found and fixed a crash in the Play handler (the settings dialog had moved out of the menu form in P4; `tests/unit/researchPolish.test.js` now guards it).

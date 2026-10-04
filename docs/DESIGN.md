@@ -330,3 +330,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Adopt the three test disciplines that recur across Lior's repositories (contract invariants, regression baselines, latency budgets) as first class suites with their own folders and CI steps, plus `.env.example` and `CLAUDE.md`. Keep the existing lowercase `tests/<suite>` naming (the runner and CI depend on it) rather than renaming to `Unit_Tests/`; the categories are the point, not the casing.
 - Source: Lior, 2026-10-05 ("make sure you really learned from my repos").
 - Affects: tests/regression, tests/latency, scripts/run-tests.mjs, package.json, .github/workflows/ci.yml, .env.example, CLAUDE.md, docs/TESTING.md, docs/SPEC.md 36.6 and 36.7.
+
+### D-035 Headless browser smoke runs in the repo
+- Status: decided
+- Date: 2026-10-05
+- Decision: Keep a dependency free DevTools-protocol driver and its step files in the repository so the built client is exercised in a real browser before a release, locally against the Node server and after Publish against the live actor. Unit suites cannot see a null element dereference in a DOM handler; this run caught one on its first pass.
+- Source: smoke run 2026-10-05 (Play handler TypeError), Lior's "test everything, including live".
+- Affects: scripts/smoke-browser.mjs, docs/smoke/*.json, docs/SPEC.md 36.8, docs/TESTING.md.

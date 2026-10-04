@@ -1,5 +1,6 @@
 // SPEC 36 (D-033): the research-driven polish. Telemetry math, controller curves, mix presets, prefs fields.
 import { test } from 'node:test';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { newTelemetry, recordPing, recordSnapshot, stats, level, format, frameDue, WINDOW } from '../../src/client/telemetry.js';
 import { applyDeadzones, responseCurve, shapeStick, CURVES } from '../../src/client/gamepadCurve.js';
@@ -85,4 +86,13 @@ test('settings search: every word must match label, key, tab or an enum value; e
   assert.ok(searchFields('controller curve').includes('gamepadCurve'));
   assert.ok(searchFields('video').length >= 3, 'the tab name is searchable');
   assert.deepEqual(searchFields('zzzz-no-such-setting'), []);
+});
+
+test('smoke regression: the Play handler never dereferences a settings element inside the menu form (SPEC 33 moved it out)', () => {
+  const src = fs.readFileSync(new URL('../../src/client/main.js', import.meta.url), 'utf8');
+  assert.ok(!src.includes("menu.querySelector('#settings')"), 'main.js must look the settings panel up on the document, not inside the form');
+  const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const form = html.slice(html.indexOf('<form id="menu"'), html.indexOf('</form>'));
+  assert.ok(!form.includes('id="settings"'), 'the settings dialog lives outside the menu form');
+  assert.ok(html.includes('<section id="settings"'), 'and exists on the page');
 });

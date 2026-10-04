@@ -99,3 +99,13 @@ CI wiring (owner step: the agent's GitHub token has no `workflow` scope, so this
       - name: Latency budget (tick p99)
         run: npm run test:latency
 ```
+
+## Browser smoke run (SPEC 36.8)
+
+```bash
+PORT=8820 ALLOWED_ORIGINS=http://localhost:8820 NODE_ENV=production node src/server/index.js &
+node scripts/smoke-browser.mjs docs/smoke/settings.json
+node scripts/smoke-browser.mjs docs/smoke/deathmatch.json
+node scripts/smoke-browser.mjs docs/smoke/range-tutorial.json https://<live host>   # actor only
+```
+Each step prints a JSON line of what it read from the page; screenshots land in /tmp/smoke. Needs google-chrome.
