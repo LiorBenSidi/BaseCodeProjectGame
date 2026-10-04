@@ -805,3 +805,56 @@ All in `src/shared/movement.js` (`stepPlayer`, plus `heightOf(p)` and `eyeOf(p)`
 ### 23.7 Tests
 `tests/unit/movementParkour.test.js` (12 cases: sprint, crouch and head room, zone scaling, slide start / lock / decay / no re-trigger, step-up vs wall, mantle with and without a jump, wall jump and its reset, fresh-press rule, air control, determinism), the SPEC 23 cases in `tests/unit/protocol.test.js`, and the `h` key in the snapshot key lists.
 
+## 24. Kits and abilities (Batch 3e, D-023)
+
+`src/shared/abilities.js` (pure, time and randomness injected). Four kits, two abilities each, slot 0 on Q and slot 1 on E:
+
+| Kit | Slot 0 | Slot 1 |
+|---|---|---|
+| Vanguard (default) | `dash` 5 s: 0.2 s burst at `PLAYER.dashSpeed` (18 m/s) in the movement direction, else facing | `shield` 12 s: a 3 x 2.2 x 0.3 m wall 1.5 m ahead across the facing axis, 8 s |
+| Phantom | `blink` 8 s: 8 m horizontal teleport along the facing, stopped 5 cm short of the first box (box widened by the player radius), clamped to the arena | `decoy` 14 s: a player-shaped marker walking forward at 4 m/s for 6 s, 25 hp, dies on any damage |
+| Engineer | `grapple` 7 s: an anchor on the first box along the aim within 25 m (else `no_anchor`, no cooldown); pulled at 16 m/s until within 1.2 m, a jump press, or 1.5 s | `scan` 10 s: enemies within 25 m carry `sc: 1` for 5 s |
+| Medic | `heal` 12 s: a 4 m zone for 6 s healing 10 hp/s to the owner (DM) or the owner's team (TDM), capped at `MAX_HP` | `stasis` 15 s: a 6 m field for 6 s; enemies inside have their movement input scaled by 0.5 (server side, sprint off) |
+
+### 24.1 Intents and state
+- Join: `{ t: 'join', name, kit? }`; an unknown kit falls back to `vanguard`. `welcome` carries `kit`.
+- `{ t: 'ability', slot: 0 | 1 }`: validated in `protocol.js`; the room applies it once per tick in `#stepAbilities` (before weapons and movement) when the match is `playing`, the player is alive and the slot is off cooldown. Success broadcasts `{ t: 'ability', id, ability, slot, cd }`; a refusal is private: `{ t: 'ability', id, slot, denied: 'cooldown' | 'dead' | 'no_anchor' | ... }`.
+- `{ t: 'kit', id }`: stored as `nextKit`, applied on the next spawn (and on match restart). Cooldowns survive death and reset on match restart.
+- Player state: `kitState { kit, readyAt[2] }`, `nextKit`, `grapple`, `scannedUntil`, `dash`, `dashDx`, `dashDz`.
+
+### 24.2 Dash and prediction
+The dash runs inside `stepPlayer` (`p.dash` seconds left, `dashDx` / `dashDz`): velocity is the dash vector at `dashSpeed`, the slide is cancelled, gravity still applies. The recipient's private `self` block carries `dash`, `dashDx`, `dashDz` while active so client prediction replays the same burst.
+
+### 24.3 Effects and combat
+The room keeps `#fx` (shields, decoys, heal zones, stasis fields), stepped by `stepEffects` after grenades. Shields are extra boxes for `resolveShot`, `stepGrenade` and `blastDamage` (they block bullets, bounce grenades, stop blast line of sight). Decoys are shot targets with id `-fxId`: pellets that hit one give the shooter a `hit` marker with the negative id and a zero-damage verdict, and the decoy dies. Scanned players are flagged `sc: 1`. The grapple pull is applied before each command (`applyGrapple`), setting the velocity toward the anchor.
+
+### 24.4 Stasis
+`slowFactor(fx, p)` is 0.5 for an enemy inside a stasis field. `#runCommands` scales `fwd` and `right` and clears `sprint` on a copy of each command; the client predicts at full speed and reconciles to the server's position (accepted V1 trade-off, documented in D-023).
+
+### 24.5 Snapshot
+- Per player: `kt` (index into `KIT_IDS`), `lv` (level), `sc` (scanned).
+- Top level: `fx: [{ id, k, o, tm, x, y, z, yaw?, r?, nm?, ttl }]` from `describeEffects`.
+- Per recipient `self`: `{ cd: [ms, ms], kit, dash?, dashDx?, dashDz?, grapple?, xp, lvl, offer?, perks? }`. Optional keys are omitted when idle so a full room with 16 grenades stays under 4096 bytes (measured 4040).
+
+### 24.6 Client
+Menu kit picker (`kitUi.js`, remembered in `localStorage` key `bca.kit`), Q / E send the ability intent, two ability chips with a cooldown sweep and a red flash on refusal, `effects.js` renders shields (translucent box), decoys (player silhouette in the owner's color), heal and stasis domes. A kit change in the menu while joined sends `{ t: 'kit' }` and prints "kit on next spawn" in the feed. The debug harness exposes `useAbility`, `pickPerk`, `selectKit`.
+
+## 25. In-match progression: XP, levels, perks (Batch 3e, D-023)
+
+`src/shared/progression.js` (pure). Everything resets on match restart.
+
+### 25.1 XP
+Kill 100. Assist 50 (anyone else who damaged the victim within 10 s; team mates of the victim excluded). Damage 1 XP per 10 hp applied, capped at 10 XP per victim per life. Levels at 0 / 100 / 250 / 500 / 850 XP (levels 1 to 5). Each award sends `{ t: 'xp', amount, xp, lvl, levelUp?, offer }` to the earner.
+
+### 25.2 Perks
+Each level-up offers two distinct perks not yet taken (deterministic from the room's `random`); a second level-up while an offer is open queues the next offer. Perks: `faster_reload` (reload 0.8x), `cooldown` (ability cooldowns 0.8x), `grenadier` (+1 grenade per life), `thick_skin` (damage taken 0.9x), `quick_switch` (weapon switch 0.5x). Multipliers live in `progress.mods` and apply in the room (`#stepWeapons`, `#stepAbilities`, `#fire`, `#stepGrenades`, `#respawn`); nothing touches shared prediction.
+
+### 25.3 Intents
+`{ t: 'perk', id }` (string, max 32 chars) picks from the open offer; a pick outside the offer is ignored. Success: `{ t: 'perk', id, perks }`. Client keys 3 / 4 pick the first / second card.
+
+### 25.4 Client
+XP bar with level and `xp / next` label under the ability chips; a perk offer card pair at the top while an offer is open; feed lines for level-up and the chosen perk.
+
+### 25.5 Tests
+`tests/unit/abilities.test.js` (14: kit table, cooldowns, every ability, stepEffects, grapple, scan, heal, stasis, room welcome and snapshot, intent flow and denial, shield and decoy in the firing path, kit change on spawn and XP), `tests/unit/progression.test.js` (5), `tests/unit/kitUi.test.js` (4), SPEC 24 cases in `protocol.test.js`, snapshot key lists updated.
+

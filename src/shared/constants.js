@@ -32,6 +32,7 @@ export const PLAYER = {
   wallJumpPush: 6, // m/s away from the wall
   wallJumpMul: 0.9, // of `jump`
   wallJumpsPerAir: 1,
+  dashSpeed: 18, // SPEC 24.2 Vanguard dash burst speed (m/s); its duration is ABILITIES.dash.time
 };
 
 export const WEAPON = {

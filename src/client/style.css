@@ -135,3 +135,38 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 #match-end-sub { margin-top: 6px; font-size: 14px; color: var(--text-muted, #9da7b3); }
 #match-end .match-end-hint { margin-top: 10px; font-size: 12px; color: var(--text-muted, #9da7b3); }
 
+/* SPEC 24.6 kit picker (menu) */
+.kit-title { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted, #9aa4b2); }
+#kit-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.kit-card { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; background: rgba(255, 255, 255, 0.04); cursor: pointer; }
+.kit-card.on { border-color: var(--accent, #38bdf8); background: rgba(56, 189, 248, 0.12); }
+.kit-card input { position: absolute; opacity: 0; pointer-events: none; }
+.kit-card strong { font-size: 14px; }
+.kit-blurb { font-size: 12px; color: var(--muted, #9aa4b2); }
+.kit-abilities { font-size: 11px; letter-spacing: 0.04em; color: var(--accent, #38bdf8); }
+
+/* SPEC 24.6 ability chips and SPEC 25.4 XP bar, bottom centre above the crosshair line */
+#kit { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+#abilities { display: flex; gap: 8px; }
+.chip { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-width: 112px; border-radius: 8px; background: rgba(8, 12, 22, 0.7); border: 1px solid rgba(255, 255, 255, 0.14); font-size: 12px; overflow: hidden; }
+.chip::before { content: ''; position: absolute; inset: 0; background: rgba(56, 189, 248, 0.22); transform: scaleX(calc(1 - var(--cd, 0))); transform-origin: left; transition: transform 120ms linear; }
+.chip.ready::before { background: rgba(56, 189, 248, 0.32); }
+.chip:not(.ready) { color: rgba(255, 255, 255, 0.65); }
+.chip .key { position: relative; display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255, 255, 255, 0.14); font-weight: 700; font-size: 11px; }
+.chip .name { position: relative; }
+.chip.deny { animation: chip-deny 300ms ease-out; }
+@keyframes chip-deny { 0% { border-color: #f87171; } 100% { border-color: rgba(255, 255, 255, 0.14); } }
+#xp-bar { position: relative; width: 240px; height: 14px; border-radius: 7px; background: rgba(8, 12, 22, 0.7); border: 1px solid rgba(255, 255, 255, 0.14); overflow: hidden; }
+#xp-fill { height: 100%; width: 0; background: linear-gradient(90deg, #38bdf8, #a78bfa); transition: width 200ms ease-out; }
+#xp-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; letter-spacing: 0.08em; }
+#perk-offer { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; pointer-events: none; }
+.perk { display: flex; flex-direction: column; gap: 4px; width: 180px; padding: 12px 14px; border-radius: 10px; background: rgba(8, 12, 22, 0.82); border: 1px solid rgba(167, 139, 250, 0.6); }
+.perk .key { align-self: flex-start; padding: 1px 7px; border-radius: 4px; background: rgba(167, 139, 250, 0.3); font-size: 11px; font-weight: 700; }
+.perk strong { font-size: 14px; }
+.perk .blurb { font-size: 12px; color: var(--muted, #9aa4b2); }
+@media (max-width: 760px) {
+  #kit { bottom: calc(96px + env(safe-area-inset-bottom)); }
+  #xp-bar { width: 180px; }
+  #kit-picker { grid-template-columns: 1fr; }
+}
+

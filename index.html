@@ -31,6 +31,11 @@
         </div>
       </div>
       <div id="match"><span id="match-timer" hidden></span><span id="match-teams" hidden></span></div>
+      <div id="kit">
+        <div id="abilities" aria-label="Abilities"></div>
+        <div id="xp-bar" aria-label="Experience"><div id="xp-fill"></div><span id="xp-label">LVL 1  0 / 100 XP</span></div>
+      </div>
+      <div id="perk-offer" hidden aria-label="Perk offer"></div>
       <div id="match-end" hidden><div id="match-end-title"></div><div id="match-end-sub"></div><div class="match-end-hint">Next match starts shortly</div></div>
       <div id="feed"></div>
       <div id="hit-info"></div>
@@ -71,8 +76,10 @@
       <p class="tagline">Fast arena shooter. Pick a callsign and drop in.</p>
       <label for="name">Callsign</label>
       <input id="name" name="name" maxlength="16" autocomplete="off" placeholder="Player" />
+      <p class="kit-title">Kit</p>
+      <div id="kit-picker" role="radiogroup" aria-label="Kit"></div>
       <button type="submit" class="primary">Play</button>
-      <p class="hint">WASD move · Shift sprint · C crouch (tap while sprinting to slide) · Space jump (press again on a wall) · Mouse aim · Click shoot · G grenade · Tab scoreboard · Esc release mouse</p>
+      <p class="hint">WASD move · Shift sprint · C crouch · Space jump (again on a wall) · Mouse aim · Click shoot · R reload · 1 / 2 weapons · G grenade · Q / E abilities · 3 / 4 pick a perk · Tab scoreboard · Esc release mouse</p>
 
       <section id="settings" hidden aria-label="Settings">
         <h2>Settings</h2>

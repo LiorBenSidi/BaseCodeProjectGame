@@ -3,6 +3,7 @@
 // player named "<img src=x onerror=...>" from becoming stored XSS in everyone else's browser.
 // All state derivation lives in hudModel.js (pure, unit tested); this file only moves it into the DOM.
 
+import { deriveAbilityChips, deriveXpBar, perkCards } from './kitUi.js';
 import {
   KillFeedQueue,
   deriveAmmoStatus,
@@ -46,6 +47,15 @@ export class Hud {
   #damageFlash = $('damage-flash');
 
   #killFeed = new KillFeedQueue(5, 5000);
+  // SPEC 24.6 / 25.4
+  #abilities = $('abilities');
+  #xpBar = $('xp-bar');
+  #xpFill = $('xp-fill');
+  #xpLabel = $('xp-label');
+  #perkOffer = $('perk-offer');
+  #lastAbilityLine = '';
+  #lastXpLine = '';
+  #lastOfferLine = '';
   #feedDirty = true;
   #deathTime = null;
   #lastHp = null;
@@ -89,16 +99,68 @@ export class Hud {
     this.#pulse(this.#damageArc, 'show', HUD_TIMING.damageIndicatorMs);
   }
 
+  // SPEC 24.6: two ability chips with a cooldown sweep; SPEC 25.4: XP bar and the perk offer card.
+  #renderKit(self) {
+    if (!self || !this.#abilities) return;
+    const chips = deriveAbilityChips(self.kit, self.cd);
+    const line = chips.map((c) => `${c.id}:${c.ready ? 'r' : c.secs}`).join('|');
+    if (line !== this.#lastAbilityLine) {
+      this.#lastAbilityLine = line;
+      this.#abilities.replaceChildren(...chips.map((c) => {
+        const el = document.createElement('div');
+        el.className = `chip${c.ready ? ' ready' : ''}`;
+        el.style.setProperty('--cd', String(c.frac));
+        const key = document.createElement('span'); key.className = 'key'; key.textContent = c.key;
+        const name = document.createElement('span'); name.className = 'name'; name.textContent = c.ready ? c.name : `${c.name} ${c.secs}s`;
+        el.append(key, name);
+        return el;
+      }));
+    }
+    const xp = deriveXpBar(self);
+    const xline = `${xp.lvl}|${xp.frac.toFixed(3)}|${xp.label}`;
+    if (xline !== this.#lastXpLine && this.#xpBar) {
+      this.#lastXpLine = xline;
+      this.#xpFill.style.width = `${Math.round(xp.frac * 100)}%`;
+      this.#xpLabel.textContent = xp.label;
+    }
+    const cards = perkCards(self.offer);
+    const oline = cards.map((c) => c.id).join('|');
+    if (oline !== this.#lastOfferLine && this.#perkOffer) {
+      this.#lastOfferLine = oline;
+      this.#perkOffer.hidden = cards.length === 0;
+      this.#perkOffer.replaceChildren(...cards.map((c) => {
+        const el = document.createElement('div');
+        el.className = 'perk';
+        const key = document.createElement('span'); key.className = 'key'; key.textContent = c.key;
+        const name = document.createElement('strong'); name.textContent = c.name;
+        const blurb = document.createElement('span'); blurb.className = 'blurb'; blurb.textContent = c.blurb;
+        el.append(key, name, blurb);
+        return el;
+      }));
+    }
+  }
+
+  // SPEC 24.1: the server refused an ability; flash the chip so the player knows why.
+  abilityDenied(slot, reason) {
+    const chip = this.#abilities?.children[slot];
+    if (!chip) return;
+    chip.classList.remove('deny');
+    void chip.offsetWidth;
+    chip.classList.add('deny');
+    chip.title = reason === 'no_anchor' ? 'No surface in range' : reason;
+  }
+
   killFeed(text, now = Date.now()) {
     this.#killFeed.add(text, now);
     this.#feedDirty = true;
   }
 
   // Called once per snapshot with the local player's row and the full player list.
-  update(me, players, now = Date.now(), match = null) {
+  update(me, players, now = Date.now(), match = null, self = null) {
     this.#renderHealth(me.hp);
     this.#renderAmmo(me);
     this.#renderMatch(match);
+    this.#renderKit(self);
     this.#renderRespawn(me, now);
     this.#renderFeed(now);
     if (!this.#board.hidden) this.#renderScoreboard(me, players);

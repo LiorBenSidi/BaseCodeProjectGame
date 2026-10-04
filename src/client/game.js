@@ -5,6 +5,9 @@ import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
 import { Pickups, pickupText } from './pickups.js';
+import { Effects } from './effects.js';
+import { KITS } from '../shared/abilities.js';
+import { PERKS } from '../shared/progression.js';
 import { Hud } from './hud.js';
 import { attributeDamage, calculateDamageAngle, pruneThreats } from './hudModel.js';
 import { Input } from './input.js';
@@ -45,6 +48,9 @@ export class Game {
   #recoil = { pitch: 0, yaw: 0 }; // SPEC 20: client-only camera kick, recovers over a few frames
   #tracers = [];
   #pickups;
+  #effects;
+  #kit = 'vanguard';
+  #self = null; // SPEC 24.5 private block of the last snapshot
   #threats = [];
   #lastHp = null;
   #eyeY = null; // SPEC 23 smoothed camera height
@@ -55,6 +61,7 @@ export class Game {
     this.#remote = new RemotePlayers(this.#gfx.scene);
     this.#grenades = new Grenades(this.#gfx.scene);
     this.#pickups = new Pickups(this.#gfx.scene); // SPEC 21.1
+    this.#effects = new Effects(this.#gfx.scene); // SPEC 24.5
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Tab') { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
       if (e.code === 'KeyG' && !e.repeat && this.#input.locked) this.throwGrenade();
@@ -62,6 +69,11 @@ export class Game {
       if (e.code === 'KeyR' && !e.repeat && this.#input.locked) this.reload();
       if (e.code === 'Digit1' && this.#input.locked) this.switchWeapon('primary');
       if (e.code === 'Digit2' && this.#input.locked) this.switchWeapon('sidearm');
+      // SPEC 24.1: Q / E abilities; SPEC 25.3: 3 / 4 pick a perk from the open offer
+      if (e.code === 'KeyQ' && !e.repeat && this.#input.locked) this.useAbility(0);
+      if (e.code === 'KeyE' && !e.repeat && this.#input.locked) this.useAbility(1);
+      if (e.code === 'Digit3' && !e.repeat) this.pickPerk(0);
+      if (e.code === 'Digit4' && !e.repeat) this.pickPerk(1);
     });
     window.addEventListener('wheel', (e) => {
       if (!this.#input.locked || e.deltaY === 0) return;
@@ -131,13 +143,36 @@ export class Game {
     return true;
   }
 
+  // SPEC 24.1: the server validates cooldown, life and phase; the HUD chip shows the result.
+  useAbility(slot) {
+    if (!this.joined || !this.#me.alive) return false;
+    this.#net.send({ t: 'ability', slot });
+    return true;
+  }
+
+  // SPEC 25.3: picks the i-th perk of the open offer.
+  pickPerk(i) {
+    const offer = this.#self?.offer;
+    if (!this.joined || !offer || !offer[i]) return false;
+    this.#net.send({ t: 'perk', id: offer[i] });
+    return true;
+  }
+
+  // SPEC 24.1: a kit change applies on the next spawn.
+  selectKit(id) {
+    if (!KITS[id]) return;
+    this.#kit = id;
+    if (this.joined) { this.#net.send({ t: 'kit', id }); this.#hud.killFeed(`${KITS[id].name} kit on next spawn`); }
+  }
+
   debugState() {
     return { joined: this.joined, id: this.#id, alive: this.#me.alive, yaw: this.#input.yaw, pitch: this.#input.pitch,
       pos: [this.#me.x, this.#me.y, this.#me.z], rtt: this.#clock.rtt, clockOffset: this.#clock.offset };
   }
 
-  join(name) {
+  join(name, kit = this.#kit) {
     this.#name = name;
+    this.#kit = KITS[kit] ? kit : this.#kit;
     const handlers = {
       welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#pickups.setSpots(m.pickups); },
       pickup: (m) => this.#hud.killFeed(pickupText(m)),
@@ -148,11 +183,15 @@ export class Game {
       kill: (m) => this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`),
       matchEnd: (m) => this.#hud.matchEnd(m, this.#id), // SPEC 22
       matchStart: () => this.#hud.matchStart(),
+      // SPEC 24 / 25 feedback lines
+      ability: (m) => { if (m.id === this.#id && m.denied) this.#hud.abilityDenied(m.slot, m.denied); },
+      xp: (m) => { if (m.levelUp) this.#hud.killFeed(`Level ${m.lvl}: pick a perk (3 / 4)`); },
+      perk: (m) => this.#hud.killFeed(`Perk: ${PERKS[m.id]?.name ?? m.id}`),
       pong: (m) => this.#clock.onPong(m, Date.now()),
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
       close: () => { this.#id = null; this.#hud.notice('Disconnected. Reload to rejoin.'); },
       // Actor transport only: the room woke up without our seat, or the link went quiet.
-      rejoin: () => { this.#id = null; this.#net.send({ t: 'join', name: this.#name }); },
+      rejoin: () => { this.#id = null; this.#net.send({ t: 'join', name: this.#name, kit: this.#kit }); },
       stale: () => { if (this.#id !== null) this.#hud.notice('Connection unstable, reconnecting...'); },
     };
     // VITE_BASE44_APP_ID is set by the Base44 build environment (the app sandbox exports it; `base44 build`
@@ -161,13 +200,15 @@ export class Game {
     this.#net = appId
       ? new ActorNetwork(handlers, { appId, roomId: roomIdFromLocation(window.location.search) })
       : new Network(handlers);
-    this.#net.connect(name);
+    this.#net.connect(name, this.#kit);
   }
 
   #onSnapshot(snap) {
     this.#remote.push(snap.players, this.#id);
     this.#grenades.sync(snap.nades ?? []);
     this.#pickups.sync(snap.items);
+    this.#effects.sync(snap.fx, performance.now());
+    this.#self = snap.self ?? null;
     this.#combat.setPlayers(snap.players);
     const mine = snap.players.find((p) => p.id === this.#id);
     if (!mine) return;
@@ -177,11 +218,13 @@ export class Game {
       x: mine.x, y: mine.y, z: mine.z, vy: mine.vy, vx: 0, vz: 0,
       onGround: mine.g === 1, alive: mine.alive === 1,
       ...(typeof mine.h === 'number' ? { h: mine.h } : {}),
+      // SPEC 24.2: the dash runs inside stepPlayer, so prediction needs its remaining time and direction
+      dash: snap.self?.dash ?? 0, dashDx: snap.self?.dashDx ?? 0, dashDz: snap.self?.dashDz ?? 0,
     });
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c);
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
     this.#onDamage(mine);
-    this.#hud.update(mine, snap.players, Date.now(), snap.match);
+    this.#hud.update(mine, snap.players, Date.now(), snap.match, snap.self);
   }
 
   // SPEC 19.1 damage direction: the server does not tell the victim who hit them, so a drop in our hp

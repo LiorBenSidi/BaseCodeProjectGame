@@ -330,7 +330,7 @@ test('snapshot entry has exactly the documented keys', () => {
   const e = entry(lastSnap(a), a.p.id);
   // SPEC 20.4 added w, m, r, rel (weapon in hand, magazine, reserve, reloading flag).
   // SPEC 21.2 added sp (spawn protection); SPEC 22 tm; SPEC 23 h.
-  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'h', 'hp', 'id', 'k', 'm', 'name', 'pitch', 'r', 'rel', 'sp', 'tm', 'vy', 'w', 'x', 'y', 'yaw', 'z']);
+  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'h', 'hp', 'id', 'k', 'kt', 'lv', 'm', 'name', 'pitch', 'r', 'rel', 'sc', 'sp', 'tm', 'vy', 'w', 'x', 'y', 'yaw', 'z']);
 });
 
 test('snapshot numbers are rounded to 3 decimals', () => {

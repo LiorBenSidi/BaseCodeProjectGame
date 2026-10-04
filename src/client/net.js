@@ -9,10 +9,10 @@ export class Network {
     this.#handlers = handlers;
   }
 
-  connect(name) {
+  connect(name, kit) {
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     this.#ws = new WebSocket(`${proto}://${window.location.host}/ws`);
-    this.#ws.onopen = () => this.send({ t: 'join', name });
+    this.#ws.onopen = () => this.send({ t: 'join', name, ...(kit ? { kit } : {}) });
     this.#ws.onmessage = (e) => {
       let msg;
       try {

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useServer, waitFor, httpRequest, moveUntilMoved, cmd, STEP, MAX_CMDS_PER_TICK } from '../helpers/harness.js';
 
-const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'x', 'y', 'yaw', 'z', 'vy', 'w', 'm', 'r', 'rel', 'sp', 'tm', 'h'].sort(); // SPEC 20.4 weapon fields, 21.2 sp, 22 tm, 23 h
+const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'x', 'y', 'yaw', 'z', 'vy', 'w', 'm', 'r', 'rel', 'sp', 'tm', 'h', 'kt', 'lv', 'sc'].sort(); // SPEC 20.4 weapon fields, 21.2 sp, 22 tm, 23 h, 24 kt lv sc
 
 describe('join / welcome / snapshot flow', () => {
   const ctx = useServer({});

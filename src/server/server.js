@@ -207,6 +207,7 @@ export async function startServer(options = {}) {
         if (player) return undefined;
         player = room.addPlayer({
           name: msg.name,
+          kit: msg.kit,
           send: (obj) => { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); },
         });
         if (!player) {
@@ -223,6 +224,12 @@ export async function startServer(options = {}) {
         room.handleReload(player.id);
       } else if (player && msg.t === 'switch') {
         room.handleSwitch(player.id, msg.slot);
+      } else if (player && msg.t === 'ability') {
+        room.handleAbility(player.id, msg.slot);
+      } else if (player && msg.t === 'kit') {
+        room.handleKit(player.id, msg.id);
+      } else if (player && msg.t === 'perk') {
+        room.handlePerk(player.id, msg.id);
       }
       return undefined;
     });

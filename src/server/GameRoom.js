@@ -19,6 +19,9 @@ import { sanitizeName } from './security.js';
 import { buildPickups, stepPickups, availableIndices, describePickups } from '../shared/pickups.js';
 import { pickSpawn } from '../shared/spawning.js';
 import { SPAWN } from '../shared/rules.js';
+// SPEC 24 / 25: kits, abilities, effects and in-match progression.
+import { DEFAULT_KIT, KIT_IDS, isKit, newKitState, useAbility, stepEffects, applyGrapple, slowFactor, shieldBoxes, decoyTargets, describeEffects, cooldownLeft } from '../shared/abilities.js';
+import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnapshot, XP } from '../shared/progression.js';
 // SPEC 22: match modes (DM / TDM), timer, end screen, restart.
 import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot } from '../shared/modes.js';
 
@@ -35,6 +38,8 @@ export class GameRoom {
   #grenades = [];
   #nextGrenadeId = 1;
   #pickups = buildPickups(MAP.pickups);
+  #fx = []; // SPEC 24 active effects: shields, decoys, heal zones, stasis fields
+  #nextFxId = 1;
   #now;
   #random;
   #log;
@@ -62,7 +67,7 @@ export class GameRoom {
     return this.#players.size;
   }
 
-  addPlayer({ send, name } = {}) {
+  addPlayer({ send, name, kit } = {}) {
     if (typeof send !== 'function') throw new TypeError('addPlayer requires a send(obj) function');
     if (this.#players.size >= this.#maxPlayers) return null;
 
@@ -93,10 +98,19 @@ export class GameRoom {
       wantsSwitch: null,
       protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
       team: assignTeam(this.#match, this.#players.values()), // SPEC 22: -1 in DM, 0 Blue / 1 Red in TDM
+      // SPEC 24: kit and cooldowns; a kit change applies on the next spawn. SPEC 25: XP, level, perks.
+      kitState: newKitState(isKit(kit) ? kit : DEFAULT_KIT),
+      nextKit: null,
+      wantsAbility: null,
+      wantsPerk: null,
+      grapple: null,
+      scannedUntil: -Infinity,
+      dash: 0, dashDx: 0, dashDz: 0,
+      progress: newProgress(),
     };
     this.#place(p);
     this.#players.set(id, p);
-    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), mode: this.#match.mode, team: p.team });
+    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
     return p;
@@ -142,11 +156,28 @@ export class GameRoom {
     if (p) p.wantsSwitch = slot;
   }
 
+  // SPEC 24.1: { t: 'ability', slot }, { t: 'kit', id } (next spawn), SPEC 25.3: { t: 'perk', id }.
+  handleAbility(id, slot) {
+    const p = this.#players.get(id);
+    if (p && (slot === 0 || slot === 1)) p.wantsAbility = slot;
+  }
+
+  handleKit(id, kitId) {
+    const p = this.#players.get(id);
+    if (p && isKit(kitId)) p.nextKit = kitId;
+  }
+
+  handlePerk(id, perkId) {
+    const p = this.#players.get(id);
+    if (p) p.wantsPerk = String(perkId);
+  }
+
   tick() {
     this.#tick += 1;
     const now = this.#now();
 
     for (const p of this.#players.values()) this.#runCommands(p);
+    this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
     for (const p of this.#players.values()) {
       if (!p.wantsShot) continue;
@@ -159,6 +190,7 @@ export class GameRoom {
       this.#throw(p);
     }
     this.#stepGrenades(now);
+    stepEffects(this.#fx, this.#players.values(), now, TICK_MS, MAP.boxes);
     for (const p of this.#players.values()) {
       if (!p.alive && now >= p.respawnAt) this.#respawn(p, now);
     }
@@ -174,8 +206,12 @@ export class GameRoom {
 
   #runCommands(p) {
     const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
+    // SPEC 24.4: an enemy stasis field scales the movement input; the client reconciles to the server's result.
+    const slow = p.alive ? slowFactor(this.#fx, p) : 1;
     for (let i = 0; i < n; i++) {
-      const cmd = p.queue.shift();
+      const raw = p.queue.shift();
+      const cmd = slow < 1 ? { ...raw, fwd: raw.fwd * slow, right: raw.right * slow, sprint: false } : raw;
+      if (p.alive && p.grapple) applyGrapple(p, cmd.jump, this.#now());
       if (p.alive) stepPlayer(p, cmd);
       p.yaw = cmd.yaw;
       p.pitch = cmd.pitch;
@@ -183,16 +219,50 @@ export class GameRoom {
     }
   }
 
+  // SPEC 24: ability, kit and perk intents apply here, once per tick, before weapons and movement.
+  #stepAbilities(now) {
+    for (const p of this.#players.values()) {
+      if (p.wantsPerk !== null) {
+        const perk = pickPerk(p.progress, p.wantsPerk);
+        p.wantsPerk = null;
+        if (perk) this.#sendTo(p, { t: 'perk', id: perk.id, perks: p.progress.perks });
+      }
+      if (p.wantsAbility === null) continue;
+      const slot = p.wantsAbility;
+      p.wantsAbility = null;
+      if (this.#match.phase !== 'playing') continue;
+      const others = [...this.#players.values()];
+      const r = useAbility(p, slot, { nowMs: now, boxes: MAP.boxes, half: MAP.half, players: others, fx: this.#fx, nextFxId: () => this.#nextFxId++, cdMul: p.progress.mods.cdMul });
+      if (r.ok) this.#broadcast({ t: 'ability', id: p.id, ability: r.ability, slot, cd: r.cooldownMs });
+      else this.#sendTo(p, { t: 'ability', id: p.id, slot, denied: r.reason });
+    }
+  }
+
+  // SPEC 25.1: XP for damage, kills and assists; a level-up may open a perk offer.
+  #award(p, amount) {
+    if (amount <= 0) return;
+    const { leveled } = grantXp(p.progress, amount, this.#random);
+    this.#sendTo(p, { t: 'xp', amount, xp: p.progress.xp, lvl: p.progress.level, ...(leveled ? { levelUp: true } : {}), offer: p.progress.offer });
+  }
+
   // SPEC 20: reload and switch intents apply here, reload timers complete, spread decays. Dead players keep
   // their state frozen; the respawn hands out a fresh loadout anyway.
   #stepWeapons(p, now) {
     const lo = p.loadout;
     if (p.wantsSwitch !== null) {
-      if (p.alive) switchSlot(lo, p.wantsSwitch, now);
+      if (p.alive) {
+        switchSlot(lo, p.wantsSwitch, now);
+        if (lo.switchingUntil > now) lo.switchingUntil = now + Math.round((lo.switchingUntil - now) * p.progress.mods.switchMul); // SPEC 25.2 Quick Draw
+      }
       p.wantsSwitch = null;
     }
     if (p.wantsReload) {
-      if (p.alive) startReload(lo, now);
+      if (p.alive) {
+        const before = activeWeapon(lo).reloadingUntil;
+        startReload(lo, now);
+        const ws = activeWeapon(lo);
+        if (ws.reloadingUntil !== before && ws.reloadingUntil > now) ws.reloadingUntil = now + Math.round((ws.reloadingUntil - now) * p.progress.mods.reloadMul); // SPEC 25.2 Fast Hands
+      }
       p.wantsReload = false;
     }
     finishReloadIfDue(lo.primary, now);
@@ -215,6 +285,9 @@ export class GameRoom {
         p.kills = 0;
         p.deaths = 0;
         p.respawnAt = 0;
+        p.progress = newProgress(); // SPEC 25: progression is per match
+        p.kitState = newKitState(p.nextKit ?? p.kitState.kit);
+        p.nextKit = null;
         this.#respawn(p, now);
         p.protectedUntil = -Infinity;
       }
@@ -223,6 +296,7 @@ export class GameRoom {
   }
 
   #startMatch(now) {
+    this.#fx = []; // SPEC 24: no effects carry over
     startMatch(this.#match, now);
     this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
     this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number });
@@ -240,13 +314,15 @@ export class GameRoom {
     const aim = aimDir(p.yaw, p.pitch);
     const targets = [];
     for (const q of this.#players.values()) if (q !== p && q.alive) targets.push({ id: q.id, p: q });
+    for (const d of decoyTargets(this.#fx)) if (d.fx.owner !== p.id) targets.push(d); // SPEC 24.3 decoys soak bullets
+    const boxes = this.#fx.length ? MAP.boxes.concat(shieldBoxes(this.#fx)) : MAP.boxes; // SPEC 24.3 shields block
 
     // One ray per pellet, each with its own spread sample; damage is summed per victim and applied once.
     const perVictim = new Map();
     let first = null;
     for (let i = 0; i < weapon.pellets; i++) {
       const dir = spreadDir(aim, spread, this.#random);
-      const shot = resolveShot(origin, dir, weapon, MAP.boxes, targets);
+      const shot = resolveShot(origin, dir, weapon, boxes, targets);
       const to = [origin[0] + dir[0] * shot.t, origin[1] + dir[1] * shot.t, origin[2] + dir[2] * shot.t];
       this.#broadcast({ t: 'shot', id: p.id, w: weapon.id, from: origin, to });
       if (first === null) first = shot;
@@ -263,8 +339,17 @@ export class GameRoom {
     let best = null;
     const killed = [];
     for (const [id, acc] of perVictim) {
+      if (id < 0) {
+        // SPEC 24.3: a decoy took the pellets; it dies on any damage, the shooter learns nothing but a hit marker
+        const f = this.#fx.find((e) => e.kind === 'decoy' && -e.id === id);
+        if (f) f.hp = 0;
+        this.#sendTo(p, { t: 'hit', id });
+        if (best === null) best = { victim: { id }, zone: acc.zone, dist: acc.dist, applied: 0, kill: false };
+        continue;
+      }
       const victim = this.#players.get(id);
-      const r = this.#protected(victim, now) || sameTeam(p, victim) ? { applied: 0, killed: false } : applyDamage(victim, acc.damage);
+      const r = this.#protected(victim, now) || sameTeam(p, victim) ? { applied: 0, killed: false } : applyDamage(victim, acc.damage * victim.progress.mods.dmgTakenMul);
+      this.#award(p, recordDamage(p.progress, victim.progress, p.id, victim.id, r.applied, now));
       this.#sendTo(p, { t: 'hit', id: victim.id });
       if (r.killed) killed.push(victim);
       if (best === null || r.applied > best.applied) best = { victim, zone: acc.zone, dist: acc.dist, applied: r.applied, kill: r.killed };
@@ -282,7 +367,8 @@ export class GameRoom {
   }
 
   #stepGrenades(now) {
-    for (const g of this.#grenades) stepGrenade(g, 1 / TICK_RATE, MAP.boxes, MAP.half);
+    const boxes = this.#fx.length ? MAP.boxes.concat(shieldBoxes(this.#fx)) : MAP.boxes; // SPEC 24.3 grenades bounce off shields
+    for (const g of this.#grenades) stepGrenade(g, 1 / TICK_RATE, boxes, MAP.half);
     const exploded = this.#grenades.filter((g) => g.exploded);
     if (exploded.length === 0) return;
     this.#grenades = this.#grenades.filter((g) => !g.exploded);
@@ -294,8 +380,9 @@ export class GameRoom {
         if (!q.alive || this.#protected(q, now)) continue;
         const owner = this.#players.get(g.owner);
         if (owner && owner !== q && sameTeam(owner, q)) continue; // SPEC 22: no friendly fire; your own grenade still hurts you
-        const { applied, killed } = applyDamage(q, blastDamage(at, q, MAP.boxes));
+        const { applied, killed } = applyDamage(q, blastDamage(at, q, boxes) * q.progress.mods.dmgTakenMul);
         if (applied <= 0) continue;
+        if (owner && owner !== q) this.#award(owner, recordDamage(owner.progress, q.progress, owner.id, q.id, applied, now));
         hits.push({ id: q.id, dmg: applied, kill: killed });
         if (killed) victims.push(q);
       }
@@ -312,6 +399,14 @@ export class GameRoom {
     const killer = this.#players.get(killerId);
     if (killer && killer !== victim) killer.kills += 1;
     scoreKill(this.#match, killer, victim);
+    // SPEC 25.1: kill and assist XP
+    if (killer && killer !== victim) this.#award(killer, XP.kill);
+    for (const aid of assistsFor(victim.progress, killerId, now)) {
+      const a = this.#players.get(aid);
+      if (a && a !== victim && !(a.team >= 0 && a.team === victim.team)) this.#award(a, XP.assist);
+    }
+    victim.grapple = null;
+    victim.dash = 0;
     this.#log?.info('kill', { killer: killerId, victim: victim.id });
     this.#broadcast({ t: 'kill', killer: killerId, victim: victim.id, killerName, victimName: victim.name });
   }
@@ -325,8 +420,12 @@ export class GameRoom {
     p.protectedUntil = now + SPAWN.protectMs;
     p.hp = MAX_HP;
     p.alive = true;
-    p.grenades = GRENADE.perLife;
+    p.grenades = GRENADE.perLife + p.progress.mods.grenades; // SPEC 25.2 Grenadier
     p.loadout = newLoadout();
+    if (p.nextKit) { p.kitState = newKitState(p.nextKit); p.nextKit = null; } // SPEC 24.1 kit change on spawn
+    p.grapple = null;
+    p.dash = 0;
+    p.scannedUntil = -Infinity;
     p.wantsReload = false;
     p.wantsSwitch = null;
   }
@@ -360,13 +459,18 @@ export class GameRoom {
         w: ws.id, m: ws.mag, r: ws.reserve, rel: isReloading(ws, now) ? 1 : 0,
         sp: this.#protected(p, now) ? 1 : 0, // SPEC 21.2 spawn protection
         tm: p.team, // SPEC 22: -1 in DM, 0 / 1 in TDM
+        kt: KIT_IDS.indexOf(p.kitState.kit), lv: p.progress.level, // SPEC 24 / 25: kit index into KIT_IDS, level
+        sc: now < p.scannedUntil ? 1 : 0, // SPEC 24.3 revealed by a scan
       });
     }
     const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));
     const items = availableIndices(this.#pickups, now);
     const match = matchSnapshot(this.#match, now);
+    const fx = describeEffects(this.#fx, now);
     for (const p of this.#players.values()) {
-      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items, match });
+      // SPEC 24.5: the recipient's private block: cooldowns, dash state for prediction, progression
+      const self = { cd: [cooldownLeft(p.kitState, 0, now), cooldownLeft(p.kitState, 1, now)], kit: p.kitState.kit, ...(p.dash > 0 ? { dash: round3(p.dash), dashDx: round3(p.dashDx), dashDz: round3(p.dashDz) } : {}), ...(p.grapple ? { grapple: 1 } : {}), ...progressSnapshot(p.progress) };
+      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items, match, fx, self });
     }
   }
 

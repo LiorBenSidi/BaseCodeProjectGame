@@ -244,3 +244,11 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Extend the deterministic shared `stepPlayer` with a stance (crouch, scaled hitbox and eye), sprint, a timed slide, automatic step-up and ledge mantle, one wall jump per airtime and acceleration-based air control; two new command booleans, one new snapshot field (`h`). Ground rules from Milestone 1 stay bit-identical for the old command shape.
 - Source: owner approved V1 plan 2026-10-04 (parkour and fluid movement are a V1 requirement).
 - Affects: docs/SPEC.md section 23; `src/shared/movement.js`, `src/shared/constants.js`, `src/shared/hitscan.js`, `src/shared/combat.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/client/input.js`, `src/client/game.js`, `src/client/remote.js`, `src/client/touch.js`, `index.html`.
+
+### D-023 (W1, W8) Kits, abilities and in-match progression
+- Status: decided
+- Date: 2026-10-04
+- Decision: The game's unique layer is four kits with two server-authoritative abilities each (dash, shield, blink, decoy, grapple, scan, heal zone, stasis field) plus per-match XP, five levels and a two-card perk offer per level. Effects live in a room-owned list replicated as `fx`; shields are extra collision boxes for bullets and grenades; decoys are negative-id shot targets. Only the dash touches shared movement (timer inside `stepPlayer`, replicated in the private `self` block) so prediction stays exact; stasis slow and grapple pull are server-side and reconciled, an accepted V1 trade-off. Perks are server-side multipliers, never prediction inputs. Snapshot stays under 4096 bytes in a full room by sending optional `self` keys only when active.
+- Source: owner approved V1 plan 2026-10-04 (kits with abilities + in-match XP named as the unique layer).
+- Affects: docs/SPEC.md sections 24 and 25; `src/shared/abilities.js`, `src/shared/progression.js`, `src/shared/movement.js` (dash), `src/shared/constants.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/server/server.js`, `src/server/matchSession.js`, `src/client/{game,hud,kitUi,effects,net,netActor,main,debugHarness}.js`, `index.html`, `src/client/style.css`.
+

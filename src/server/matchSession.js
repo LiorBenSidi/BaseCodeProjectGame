@@ -121,7 +121,7 @@ export class MatchSession {
     }
     if (msg.t === 'join') {
       if (s.player) return;
-      const player = this.#room.addPlayer({ name: msg.name, send: (obj) => s.conn.send(obj) });
+      const player = this.#room.addPlayer({ name: msg.name, kit: msg.kit, send: (obj) => s.conn.send(obj) });
       if (!player) {
         s.conn.send({ t: 'error', reason: 'room_full' });
         this.#drop(s, 'room_full');
@@ -136,6 +136,12 @@ export class MatchSession {
       this.#room.handleThrow(s.player.id);
     } else if (s.player && msg.t === 'reload') {
       this.#room.handleReload(s.player.id);
+    } else if (s.player && msg.t === 'ability') {
+      this.#room.handleAbility(s.player.id, msg.slot);
+    } else if (s.player && msg.t === 'kit') {
+      this.#room.handleKit(s.player.id, msg.id);
+    } else if (s.player && msg.t === 'perk') {
+      this.#room.handlePerk(s.player.id, msg.id);
     } else if (s.player && msg.t === 'switch') {
       this.#room.handleSwitch(s.player.id, msg.slot);
     }

@@ -91,7 +91,13 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
   }
 
   let speed = PLAYER.speed;
-  if (p.slide > 0 && p.onGround) {
+  if (p.dash > 0) {
+    // SPEC 24.2 dash: a fixed-speed burst in a locked direction, on the ground or in the air; gravity still applies.
+    p.vx = p.dashDx * PLAYER.dashSpeed;
+    p.vz = p.dashDz * PLAYER.dashSpeed;
+    p.dash = Math.max(0, p.dash - dt);
+    p.slide = 0;
+  } else if (p.slide > 0 && p.onGround) {
     const k = p.slide / PLAYER.slideTime; // 1 at the start, 0 at the end
     const crouchSpeed = PLAYER.speed * PLAYER.crouchMul;
     const v = crouchSpeed + (PLAYER.slideSpeed - crouchSpeed) * k;
