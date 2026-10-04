@@ -9,8 +9,12 @@ import WebSocket from 'ws';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 const chrome = spawn(process.env.CHROME || 'google-chrome', ['--headless=new', '--no-sandbox', '--disable-gpu', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required', '--remote-debugging-port=9333', '--window-size=1280,800', 'about:blank'], { stdio: 'ignore' });
-await new Promise((r) => setTimeout(r, 1500));
-const list = await (await fetch('http://127.0.0.1:9333/json')).json();
+let list = null;
+for (let i = 0; i < 40 && !list; i++) { // Chrome can take a few seconds on a busy machine
+  await new Promise((r) => setTimeout(r, 500));
+  list = await fetch('http://127.0.0.1:9333/json').then((r) => r.json()).catch(() => null);
+}
+if (!list) { console.error('Chrome did not expose the DevTools port'); chrome.kill(); process.exit(2); }
 const ws = new WebSocket(list.find((t) => t.type === 'page').webSocketDebuggerUrl);
 await new Promise((r) => ws.on('open', r));
 let id = 0; const pending = new Map(); const logs = [];
