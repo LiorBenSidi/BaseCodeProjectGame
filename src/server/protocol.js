@@ -39,6 +39,10 @@ function validateObject(data) {
       return { ok: true, msg: { t: 'shoot' } };
     case 'throw':
       return { ok: true, msg: { t: 'throw' } };
+    case 'ping':
+      // SPEC 18.2: clock sync probe; the session echoes id and ts back with its own clock.
+      if (!Number.isSafeInteger(data.id) || data.id < 0 || !isNum(data.ts) || data.ts < 0) return fail('bad_ping');
+      return { ok: true, msg: { t: 'ping', id: data.id, ts: data.ts } };
     case 'input': {
       if (!Array.isArray(data.cmds) || data.cmds.length < 1 || data.cmds.length > MAX_CMDS_PER_MSG) {
         return fail('bad_cmd');

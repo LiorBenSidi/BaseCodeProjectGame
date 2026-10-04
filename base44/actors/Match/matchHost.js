@@ -93,9 +93,9 @@ export class MatchHost {
   }
 
   message(conn, msg) {
-    // SPEC 18.1: the client's clock stamp feeds the ClockSource before the session (and its token
-    // bucket, which refills from the same clock) looks at the time.
-    if (this.#clock && msg !== null && typeof msg === 'object' && msg.t === 'input') {
+    // SPEC 18.1 / 18.2: the client's clock stamp (on inputs and pings) feeds the ClockSource before the
+    // session (and its token bucket, which refills from the same clock) looks at the time.
+    if (this.#clock && msg !== null && typeof msg === 'object' && (msg.t === 'input' || msg.t === 'ping')) {
       this.#clock.recordClientTs(conn.id, msg.ts);
     }
     this.#session.message(conn, msg);

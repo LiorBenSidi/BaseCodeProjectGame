@@ -419,3 +419,26 @@ test('input ts: a finite non-negative number is kept, anything else is dropped w
     assert.equal('ts' in r.msg, false, `ts=${String(bad)}`);
   }
 });
+
+// ---------- ping (SPEC 18.2) ----------
+
+test('ping: id and ts are whitelisted, everything else dropped', () => {
+  const r = validateClientMessage({ t: 'ping', id: 3, ts: 1_700_000_000_000, isAdmin: true });
+  assert.deepEqual(r, { ok: true, msg: { t: 'ping', id: 3, ts: 1_700_000_000_000 } });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'ping', id: 0, ts: 0 })).msg, { t: 'ping', id: 0, ts: 0 });
+});
+
+test('ping: a bad id or ts is bad_ping', () => {
+  for (const bad of [
+    { t: 'ping' },
+    { t: 'ping', id: -1, ts: 1 },
+    { t: 'ping', id: 1.5, ts: 1 },
+    { t: 'ping', id: '1', ts: 1 },
+    { t: 'ping', id: 1 },
+    { t: 'ping', id: 1, ts: -1 },
+    { t: 'ping', id: 1, ts: Infinity },
+    { t: 'ping', id: 1, ts: 'now' },
+  ]) {
+    assert.deepEqual(validateClientMessage(bad), { ok: false, reason: 'bad_ping' }, JSON.stringify(bad));
+  }
+});
