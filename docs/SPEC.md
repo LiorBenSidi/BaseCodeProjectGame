@@ -972,3 +972,33 @@ Keys are read through `bind(action)` / `isBound(action, code)` with the default 
 
 ### 32.7 Tests
 `tests/unit/movementOmni.test.js` (8: tuning table, tactical sprint burst, cooldown and ends, backwards slide, slide cancel early and late, dive distance, lock and hitbox, dive ends tactical sprint and cannot jump, mantled flag), `proFeel.test.js` (5: bindings, camera curves, aim assist, event bus, stick helpers), `aim.test.js` (+1: ADS multiplier and per weapon pace), `protocol.test.js` (+1: dive and tac coercion), and the SPEC 23 suites retuned to the new numbers without weakening (`movement.test.js`, `movementParkour.test.js`, `gameRoom.test.js`).
+
+## 33. Pro menu and settings (Pro batch P4, D-030)
+
+Client only. The menu's settings button opens a tabbed modal (`src/client/settingsPanel.js`, markup in `index.html`
+`#settings`, styles in `style.css` under `PRO-menu`): Controls, Keybinds, Video, Audio, HUD. Every change applies at
+once (`Game.applyPrefs`) and persists at once. Esc closes the modal unless a key capture is running.
+
+### 33.1 Preferences (`src/client/prefs.js`)
+One JSON object under `bca.prefs`, validated field by field against `PREFS_SCHEMA` on load (`sanitize`: own keys only, ranges clamped and snapped to their step, enums and booleans checked, anything else falls back to the default). The five legacy settings (`settings.js`: sensitivity, fov, fps, sound, touch controls, quality) keep their keys and appear in the same tabs.
+- Controls: ADS sensitivity multiplier (0.3 to 2), invert vertical look, ADS hold / toggle, crouch hold / toggle, sprint hold / toggle / auto, double tap sprint for tactical sprint, double tap crouch to dive, auto reload, controller sensitivity and deadzone, aim assist on / off (sticks and touch only, never mouse).
+- Video: graphics quality (auto / low / medium / high, SPEC 30.5), head bob 0 to 1, sprint FOV kick, camera shake 0 to 1 (landing dip, slide tilt), screen flash when hit, weapon sway.
+- Audio: master, effects and interface volumes, hit marker sound, footsteps. `Audio.setVolume` scales the master gain; the sound switch still wins.
+- HUD: crosshair style (cross, dot, circle, T, cross with dot), color (six presets), size, gap, thickness, outline, dynamic expansion; hit markers, damage numbers, kill feed, minimap, HUD scale 0.7 to 1.3, HUD opacity 0.4 to 1, team color mode (default / deuteranopia / tritanopia).
+Fields marked for later batches (minimap, hit markers, team color mode, footsteps, auto reload, weapon sway, hit sound, interface volume) are stored and exposed on `game.prefs` / `hud.prefs`; P5 and P6 read them.
+
+### 33.2 Keybinds (`src/client/bindings.js`, editor in the Keybinds tab)
+Mouse buttons are keys named `Mouse0` to `Mouse4`, the wheel `WheelUp` / `WheelDown`; `fire` (Mouse0), `ads` (Mouse2), `nextWeapon` (WheelDown) and `prevWeapon` (WheelUp) join the action table, so any action can live on either device. Every action has a primary and a secondary (`*Alt`) key; only secondary keys can be cleared. The tab shows a keyboard map (every key with its action, bound keys highlighted), a mouse map (each button and wheel direction with its action) and a grouped table (Movement, Combat, Kit, Interface). Clicking a key, on the table or on the map, starts a capture: the next key, mouse button or wheel movement is bound; Esc cancels; Backspace clears a secondary key. Conflicts (one code on two actions) are highlighted and counted; Reset to defaults restores `DEFAULT_BINDINGS`. Bindings persist under `bca.bindings` as `{ action: code }`, restored on load (`restoreBindings`), junk ignored.
+`input.js` holds the mouse state in the same key set as the keyboard (`#held('fire')`), so toggle modes, double taps and Alt keys work on mouse buttons too; wheel and extra mouse button actions are queued and consumed with the gamepad edge actions in `game.js`.
+
+### 33.3 Live application
+`Game.applyPrefs` sets `input.prefs` (toggle modes, invert, controller sensitivity, double taps), audio volume, graphics quality (`setQuality`, SPEC 30.5) and HUD prefs. The camera feel (SPEC 32.3) is scaled by head bob and camera shake and the FOV kick can be disabled; the ADS sensitivity multiplier multiplies the SPEC 32.4 zoom scale while aiming; aim assist can be switched off.
+
+### 33.4 Crosshair and HUD (`hud.applyPrefs`, `.crosshair-mark` in style.css)
+The crosshair is drawn from CSS variables (`crosshairStyle(prefs)`): color, size, gap, thickness, outline, which parts show (vertical lines, horizontal lines, dot, ring). The HUD tab shows a live preview mark on a dark backdrop. `--hud-scale` and `--hud-opacity` on `#hud` scale and fade the status, kit, match, feed and combat log blocks; the kill feed, damage numbers and the damage flash can be hidden.
+
+### 33.5 Assets
+The Rajdhani font files added by the earlier P4 draft were removed: the owner's rule is CC0 only and Rajdhani is OFL. The menu uses the system font stack from theme.js.
+
+### 33.6 Tests
+`tests/unit/proMenu.test.js` (7: schema, coercion and prototype safety, persistence, crosshair variables, key labels and keyboard map coverage, mouse bindings and conflicts, bindings persistence).

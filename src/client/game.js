@@ -27,6 +27,7 @@ import { RECOIL_RECOVERY_MS } from '../shared/weapons.js';
 import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
+import { defaults as prefDefaults } from './prefs.js'; // PRO-menu: SPEC 33
 import { TouchControls } from './touch.js';
 
 const TRACER_MS = 90;
@@ -111,18 +112,15 @@ export class Game {
       if (isBound('inspect', e.code) && !e.repeat && this.#input.locked) this.#weaponView?.inspect?.();
     });
     // SPEC 32.5: aim assist for sticks and touch only; the targets are the live enemies of the last snapshot
-    this.#input.aimAssist = (dyaw, dpitch, type) => applyAimAssist({
+    this.#input.aimAssist = (dyaw, dpitch, type) => (this.#prefs.aimAssist ? applyAimAssist({
       inputType: type,
       aimDelta: { dyaw, dpitch },
       player: { x: this.#me.x, y: this.#me.y + eyeOf(this.#me), z: this.#me.z, yaw: this.#input.yaw, pitch: this.#input.pitch },
       targets: this.#me.alive ? this.#remote.latest().filter((t) => this.#team < 0 || t.team !== this.#team) : [],
       moving: Math.hypot(this.#me.vx ?? 0, this.#me.vz ?? 0) > 0.5,
-    });
+    }) : { dyaw, dpitch }); // PRO-menu: aim assist can be turned off
     // PRO-feel end
-    window.addEventListener('wheel', (e) => {
-      if (!this.#input.locked || e.deltaY === 0) return;
-      this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary');
-    }, { passive: true });
+    // PRO-menu: the wheel goes through bindings.js (nextWeapon / prevWeapon by default); input.js queues the actions
     window.addEventListener('keyup', (e) => {
       if (isBound('scoreboard', e.code)) this.#hud.setScoreboardVisible(false);
     });
@@ -148,12 +146,28 @@ export class Game {
   /** SPEC 19.2: mouse sensitivity from the settings panel, applied to the next mouse move. */
   setSensitivity(value) {
     this.#sensitivity = value;
-    this.#input.sensitivity = value * adsSensitivity(this.#fov, this.#baseFov, this.#weapon.id, this.#input.ads);
+    this.#input.sensitivity = value * adsSensitivity(this.#fov, this.#baseFov, this.#weapon.id, this.#input.ads) * (this.#input.ads ? this.#prefs.adsSensMul : 1); // PRO-menu
   }
 
   setFov(value) {
     this.#baseFov = value;
   }
+
+  // PRO-menu begin (SPEC 33): preferences applied live; the panel calls this on every change
+  #prefs = prefDefaults();
+
+  applyPrefs(prefs) {
+    this.#prefs = prefs;
+    this.#input.prefs = prefs;
+    this.#audio.setVolume?.((prefs.masterVolume / 100) * (prefs.sfxVolume / 100));
+    this.#gfx.setQuality?.(prefs.quality === 'auto' ? null : prefs.quality);
+    this.#hud.applyPrefs?.(prefs);
+  }
+
+  get prefs() {
+    return this.#prefs;
+  }
+  // PRO-menu end
 
   // SPEC 29.1: chat input; the caller (main.js) owns the DOM element and the Enter key.
   sendChat(text) {
@@ -386,7 +400,10 @@ export class Game {
     // PRO-feel begin: SPEC 32.6 gamepad buttons map onto the same intents as the keys
     for (const a of this.#input.takeGamepadActions()) {
       if (a === 'reload') this.reload();
-      else if (a === 'switch') this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary');
+      else if (a === 'switch' || a === 'nextWeapon' || a === 'prevWeapon') this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary'); // PRO-menu: two slots, so next and previous both swap
+      else if (a === 'weapon1') this.switchWeapon('primary');
+      else if (a === 'weapon2') this.switchWeapon('sidearm');
+      else if (a === 'inspect') this.#weaponView?.inspect?.();
       else if (a === 'ability1') this.useAbility(0);
       else if (a === 'ability2') this.useAbility(1);
       else if (a === 'grenade') this.throwGrenade();
@@ -482,16 +499,18 @@ export class Game {
       isSprinting: sprinting, isTacSprinting: sprinting && this.#me.tac > 0,
       isSliding: this.#me.slide > 0, isDiving: this.#me.dive > 0,
     });
-    this.#fovKick += (feel.fovKick - this.#fovKick) * Math.min(1, dt * 8);
-    const sideX = Math.cos(this.#input.yaw) * feel.offsetX;
-    const sideZ = -Math.sin(this.#input.yaw) * feel.offsetX;
-    camera.position.set(this.#me.x + sideX, this.#eyeY + feel.offsetY, this.#me.z + sideZ);
-    camera.rotation.set(this.#input.pitch, this.#input.yaw, feel.rollTilt);
+    // PRO-menu: head bob, camera shake and fov kick follow the video preferences (SPEC 33.3)
+    const bobK = this.#prefs.headBob, shakeK = this.#prefs.cameraShake;
+    this.#fovKick += ((this.#prefs.fovKick ? feel.fovKick : 0) - this.#fovKick) * Math.min(1, dt * 8);
+    const sideX = Math.cos(this.#input.yaw) * feel.offsetX * bobK;
+    const sideZ = -Math.sin(this.#input.yaw) * feel.offsetX * bobK;
+    camera.position.set(this.#me.x + sideX, this.#eyeY + feel.offsetY * Math.max(bobK, shakeK), this.#me.z + sideZ);
+    camera.rotation.set(this.#input.pitch, this.#input.yaw, feel.rollTilt * shakeK);
     // SPEC 29.3: ADS eases the fov toward the weapon's zoom and scales the mouse to match; SPEC 32.4 sets the
     // pace per weapon and the sprint kick widens the view a little.
     const fovTarget = targetFov(this.#baseFov, this.#weapon.id, ads) + (ads ? 0 : this.#fovKick);
     const nextFov = stepFovFor(this.#fov, fovTarget, dt, this.#weapon.id);
-    if (Math.abs(nextFov - this.#fov) > 1e-3 || Math.abs(camera.fov - nextFov) > 1e-3) { this.#fov = nextFov; camera.fov = nextFov; camera.updateProjectionMatrix(); this.#input.sensitivity = this.#sensitivity * adsSensitivity(this.#fov, this.#baseFov, this.#weapon.id, ads); }
+    if (Math.abs(nextFov - this.#fov) > 1e-3 || Math.abs(camera.fov - nextFov) > 1e-3) { this.#fov = nextFov; camera.fov = nextFov; camera.updateProjectionMatrix(); this.#input.sensitivity = this.#sensitivity * adsSensitivity(this.#fov, this.#baseFov, this.#weapon.id, ads) * (ads ? this.#prefs.adsSensMul : 1); } // PRO-menu
     // PRO-feel end
     const scoped = isScoped(this.#weapon.id, ads) && this.#fov < this.#baseFov * 0.6;
     this.#hud.setScoped(scoped);
