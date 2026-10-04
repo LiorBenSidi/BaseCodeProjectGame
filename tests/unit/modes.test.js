@@ -6,7 +6,7 @@ import { MODES, newMatch, startMatch, assignTeam, scoreKill, endReason, endMatch
 const pl = (id, kills = 0, deaths = 0, team = -1) => ({ id, name: `P${id}`, kills, deaths, team });
 
 test('modes: deathmatch and team deathmatch with time and score limits', () => {
-  assert.deepEqual(Object.keys(MODES), ['dm', 'tdm']);
+  assert.deepEqual(Object.keys(MODES), ['dm', 'tdm', 'range']);
   assert.equal(MODES.dm.teams, false);
   assert.equal(MODES.tdm.teams, true);
   assert.throws(() => modeDef('ctf'), RangeError);

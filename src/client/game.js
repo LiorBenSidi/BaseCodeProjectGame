@@ -16,6 +16,8 @@ import { ActorNetwork, roomIdFromLocation } from './netActor.js';
 import { createClient } from '@base44/sdk';
 import { MAP } from '../shared/map.js';
 import { Audio, cueFor, falloff } from './audio.js';
+import { newTutorial, current as tutorialStep, advance as tutorialAdvance, progress as tutorialProgress, shouldStart as tutorialShouldStart, markDone as tutorialMarkDone, nextTip, TIPS_KEY } from './tutorial.js'; // PRO-audio: SPEC 35.4
+import { modeForRoomId } from '../shared/rooms.js'; // PRO-audio
 import { targetFov, sensitivityScale, stepFov, isScoped, DEFAULT_FOV } from './aim.js';
 import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
@@ -67,6 +69,14 @@ export class Game {
   #stepT = 0; // SPEC 29.5 footstep phase
   #remoteSteps = new Map(); // id -> last step time
   #reloadSeen = false;
+  // PRO-audio begin (SPEC 35.4): tutorial and tips state
+  #tutorial = null; // null = not running
+  #tipsSeen = [];
+  #tipUntil = 0;
+  #wasOnGround = true;
+  #wasSliding = false;
+  #lastWeaponId = null;
+  // PRO-audio end
   #threats = [];
   #lastHp = null;
   #eyeY = null; // SPEC 23 smoothed camera height
@@ -147,10 +157,10 @@ export class Game {
 
   // SPEC 28.3: a cue at a world position is attenuated by its distance from the local player.
   #cue(event, data = {}, at = null) {
-    const id = cueFor(event, data);
+    const id = cueFor(event, at ? { ...data, d: Math.hypot(at[0] - this.#me.x, at[2] - this.#me.z) } : data); // PRO-audio: distance picks the far variant
     if (!id) return;
     const d = at ? Math.hypot(at[0] - this.#me.x, at[2] - this.#me.z) : 0;
-    this.#audio.play(id, falloff(d));
+    this.#audio.play(id, falloff(d), at); // PRO-audio: panned and lowpassed from the listener
   }
 
   setShowFps(on) {
@@ -176,16 +186,19 @@ export class Game {
   reload() {
     if (!this.joined || !this.#me.alive) return;
     this.#net.send({ t: 'reload' });
+    this.#tut('reload'); // PRO-audio
   }
 
   switchWeapon(slot) {
     if (!this.joined || !this.#me.alive || slot === this.#weapon.slot) return;
     this.#net.send({ t: 'switch', slot });
+    this.#cue('switch'); this.#tut('switch'); // PRO-audio
   }
 
   throwGrenade() {
     if (!this.joined || !this.#me.alive) return false;
     this.#net.send({ t: 'throw' });
+    this.#tut('throw'); // PRO-audio
     return true;
   }
 
@@ -193,6 +206,7 @@ export class Game {
   useAbility(slot) {
     if (!this.joined || !this.#me.alive) return false;
     this.#net.send({ t: 'ability', slot });
+    this.#tut('ability'); // PRO-audio
     return true;
   }
 
@@ -237,22 +251,31 @@ export class Game {
     this.#kit = KITS[kit] ? kit : this.#kit;
     this.#roomId = roomId;
     this.#hud.setRoom(roomId);
+    // PRO-audio begin (SPEC 35.4)
+    const storage = globalThis.localStorage;
+    try { this.#tipsSeen = JSON.parse(storage?.getItem?.(TIPS_KEY) ?? '[]'); } catch { this.#tipsSeen = []; }
+    if (!Array.isArray(this.#tipsSeen)) this.#tipsSeen = [];
+    this.#tutorial = tutorialShouldStart(modeForRoomId(roomId), storage) ? newTutorial() : null;
+    document.getElementById('tut-skip')?.addEventListener('click', () => this.#tut('skip'));
+    this.#renderTutorial();
+    // PRO-audio end
     const handlers = {
       welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#setMap(m.map); this.#pickups.setSpots(m.pickups); },
       pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
       snap: (m) => this.#onSnapshot(m),
-      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
-      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
+      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) { this.#threat(m.from[0], m.from[2]); this.#tip('firstShotHeard'); } this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit', { head: m.zone === 'head' }); this.#tut('hit'); this.#tip('firstHit'); } }, // PRO-audio: headshot ding, tutorial, tip
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
         if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
         if (m.killer === this.#id) { this.#cue('kill', { mine: true }); const b = m.multiText ?? m.streakText; if (b) this.#hud.banner(b); } else if (m.streakText && m.streak >= 5) this.#hud.killFeed(`${m.killerName} is on a ${m.streak} kill streak: ${m.streakText}`);
-        if (m.victim === this.#id) this.#cue('death');
+        if (m.victim === this.#id) { this.#cue('death'); this.#tip('death'); } // PRO-audio
+        if (m.killer === this.#id) this.#tip('kill');
       },
       chat: (m) => this.#hud.chat({ name: m.name, team: m.team, text: m.text }),
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id); this.#cue('matchEnd'); }, // SPEC 22
-      matchStart: (m) => { this.#hud.matchStart(); this.#cue('matchStart'); if (m.map) { this.#setMap(m.map); this.#pickups.setSpots(m.pickups); this.#hud.killFeed(`Map: ${m.map.name}`); } },
+      matchStart: (m) => { this.#hud.matchStart(); this.#cue('matchStart'); this.#tip('matchStart'); if (m.map) { this.#setMap(m.map); this.#pickups.setSpots(m.pickups); this.#hud.killFeed(`Map: ${m.map.name}`); } },
       // SPEC 24 / 25 feedback lines
       ability: (m) => { if (m.id === this.#id && m.denied) this.#hud.abilityDenied(m.slot, m.denied); this.#cue('ability', { denied: !!m.denied, mine: m.id === this.#id }); },
       xp: (m) => { if (m.levelUp) { this.#hud.killFeed(`Level ${m.lvl}: pick a perk (3 / 4)`); this.#cue('levelUp'); } },
@@ -294,7 +317,7 @@ export class Game {
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c, this.#map.boxes, this.#map.half);
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
     this.#weaponView?.setWeapon(this.#weapon.id);
-    if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
+    if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#cue('reload'); this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
     this.#onDamage(mine);
     this.#hud.update(mine, snap.players, Date.now(), snap.match, snap.self);
   }
@@ -410,6 +433,46 @@ export class Game {
     this.#fps.since = now;
   }
 
+  // PRO-audio begin (SPEC 35.4)
+  #tut(event) {
+    if (!this.#tutorial) return;
+    if (tutorialAdvance(this.#tutorial, event)) {
+      this.#cue('ui', { kind: 'click' });
+      if (this.#tutorial.done) { tutorialMarkDone(globalThis.localStorage); this.#tutorial = null; }
+      this.#renderTutorial();
+    }
+  }
+
+  #renderTutorial() {
+    const box = document.getElementById('tutorial');
+    if (!box) return;
+    const step = this.#tutorial ? tutorialStep(this.#tutorial) : null;
+    box.hidden = !step;
+    if (!step) return;
+    const pr = tutorialProgress(this.#tutorial);
+    document.getElementById('tut-step').textContent = `Step ${pr.index} of ${pr.total}`;
+    document.getElementById('tut-title').textContent = step.title;
+    document.getElementById('tut-text').textContent = step.text;
+    const skip = document.getElementById('tut-skip');
+    if (skip) skip.textContent = step.event === null ? 'Got it' : 'Skip tutorial';
+    if (step.event === null) skip?.addEventListener('click', () => this.#tut('dismiss'), { once: true });
+  }
+
+  // Contextual tips (SPEC 35.4): one line, once ever, only in live matches (not the range) and not during the tutorial.
+  #tip(trigger) {
+    if (this.#tutorial || modeForRoomId(this.#roomId) === 'range') return;
+    const tip = nextTip(trigger, this.#tipsSeen);
+    if (!tip) return;
+    this.#tipsSeen.push(tip.id);
+    try { globalThis.localStorage?.setItem?.(TIPS_KEY, JSON.stringify(this.#tipsSeen)); } catch { /* private mode */ }
+    const el = document.getElementById('tip');
+    if (!el) return;
+    el.textContent = tip.text;
+    el.hidden = false;
+    this.#tipUntil = performance.now() + 5000;
+  }
+  // PRO-audio end
+
   #frame(now) {
     requestAnimationFrame((t) => this.#frame(t));
     const dt = Math.min(0.1, (now - this.#lastFrame) / 1000); // clamp: a background tab must not flood the server
@@ -442,6 +505,20 @@ export class Game {
     this.#weaponView?.setVisible(this.#me.alive && !scoped);
     this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
     this.#footsteps(dt, speed);
+    // PRO-audio begin (SPEC 35.1 / 35.4): ears follow the camera; jump, land and slide cues; movement tutorial steps
+    this.#audio.setListener(this.#me.x, this.#me.z, this.#input.yaw);
+    if (this.#me.alive) {
+      if (this.#wasOnGround && !this.#me.onGround && this.#me.vy > 0.5) { this.#cue('jump'); this.#tut('jump'); }
+      if (!this.#wasOnGround && this.#me.onGround) this.#cue('land');
+      const sliding = (this.#me.slide ?? 0) > 0;
+      if (sliding && !this.#wasSliding) { this.#cue('slide'); this.#tut('slide'); }
+      this.#wasSliding = sliding;
+      if (speed > 1 && this.#me.onGround) this.#tut('move');
+      if (this.#input.locked && (Math.abs(this.#input.yaw) > 0.3 || Math.abs(this.#input.pitch) > 0.2)) this.#tut('look');
+    }
+    this.#wasOnGround = this.#me.onGround;
+    if (this.#tipUntil && now >= this.#tipUntil) { this.#tipUntil = 0; const el = document.getElementById('tip'); if (el) el.hidden = true; }
+    // PRO-audio end
     renderer.render(scene, camera);
   }
 }

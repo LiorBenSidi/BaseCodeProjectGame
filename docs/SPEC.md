@@ -928,29 +928,19 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 
 
 
-## 35. Sample Audio Engine, Bots and Onboarding (Batch P6, D-032)
+## 35. Sound engine, bots, practice range, onboarding (Pro batch P6, D-032)
 
-### 35.1 Audio Engine Architecture and Audio Model
-`src/client/audioModel.js` (pure audio math and logic) and `src/client/audio.js` (WebAudio engine rewrite):
-- Audio manifest with lazy loading and decode cache (`decodeAudioData`).
-- Four audio buses: Master, Music, SFX, UI reading settings keys `audioMaster`, `audioMusic`, `audioSfx` (defaults 0.8, 0.5, 1.0) and master enabled toggle `bca.sound`.
-- Positional 3D audio via WebAudio `PannerNode` with HRTF panning model, exponential distance rolloff, and occlusion-lite muffling (lowpass filter cutoff at 800 Hz when map box intersects line-of-sight from listener to emitter).
-- Sound assets (.ogg format) under `public/assets/audio/`, <= 200 KB each for SFX, <= 1 MB each for music loops (menu and in-match ambient). CC0 assets recorded in `docs/ASSETS.md`.
-- Per-weapon firing sounds with distant variant (>30 m), staged reload foley, footsteps by surface/speed, slide/jump/land, hit layers (body/headshot/kill confirm), kit ability sounds (dash, shield, blink, decoy, grapple, scan, heal zone, stasis), grenade bounce/explosion, pickup, UI feedback, stings (intro, win, lose), low HP heartbeat, menu music loop, and ambient match loop.
+### 35.1 Sound engine (`src/client/audio.js`, `src/client/audioModel.js`)
+Still fully procedural: no audio assets in the repo (the CC0 rule is satisfied trivially, synthesis has no license). Each cue is now a list of layers (`osc` sweep, `noise` burst with its own highpass or lowpass, `sub` thump), with per-layer delay for staged sounds (reload: mag out, mag in, bolt). Buses: `master`, `sfx`, `ui` (`Audio.setLevel(bus, 0..1)`, read by the SPEC 33 settings). Positional cues pass their world position to `Audio.play(cue, volume, at)`: a `StereoPannerNode` pans from the listener (`panFor`, yaw 0 looks toward -Z, capped at 0.85 so headphones never go fully one sided) and a lowpass drops with distance (`cutoffFor`: 18 kHz near, 900 Hz at 60 m). Gunfire heard from 30 m or more (`DISTANT_M`) plays `shot_distant` (no crack, long low tail) instead of the weapon's own cue. Own shots and blasts duck the sfx bus (`DUCK`: 0.55 for 180 ms); ui sounds are never ducked. A node cap (48 live cues) keeps a grenade in a crowd from piling up hundreds of nodes. New cues: headshot, damage, reload, switch, empty, jump, land, slide, medal, countdown, go, ui_hover / ui_click / ui_back. `Audio.setListener(x, z, yaw)` runs once per frame from the camera.
 
-### 35.2 Announcer Callouts
-Text callouts only (no TTS) rendered via HUD banners and kill feed: "FIRST BLOOD", "DOUBLE KILL", "TRIPLE KILL", "MULTI KILL", "KILLING SPREE", "RAMPAGE", "UNSTOPPABLE", "GODLIKE", "LEGENDARY", "VICTORY", "DEFEAT".
+### 35.2 Bots (`src/shared/bots.js`, `GameRoom.js`)
+A pure, deterministic brain: `botStep(brain, bot, others, map, nowMs, rng)` returns `{ cmd, shoot, reload }`, randomness only from the injected `seededRng` (mulberry32), so a seed replays a match. Decisions at ~8 Hz (`THINK_MS`), movement every tick. Patrol: waypoints are spawn points or free arena spots never inside a wall; a bot that makes no progress for 900 ms re-routes and hops. Combat: the nearest visible enemy (`castRay` from eye to chest against map boxes, team aware), a reaction delay before the first shot, a slow wandering aim error instead of per tick jitter, strafing that flips every 0.5 to 1.3 s, closing beyond 18 m and backing off inside 6 m, reload when the magazine is empty. Difficulties: `dummy` (walks, never fires; the range), `easy`, `medium`, `hard` (reaction 650 / 380 / 180 ms, aim error 0.11 / 0.05 / 0.02 rad). Bots are ordinary players with `bot: true`, marked `bot: 1` in snapshots and `[BOT]` on the scoreboard; their messages go nowhere. Seat filling (`botsWanted`): per mode (`BOT_CONFIG`: dm fills to 2 with medium, tdm to 4, range to 4 with dummies); bots join when a human joins, leave one by one as humans arrive, and all leave with the last human. Diag rooms and `diag: true` hosts never get bots. Persistence (roster, MatchResult, PlayerStats) records humans only. Dev server: `BOT_FILL` env overrides the mode default (0 disables).
 
-### 35.3 Bots and Practice Range
-`src/shared/bots.js`:
-- Pure, deterministic bot decision brain driven by an injected seeded random function `rng()`.
-- Waypoint graph built from map boxes and arena bounds (grid walkability).
-- Bot states: patrol, line-of-sight detection using `rayHitsBox` hitscan helper, approach target, shoot with accuracy and reaction time tuned by difficulty (`easy`, `medium`, `hard`), retreat to health pickup on low HP (<35 HP), pick up weapons.
-- `GameRoom.js`: Bots are represented as players with `bot: true` in snapshots and scoreboard. Auto-fills rooms up to `minPlayers` (default 0 for public rooms), leaving when human players join.
-- Practice Range mode (`range`) in `src/shared/modes.js`: Solo room prefix `range-`, infinite time limit, 3 easy/dummy bots, instant respawn, registered in `matchSession.js` and `server.js`.
+### 35.3 Practice range (`modes.js`)
+Mode `range` (`Practice Range` in the lobby, rooms `range-xxxxxx`): no time or score limit (`timeLimitMs: Infinity`; `matchSnapshot.left` = -1 and the HUD shows no timer), three dummies, otherwise the normal match loop.
 
-### 35.4 Onboarding and Contextual Tips
-`src/client/tutorial.js` (pure step logic unit tested):
-- First-launch practice range tutorial overlay with 10 sequential action steps: move, sprint, slide, jump/mantle, aim/shoot dummy, reload, switch weapon, throw grenade, kit Q/E abilities, perk pick.
-- Steps advance on real action input/events. Skip button sets `bca.tutorialDone = true`.
-- Contextual tips in the first two live matches, displayed one at a time.
+### 35.4 Onboarding (`src/client/tutorial.js`)
+First run in a practice range (never finished before, `localStorage` `bca.tutorialDone`): a card with ten steps that advance only on the real action (move, look, jump, slide, hit a dummy, reload, switch, grenade, ability, done). Skip ends it. Contextual tips (`TIPS`, `bca.tipsSeen`): one line, shown once ever, on the first match start, first enemy shot heard, first death, first hit, first kill, never in the range or during the tutorial.
+
+### 35.5 Tests
+`tests/unit/audio.test.js` (4: cue table and variants, falloff, pan / filter / bus math, fake context graph incl. panner, lowpass, cap), `proBots.test.js` (6: rng and names, waypoints and LOS, brain behaviour per difficulty, seat math and range mode, room fill / leave, a medium bot lands hits and dummies never do), `proTutorial.test.js` (2). Live check on the dev server: one human joins, bot "Rook" joins, moves and fires.

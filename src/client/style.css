@@ -206,3 +206,14 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 #chat-lines .who.red { color: #f87171; }
 #chat-input { pointer-events: auto; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(10, 14, 22, 0.8); color: #e6edf3; font-size: 13px; }
 
+
+/* PRO-audio (SPEC 35.4): tutorial card and contextual tips */
+#tutorial { position: fixed; left: calc(16px + env(safe-area-inset-left)); bottom: 28%; width: min(320px, calc(100vw - 32px)); padding: 14px 16px; border: 1px solid var(--surface-border, #30363d); border-left: 3px solid var(--accent-hover, #2ea043); border-radius: 10px; background: rgba(8,12,20,0.82); pointer-events: none; animation: tut-in 0.3s ease-out; }
+#tutorial[hidden] { display: none; }
+#tutorial .tut-step { margin: 0; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--text-muted, #9da7b3); }
+#tutorial .tut-title { margin: 4px 0 2px; font-size: 18px; font-weight: 800; }
+#tutorial .tut-text { margin: 0; font-size: 14px; line-height: 1.4; }
+#tutorial button { margin-top: 10px; pointer-events: auto; font-size: 12px; padding: 6px 10px; }
+@keyframes tut-in { from { transform: translateX(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
+#tip { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); padding: 8px 16px; border-radius: 999px; border: 1px solid var(--surface-border, #30363d); background: rgba(8,12,20,0.82); font-size: 13px; pointer-events: none; animation: tut-in 0.3s ease-out; }
+#tip[hidden] { display: none; }

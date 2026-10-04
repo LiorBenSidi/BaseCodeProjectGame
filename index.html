@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/src/client/style.css" />
   </head>
   <body>
-    <canvas id="game"></canvas>
+          <canvas id="game"></canvas>
     <div id="vignette" aria-hidden="true"></div>
 
     <div id="hud" hidden>
@@ -36,6 +36,8 @@
         <div id="xp-bar" aria-label="Experience"><div id="xp-fill"></div><span id="xp-label">LVL 1  0 / 100 XP</span></div>
       </div>
       <div id="perk-offer" hidden aria-label="Perk offer"></div>
+      <div id="tutorial" hidden aria-live="polite"><p class="tut-step" id="tut-step"></p><p class="tut-title" id="tut-title"></p><p class="tut-text" id="tut-text"></p><button type="button" id="tut-skip" class="ghost">Skip tutorial</button></div>
+      <div id="tip" hidden aria-live="polite"></div>
       <div id="match-end" hidden><div id="match-end-title"></div><div id="match-end-sub"></div><div class="match-end-hint">Next match starts shortly</div></div>
       <div id="feed"></div>
       <div id="hit-info"></div>
@@ -86,7 +88,7 @@
       <section id="lobby" aria-label="Rooms">
         <p class="kit-title">Rooms</p>
         <div class="room-actions">
-          <select id="create-mode" aria-label="Mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option></select>
+          <select id="create-mode" aria-label="Mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option><option value="range">Practice Range</option></select>
           <button id="quick-play" type="button" class="primary">Quick Play</button>
           <button id="create-room" type="button" class="ghost">Create room</button>
         </div>

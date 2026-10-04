@@ -276,9 +276,9 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 
 
 
-### D-032 (P6) Sample-based 3D audio, bots, and first-launch onboarding
+### D-032 (P6) Sound engine, bots, range, onboarding
 - Status: decided
-- Date: 2026-10-04
-- Decision: Replace WebAudio synth sweeps with sample-based audio decoding and 3D HRTF panning + occlusion-lite lowpass filtering; implement a pure deterministic bot brain with waypoint graphs and practice range mode (`range`); add an interactive first-launch onboarding overlay and contextual tips.
-- Source: owner approved Pro program batch P6 brief (2026-10-04).
-- Affects: docs/SPEC.md section 35; `src/client/audio.js`, `src/client/audioModel.js`, `src/client/tutorial.js`, `src/client/game.js`, `src/client/hud.js`, `src/client/settings.js`, `src/shared/bots.js`, `src/shared/modes.js`, `src/server/GameRoom.js`, `src/server/server.js`, `src/server/matchSession.js`, `public/assets/audio/*`, `docs/ASSETS.md`.
+- Date: 2026-10-05
+- Decision: Keep audio procedural (layered synthesis, panning, distance filter, buses, ducking) instead of shipping sample files: zero license risk, zero download, and the palette is tunable in code. Bots are a pure seeded brain run by the room, filling seats per mode and yielding to humans, so nobody ever plays an empty room. The practice range is a mode (so it reuses rooms, lobby and the match loop) with dummies, and the tutorial lives there, advancing only on real actions.
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 35; `src/client/{audio,audioModel,tutorial,game,hud,hudModel}.js`, `src/shared/{bots,modes}.js`, `src/server/{GameRoom,config,server}.js`, `base44/actors/Match/matchHost.js`, actor mirror, `index.html`, `style.css`.
