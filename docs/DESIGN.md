@@ -274,3 +274,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
 - Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
 
+
+### D-028 (P2) Weapons and characters
+- Status: decided
+- Date: 2026-10-05
+- Decision: Replace the three box guns and the two box figure with a shared procedural weapon parts table (first and third person), an articulated rig with a distance driven walk cycle, hit flash and a death pose. Procedural geometry, no downloaded models (same reasoning as D-027's amendment).
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 31; `src/client/{weaponModels,characterRig,weaponView,remote,game}.js`.

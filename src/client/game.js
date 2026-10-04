@@ -242,7 +242,7 @@ export class Game {
       pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
       snap: (m) => this.#onSnapshot(m),
       shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
-      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit'); if (m.target !== null) this.#remote.flash(m.target); } }, // PRO-weapons: SPEC 31.3 hit flash
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
