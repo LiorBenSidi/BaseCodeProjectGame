@@ -240,6 +240,7 @@ export async function startTestServer(overrides = {}) {
     allowedOrigins: [],
     logLevel: 'error',
     client: 'none',
+    botFill: 0, // SPEC 35.3: black-box tests count humans; bot tests set their own fill
     sink: (line) => logs.push(line),
     ...overrides,
   });
