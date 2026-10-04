@@ -12,6 +12,9 @@ export function installDebugHarness(game) {
     turn: (dYaw, dPitch = 0) => { const s = game.debugState(); game.aim(s.yaw + dYaw, s.pitch + dPitch); },
     fire: () => game.fire(),
     throwGrenade: () => game.throwGrenade(),
+    useAbility: (slot) => game.useAbility(slot), // SPEC 24
+    pickPerk: (i) => game.pickPerk(i), // SPEC 25
+    selectKit: (id) => game.selectKit(id),
     state: () => game.debugState(),
   };
   window.__arenaDebug = api;

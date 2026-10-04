@@ -1,0 +1,18 @@
+// SPEC 26: lobby registry row, one per live room, written by the Match actor's service role only.
+{
+  "name": "Room",
+  "description": "A live arena room as seen by the lobby. Written by the Match actor; read by everyone.",
+  "type": "object",
+  "properties": {
+    "room_id": { "type": "string", "description": "Actor instance id, <mode>-<code>" },
+    "mode": { "type": "string", "enum": ["dm", "tdm"], "description": "Match mode, part of the room id" },
+    "players": { "type": "number", "description": "Players seated right now" },
+    "max_players": { "type": "number", "description": "Room capacity" },
+    "phase": { "type": "string", "description": "waiting, playing or ending" },
+    "match_number": { "type": "number", "description": "Matches started in this room" },
+    "status": { "type": "string", "enum": ["empty", "open", "full"], "description": "Joinability" },
+    "last_seen": { "type": "string", "format": "date-time", "description": "Last registry write; stale rows are hidden by the lobby" }
+  },
+  "required": ["room_id", "mode", "status", "last_seen"],
+  "rls": { "read": true, "write": false }
+}

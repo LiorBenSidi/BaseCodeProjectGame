@@ -33,6 +33,7 @@
 import { Actor } from "base44:runtime/actors";
 import { MatchHost } from "./matchHost.js";
 import { ClockSource } from "./clockSource.js";
+import { Persistence } from "./persistence.js";
 import { TICK_RATE, isDiagRoom } from "./shared/constants.js";
 
 // Idle heartbeat for the event-driven clock. Active play advances the room on every input message
@@ -44,7 +45,7 @@ export const TIMER_EVIDENCE_MAX = 600; // ten minutes of evidence per object lif
 const CLOCK_KEY = "clock";
 // Bumped by hand with every actor change that ships; the diag probe reports it so a live room can be
 // matched to the code it runs after a Publish (Durable Objects give no other way to read that back).
-export const ACTOR_BUILD = "2.1";
+export const ACTOR_BUILD = "3.1"; // V1: SPEC 20 to 29
 
 interface ActorConn {
   id: string;
@@ -69,6 +70,8 @@ export default class Match extends Actor {
       instanceId: this.instanceId,
       diag: isDiagRoom(this.instanceId),
       clock: new ClockSource(),
+      // SPEC 26 / 27: registry, results and stats through the actor's service role (no app secret needed)
+      persistence: new Persistence(this.client),
     });
     return this.#host;
   }

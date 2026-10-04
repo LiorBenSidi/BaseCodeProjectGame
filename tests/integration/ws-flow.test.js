@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useServer, waitFor, httpRequest, moveUntilMoved, cmd, STEP, MAX_CMDS_PER_TICK } from '../helpers/harness.js';
 
-const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'x', 'y', 'yaw', 'z', 'vy'].sort();
+const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'x', 'y', 'yaw', 'z', 'vy', 'w', 'm', 'r', 'rel', 'sp', 'tm', 'h', 'kt', 'lv', 'sc'].sort(); // SPEC 20.4 weapon fields, 21.2 sp, 22 tm, 23 h, 24 kt lv sc
 
 describe('join / welcome / snapshot flow', () => {
   const ctx = useServer({});
@@ -60,6 +60,20 @@ describe('join / welcome / snapshot flow', () => {
     await waitFor(() => a.lastSnap && a.lastSnap.players.some((p) => p.id === idB && p.name === 'Beta'), { what: 'A sees B' });
     await waitFor(() => b.lastSnap && b.lastSnap.players.some((p) => p.id === idA && p.name === 'Alpha'), { what: 'B sees A' });
     assert.equal(ctx.room.playerCount, 2);
+  });
+
+  it('SPEC 29.1: a chat line is sanitized and relayed to both clients with the sender name', async () => {
+    const a = await ctx.open();
+    const b = await ctx.open();
+    const idA = await a.join('Alpha');
+    await b.join('Beta');
+    a.send({ t: 'chat', text: '  gg \u0007 wp ' });
+    await waitFor(() => b.ofType('chat').length === 1, { what: 'B receives the chat line' });
+    assert.deepEqual(b.ofType('chat')[0], { t: 'chat', id: idA, name: 'Alpha', team: -1, text: 'gg   wp' });
+    await waitFor(() => a.ofType('chat').length === 1, { what: 'A receives its own line' });
+    a.send({ t: 'chat', text: 'too fast' });
+    await a.nextSnaps(5);
+    assert.equal(b.ofType('chat').length, 1, 'a second line inside one second is dropped');
   });
 
   it('a second join on the same socket is ignored (one player, one welcome, name unchanged)', async () => {

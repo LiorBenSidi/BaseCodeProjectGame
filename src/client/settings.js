@@ -1,4 +1,5 @@
 import { getTouchOverride, setTouchOverride } from './deviceMode.js';
+import { clampFov, DEFAULT_FOV } from './aim.js';
 
 export const DEFAULT_SENSITIVITY = 0.0022;
 export const MIN_SENSITIVITY = 0.0005;
@@ -8,6 +9,8 @@ export const KEYS = {
   SENSITIVITY: 'bca.sensitivity',
   TOUCH_CONTROLS: 'bca.touchControls',
   SHOW_FPS: 'bca.showFps',
+  SOUND: 'bca.sound', // SPEC 28.3, default on
+  FOV: 'bca.fov', // SPEC 29.3
 };
 
 function resolveStorage(storage) {
@@ -88,3 +91,51 @@ export function setShowFps(storage, value) {
   }
   return boolVal;
 }
+
+export function getSound(storage) {
+  const store = resolveStorage(storage);
+  if (!store) return true;
+  try {
+    return store.getItem(KEYS.SOUND) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function setSound(storage, value) {
+  const store = resolveStorage(storage);
+  const boolVal = Boolean(value);
+  if (store) {
+    try {
+      store.setItem(KEYS.SOUND, String(boolVal));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  return boolVal;
+}
+
+export function getFov(storage) {
+  const store = resolveStorage(storage);
+  if (!store) return DEFAULT_FOV;
+  try {
+    const raw = store.getItem(KEYS.FOV);
+    return raw === null || raw === undefined ? DEFAULT_FOV : clampFov(raw);
+  } catch {
+    return DEFAULT_FOV;
+  }
+}
+
+export function setFov(storage, value) {
+  const store = resolveStorage(storage);
+  const v = clampFov(value);
+  if (store) {
+    try {
+      store.setItem(KEYS.FOV, String(v));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  return v;
+}
+

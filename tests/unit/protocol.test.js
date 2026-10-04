@@ -153,7 +153,17 @@ test('a valid single-command input message is accepted with all fields preserved
   const c = goodCmd({ seq: 7, fwd: 1, right: -1, jump: true, yaw: 1.25, pitch: 0.5 });
   const r = parseClientMessage(input([c]));
   assert.equal(r.ok, true);
-  assert.deepEqual(r.msg, { t: 'input', cmds: [c] });
+  assert.deepEqual(r.msg, { t: 'input', cmds: [{ ...c, sprint: false, crouch: false }] }); // SPEC 23: absent stance flags are false
+});
+
+test('SPEC 23: sprint and crouch are coerced to booleans and never anything else', () => {
+  const c = goodCmd({ sprint: 1, crouch: 'yes' });
+  const r = parseClientMessage(input([c]));
+  assert.equal(r.msg.cmds[0].sprint, true);
+  assert.equal(r.msg.cmds[0].crouch, true);
+  const z = parseClientMessage(input([goodCmd({ sprint: 0, crouch: null })]));
+  assert.equal(z.msg.cmds[0].sprint, false);
+  assert.equal(z.msg.cmds[0].crouch, false);
 });
 
 test('input commands preserve order', () => {
@@ -308,7 +318,7 @@ test('command extra fields are dropped and __proto__ inside a command has no eff
   const raw = '{"t":"input","cmds":[{"seq":1,"fwd":0,"right":0,"yaw":0,"pitch":0,"isAdmin":true,"hp":500,"__proto__":{"jump":true}}]}';
   const r = parseClientMessage(raw);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.msg.cmds[0], { seq: 1, fwd: 0, right: 0, jump: false, yaw: 0, pitch: 0 });
+  assert.deepEqual(r.msg.cmds[0], { seq: 1, fwd: 0, right: 0, jump: false, sprint: false, crouch: false, yaw: 0, pitch: 0 });
   assert.equal(r.msg.isAdmin, undefined);
 });
 
@@ -417,5 +427,38 @@ test('input ts: a finite non-negative number is kept, anything else is dropped w
     const r = validateClientMessage({ t: 'input', cmds, ts: bad });
     assert.equal(r.ok, true, `ts=${String(bad)}`);
     assert.equal('ts' in r.msg, false, `ts=${String(bad)}`);
+  }
+});
+
+// ---------- ping (SPEC 18.2) ----------
+
+test('ping: id and ts are whitelisted, everything else dropped', () => {
+  const r = validateClientMessage({ t: 'ping', id: 3, ts: 1_700_000_000_000, isAdmin: true });
+  assert.deepEqual(r, { ok: true, msg: { t: 'ping', id: 3, ts: 1_700_000_000_000 } });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'ping', id: 0, ts: 0 })).msg, { t: 'ping', id: 0, ts: 0 });
+});
+
+test('ping: a bad id or ts is bad_ping', () => {
+  for (const bad of [
+    { t: 'ping' },
+    { t: 'ping', id: -1, ts: 1 },
+    { t: 'ping', id: 1.5, ts: 1 },
+    { t: 'ping', id: '1', ts: 1 },
+    { t: 'ping', id: 1 },
+    { t: 'ping', id: 1, ts: -1 },
+    { t: 'ping', id: 1, ts: Infinity },
+    { t: 'ping', id: 1, ts: 'now' },
+  ]) {
+    assert.deepEqual(validateClientMessage(bad), { ok: false, reason: 'bad_ping' }, JSON.stringify(bad));
+  }
+});
+
+// SPEC 20.3: weapon intents
+test('reload and switch intents are whitelisted; switch needs a known slot', () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'reload', hp: 999 })), { ok: true, msg: { t: 'reload' } });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot: 'sidearm' })), { ok: true, msg: { t: 'switch', slot: 'sidearm' } });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot: 'primary', mag: 99 })), { ok: true, msg: { t: 'switch', slot: 'primary' } });
+  for (const slot of ['knife', '', 0, null, undefined, {}, '__proto__']) {
+    assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot })), { ok: false, reason: 'bad_switch' }, String(slot));
   }
 });

@@ -14,6 +14,7 @@ import { TICK_RATE } from '../shared/constants.js';
 import { GameRoom } from './GameRoom.js';
 import { createLogger } from './logger.js';
 import { parseClientMessage, MAX_MESSAGE_BYTES } from './protocol.js';
+import { answerPing } from './matchSession.js';
 import { TokenBucket } from './rateLimit.js';
 import { isAllowedOrigin } from './security.js';
 import { resolveStaticPath } from './static.js';
@@ -180,6 +181,7 @@ export async function startServer(options = {}) {
     const bucket = new TokenBucket({ capacity: 120, refillPerSec: 100 });
     let player = null;
     let strikes = 0;
+    const ping = { lastPingAt: null, lastPingTs: null }; // SPEC 18.2
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
@@ -197,10 +199,15 @@ export async function startServer(options = {}) {
         return undefined;
       }
       const { msg } = parsed;
+      if (msg.t === 'ping') {
+        answerPing(ping, msg, Date.now(), (obj) => { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); });
+        return undefined;
+      }
       if (msg.t === 'join') {
         if (player) return undefined;
         player = room.addPlayer({
           name: msg.name,
+          kit: msg.kit,
           send: (obj) => { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); },
         });
         if (!player) {
@@ -213,6 +220,18 @@ export async function startServer(options = {}) {
         room.handleShoot(player.id);
       } else if (player && msg.t === 'throw') {
         room.handleThrow(player.id);
+      } else if (player && msg.t === 'reload') {
+        room.handleReload(player.id);
+      } else if (player && msg.t === 'switch') {
+        room.handleSwitch(player.id, msg.slot);
+      } else if (player && msg.t === 'chat') {
+        room.handleChat(player.id, msg.text); // SPEC 29.1
+      } else if (player && msg.t === 'ability') {
+        room.handleAbility(player.id, msg.slot);
+      } else if (player && msg.t === 'kit') {
+        room.handleKit(player.id, msg.id);
+      } else if (player && msg.t === 'perk') {
+        room.handlePerk(player.id, msg.id);
       }
       return undefined;
     });

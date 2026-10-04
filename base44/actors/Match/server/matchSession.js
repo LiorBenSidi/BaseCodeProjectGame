@@ -21,6 +21,25 @@ import { TokenBucket } from './rateLimit.js';
 
 export const MAX_PROTOCOL_STRIKES = 5;
 export const BUCKET = Object.freeze({ capacity: 120, refillPerSec: 100 });
+// SPEC 18.2: a ping inside this interval of the previous accepted ping, on both the server clock and the
+// client's own stamps, is dropped silently. Both clocks, because a frozen server clock (SPEC 18.1) would
+// otherwise block every ping after the first.
+export const PING_MIN_INTERVAL_MS = 400;
+
+/**
+ * SPEC 18.2: answer a ping with the given clock reading, unless it is inside the clamp on both clocks.
+ * `state` is the per-connection { lastPingAt, lastPingTs } record (mutated); shared by MatchSession and the
+ * ws path in server.js so both transports apply the same rule. Returns true when a pong was sent.
+ */
+export function answerPing(state, msg, now, send) {
+  if (state.lastPingAt !== null
+    && now - state.lastPingAt < PING_MIN_INTERVAL_MS
+    && msg.ts - state.lastPingTs < PING_MIN_INTERVAL_MS) return false;
+  state.lastPingAt = now;
+  state.lastPingTs = msg.ts;
+  send({ t: 'pong', id: msg.id, ts: msg.ts, now });
+  return true;
+}
 
 /** True when the JSON text of `data` would exceed MAX_MESSAGE_BYTES (or cannot be serialised). */
 export function exceedsMessageBytes(data) {
@@ -72,6 +91,7 @@ export class MatchSession {
       bucket: new TokenBucket({ ...BUCKET, now: this.#now }),
       strikes: 0,
       player: null,
+      ping: { lastPingAt: null, lastPingTs: null }, // SPEC 18.2 clamp state, see answerPing
     });
     return true;
   }
@@ -95,9 +115,13 @@ export class MatchSession {
       return;
     }
     const { msg } = parsed;
+    if (msg.t === 'ping') {
+      answerPing(s.ping, msg, this.#now(), (obj) => s.conn.send(obj));
+      return;
+    }
     if (msg.t === 'join') {
       if (s.player) return;
-      const player = this.#room.addPlayer({ name: msg.name, send: (obj) => s.conn.send(obj) });
+      const player = this.#room.addPlayer({ name: msg.name, kit: msg.kit, userId: s.conn.userId ?? null, send: (obj) => s.conn.send(obj) }); // SPEC 27: userId comes from the transport, never the payload
       if (!player) {
         s.conn.send({ t: 'error', reason: 'room_full' });
         this.#drop(s, 'room_full');
@@ -110,6 +134,18 @@ export class MatchSession {
       this.#room.handleShoot(s.player.id);
     } else if (s.player && msg.t === 'throw') {
       this.#room.handleThrow(s.player.id);
+    } else if (s.player && msg.t === 'reload') {
+      this.#room.handleReload(s.player.id);
+    } else if (s.player && msg.t === 'ability') {
+      this.#room.handleAbility(s.player.id, msg.slot);
+    } else if (s.player && msg.t === 'kit') {
+      this.#room.handleKit(s.player.id, msg.id);
+    } else if (s.player && msg.t === 'perk') {
+      this.#room.handlePerk(s.player.id, msg.id);
+    } else if (s.player && msg.t === 'switch') {
+      this.#room.handleSwitch(s.player.id, msg.slot);
+    } else if (s.player && msg.t === 'chat') {
+      this.#room.handleChat(s.player.id, msg.text);
     }
   }
 

@@ -4,6 +4,7 @@ import { GameRoom, MAX_CMDS_PER_TICK, MAX_QUEUE } from '../../src/server/GameRoo
 import { MAP } from '../../src/shared/map.js';
 import { aimDir, castRay } from '../../src/shared/hitscan.js';
 import { MAX_HP, MAX_PLAYERS, PLAYER, RESPAWN_MS, TICK_RATE, WEAPON } from '../../src/shared/constants.js';
+import { SPAWN } from '../../src/shared/rules.js';
 
 // ------------------------------------------------------------------ helpers
 const STEP = 7 / 60; // one movement step at full speed, hand computed
@@ -153,7 +154,13 @@ test('ids are never reused even when the lowest id leaves', () => {
 test('addPlayer sends exactly one welcome with id and tickRate before returning', () => {
   const { room } = newRoom();
   const j = join(room, 'a');
-  assert.deepEqual(j.inbox, [{ t: 'welcome', id: 1, tickRate: TICK_RATE }]);
+  // SPEC 22: the first player also receives the matchStart that follows the welcome.
+  assert.deepEqual(j.inbox.map((m) => m.t), ['welcome', 'matchStart']);
+  const [w] = j.inbox;
+  assert.equal(w.t, 'welcome');
+  assert.equal(w.id, 1);
+  assert.equal(w.tickRate, TICK_RATE);
+  assert.deepEqual(w.pickups.map((pk) => pk.type), MAP.pickups.map((pk) => pk.type), 'SPEC 21.1: the welcome lists the pickup spots');
   assert.equal(TICK_RATE, 30);
 });
 
@@ -321,7 +328,9 @@ test('snapshot entry has exactly the documented keys', () => {
   const a = join(room, 'a');
   room.tick();
   const e = entry(lastSnap(a), a.p.id);
-  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z']);
+  // SPEC 20.4 added w, m, r, rel (weapon in hand, magazine, reserve, reloading flag).
+  // SPEC 21.2 added sp (spawn protection); SPEC 22 tm; SPEC 23 h.
+  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'h', 'hp', 'id', 'k', 'kt', 'lv', 'm', 'name', 'pitch', 'r', 'rel', 'sc', 'sp', 'tm', 'vy', 'w', 'x', 'y', 'yaw', 'z']);
 });
 
 test('snapshot numbers are rounded to 3 decimals', () => {
@@ -820,9 +829,9 @@ test('the respawn happens at exactly RESPAWN_MS after death, not one ms earlier'
   assert.equal(s.V.p.alive, true);
 });
 
-test('a respawned player has full hp, zero velocity, y=0 and stands on a spawn point', needOpen, () => {
+test('a respawned player has full hp, zero velocity, y=0 and stands on the spawn farthest from the living', needOpen, () => {
   const n = MAP.spawns.length;
-  const s = scene({ random: () => (n - 0.5) / n }); // picks the last spawn
+  const s = scene({ random: () => (n - 0.5) / n });
   s.V.p.hp = WEAPON.damage;
   s.V.p.vx = 3;
   s.V.p.vy = 4;
@@ -830,12 +839,16 @@ test('a respawned player has full hp, zero velocity, y=0 and stands on a spawn p
   s.fire();
   s.clock.advance(RESPAWN_MS);
   s.room.tick();
-  const spawn = MAP.spawns[n - 1];
+  // SPEC 21.2: with living enemies the spawn whose nearest enemy is farthest wins (ties by random).
+  const others = [s.S.p, s.C.p];
+  const nearest = (sp) => Math.min(...others.map((q) => Math.hypot(sp.x - q.x, sp.z - q.z)));
+  const best = Math.max(...MAP.spawns.map(nearest));
+  const spawn = MAP.spawns.find((sp) => sp.x === s.V.p.x && sp.z === s.V.p.z);
+  assert.ok(spawn, 'stands on a spawn point');
+  assert.ok(Math.abs(nearest(spawn) - best) < 1e-9, 'the safest one');
   assert.equal(s.V.p.alive, true);
   assert.equal(s.V.p.hp, MAX_HP);
   assert.deepEqual([s.V.p.vx, s.V.p.vy, s.V.p.vz].map((v) => v === 0), [true, true, true]);
-  assert.equal(s.V.p.x, spawn.x);
-  assert.equal(s.V.p.z, spawn.z);
   assert.ok(s.V.p.y === 0);
 });
 
@@ -860,13 +873,31 @@ test('the snapshot of the respawn tick already shows the player alive with full 
   assert.equal(e.hp, MAX_HP);
 });
 
-test('a respawned player can be hit and can shoot again', needOpen, () => {
+test('a respawned player is protected for SPAWN.protectMs, then can be hit again', needOpen, () => {
   const s = scene();
   s.V.p.hp = WEAPON.damage;
   s.fire();
   s.clock.advance(RESPAWN_MS);
   s.room.tick();
   place(s.V.p, s.at(4), s.line.d.yaw + Math.PI);
+  s.clock.advance(WEAPON.cooldownMs);
+  s.fire();
+  assert.equal(s.V.p.hp, MAX_HP, 'SPEC 21.2: no damage while protected');
+  assert.equal(s.S.inbox.filter((m) => m.t === 'verdict').at(-1).dmg, 0, 'the verdict reports 0');
+  s.clock.advance(SPAWN.protectMs);
+  s.fire();
+  assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);
+});
+
+test('a protected player who shoots loses the protection at once', needOpen, () => {
+  const s = scene();
+  s.V.p.hp = WEAPON.damage;
+  s.fire();
+  s.clock.advance(RESPAWN_MS);
+  s.room.tick();
+  place(s.V.p, s.at(4), s.line.d.yaw + Math.PI);
+  s.room.handleShoot(s.V.p.id);
+  s.room.tick();
   s.clock.advance(WEAPON.cooldownMs);
   s.fire();
   assert.equal(s.V.p.hp, MAX_HP - LEVEL_HIT);

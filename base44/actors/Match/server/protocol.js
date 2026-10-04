@@ -3,6 +3,7 @@
 // unexpected properties (__proto__, isAdmin, hp, ...) can never reach game logic.
 
 import { sanitizeName } from './security.js';
+import { isKit } from '../shared/abilities.js';
 
 export const MAX_MESSAGE_BYTES = 4096;
 export const MAX_CMDS_PER_MSG = 8;
@@ -22,6 +23,8 @@ function parseCmd(c) {
     fwd: clamp(c.fwd, -1, 1),
     right: clamp(c.right, -1, 1),
     jump: !!c.jump,
+    sprint: !!c.sprint, // SPEC 23
+    crouch: !!c.crouch, // SPEC 23
     yaw: c.yaw,
     pitch: clamp(c.pitch, -MAX_PITCH, MAX_PITCH),
   };
@@ -34,11 +37,36 @@ function validateObject(data) {
 
   switch (data.t) {
     case 'join':
-      return { ok: true, msg: { t: 'join', name: sanitizeName(data.name) } };
+      // SPEC 24.1: an optional kit id; anything else falls back to the default kit in the room.
+      return { ok: true, msg: { t: 'join', name: sanitizeName(data.name), ...(isKit(data.kit) ? { kit: data.kit } : {}) } };
     case 'shoot':
       return { ok: true, msg: { t: 'shoot' } };
     case 'throw':
       return { ok: true, msg: { t: 'throw' } };
+    // SPEC 20.3: weapon intents. The room's state machine decides whether they take effect.
+    case 'reload':
+      return { ok: true, msg: { t: 'reload' } };
+    case 'switch':
+      if (data.slot !== 'primary' && data.slot !== 'sidearm') return fail('bad_switch');
+      return { ok: true, msg: { t: 'switch', slot: data.slot } };
+    // SPEC 24.1 / 25.3: kit, ability and perk intents. The room's state machine decides whether they take effect.
+    case 'ability':
+      if (data.slot !== 0 && data.slot !== 1) return fail('bad_ability');
+      return { ok: true, msg: { t: 'ability', slot: data.slot } };
+    case 'kit':
+      if (!isKit(data.id)) return fail('bad_kit');
+      return { ok: true, msg: { t: 'kit', id: data.id } };
+    case 'perk':
+      if (typeof data.id !== 'string' || data.id.length > 32) return fail('bad_perk');
+      return { ok: true, msg: { t: 'perk', id: data.id } };
+    case 'chat':
+      // SPEC 29.1: text only, length capped here so a 4 KB frame cannot carry a 4 KB line
+      if (typeof data.text !== 'string' || data.text.length === 0 || data.text.length > 400) return fail('bad_chat');
+      return { ok: true, msg: { t: 'chat', text: data.text } };
+    case 'ping':
+      // SPEC 18.2: clock sync probe; the session echoes id and ts back with its own clock.
+      if (!Number.isSafeInteger(data.id) || data.id < 0 || !isNum(data.ts) || data.ts < 0) return fail('bad_ping');
+      return { ok: true, msg: { t: 'ping', id: data.id, ts: data.ts } };
     case 'input': {
       if (!Array.isArray(data.cmds) || data.cmds.length < 1 || data.cmds.length > MAX_CMDS_PER_MSG) {
         return fail('bad_cmd');

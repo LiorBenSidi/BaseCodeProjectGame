@@ -47,6 +47,28 @@ decision cite its ID.
 - Supersedes: (none)
 -->
 
+### D-019 (W1, W7, W8) Weapons table and state machine
+- Status: decided
+- Date: 2026-10-04
+- Decision: Add full weapons table (rifle, smg, shotgun, sniper, pistol) with primary and sidearm slots, mag/reserve ammo, reload and switch timings, spread expansion/decay, camera recoil, and pellet hitscan resolution.
+- Source: owner approved V1 plan 2026-10-04.
+- Affects: docs/SPEC.md §20; `src/shared/weapons.js`, `src/shared/combat.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/client/game.js`, `src/client/hudModel.js`, `src/client/hud.js`.
+- Supersedes: (none)
+
+### D-020 (W1, W8) Pickups, safest spawn, spawn protection
+- Status: decided
+- Date: 2026-10-04
+- Decision: Pickups are map data (health, ammo, SMG, shotgun, sniper spots with per-type respawn timers) resolved server-side once per tick; respawns go to the spawn farthest from living enemies and carry 2 s of damage immunity that ends on the first shot.
+- Source: owner approved V1 plan 2026-10-04.
+- Affects: docs/SPEC.md section 21; `src/shared/rules.js`, `src/shared/pickups.js`, `src/shared/spawning.js`, `src/shared/map.js`, `src/server/GameRoom.js`, `src/client/pickups.js`, `src/client/game.js`.
+
+### D-021 (W1, W8) Match modes: deathmatch and team deathmatch
+- Status: decided
+- Date: 2026-10-04
+- Decision: A pure match state machine (waiting / playing / ending) with a 5 minute 25 kill deathmatch and an 8 minute 50 kill team deathmatch; teams balanced on join, no friendly fire, 8 s end screen, automatic restart; the room takes `mode` as an option so rooms and lobbies pick it.
+- Source: owner approved V1 plan 2026-10-04.
+- Affects: docs/SPEC.md section 22; `src/shared/modes.js`, `src/server/GameRoom.js`, `src/client/hud.js`, `src/client/hudModel.js`, `src/client/remote.js`, `src/client/arenaStyle.js`, `index.html`.
+
 ### D-018 (T, N) Event-driven clock in the Match actor
 - Status: decided
 - Date: 2026-10-03
@@ -215,3 +237,40 @@ The question-coverage table above is the original interview checklist, not an im
 
 ## Open questions raised during work
 _Anything the assistant discovered it needed to ask that is not in the bank yet. Add it to the bank too._
+
+### D-022 (W1, W8) Movement set: sprint, crouch, slide, step-up, mantle, wall jump, air control
+- Status: decided
+- Date: 2026-10-04
+- Decision: Extend the deterministic shared `stepPlayer` with a stance (crouch, scaled hitbox and eye), sprint, a timed slide, automatic step-up and ledge mantle, one wall jump per airtime and acceleration-based air control; two new command booleans, one new snapshot field (`h`). Ground rules from Milestone 1 stay bit-identical for the old command shape.
+- Source: owner approved V1 plan 2026-10-04 (parkour and fluid movement are a V1 requirement).
+- Affects: docs/SPEC.md section 23; `src/shared/movement.js`, `src/shared/constants.js`, `src/shared/hitscan.js`, `src/shared/combat.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/client/input.js`, `src/client/game.js`, `src/client/remote.js`, `src/client/touch.js`, `index.html`.
+
+### D-023 (W1, W8) Kits, abilities and in-match progression
+- Status: decided
+- Date: 2026-10-04
+- Decision: The game's unique layer is four kits with two server-authoritative abilities each (dash, shield, blink, decoy, grapple, scan, heal zone, stasis field) plus per-match XP, five levels and a two-card perk offer per level. Effects live in a room-owned list replicated as `fx`; shields are extra collision boxes for bullets and grenades; decoys are negative-id shot targets. Only the dash touches shared movement (timer inside `stepPlayer`, replicated in the private `self` block) so prediction stays exact; stasis slow and grapple pull are server-side and reconciled, an accepted V1 trade-off. Perks are server-side multipliers, never prediction inputs. Snapshot stays under 4096 bytes in a full room by sending optional `self` keys only when active.
+- Source: owner approved V1 plan 2026-10-04 (kits with abilities + in-match XP named as the unique layer).
+- Affects: docs/SPEC.md sections 24 and 25; `src/shared/abilities.js`, `src/shared/progression.js`, `src/shared/movement.js` (dash), `src/shared/constants.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/server/server.js`, `src/server/matchSession.js`, `src/client/{game,hud,kitUi,effects,net,netActor,main,debugHarness}.js`, `index.html`, `src/client/style.css`.
+
+### D-024 (W1, W8) Rooms, lobby, sign-in binding and persistence
+- Status: decided
+- Date: 2026-10-04
+- Decision: The mode lives in the room id (`<mode>-<code>`) because the actor knows nothing but its instance id. The lobby is a registry entity (`Room`) written by the actor's service role on persistence paths and read by everyone; no backend function, no extra actor. Results and lifetime stats (`MatchResult`, `PlayerStats`) are written by the actor from the canonical match end, keyed by the platform-verified `conn.identity.userId`; the join payload never carries identity. All writes are fire-and-forget behind room hooks so the simulation never waits on storage. Entities use RLS read everyone / write nobody; the service role bypasses RLS.
+- Source: owner approved V1 plan 2026-10-04; platform contract "Creating Actors" (conn.identity, this.client.asServiceRole, actors receive no secrets).
+- Affects: docs/SPEC.md sections 26 and 27; `src/shared/rooms.js`, `src/shared/persistence.js`, `src/server/GameRoom.js` (hooks, userId), `src/server/matchSession.js`, `base44/actors/Match/{matchHost,persistence,entry}.js|ts`, `base44/entities/*.jsonc`, `src/client/{lobby,main,game,hud,netActor}.js`, `index.html`, `src/client/style.css`.
+- Shipping note: entity schemas and the actor need their own owner actions (`base44 entities push`, actor deploy); merge + Publish covers the frontend only.
+
+### D-025 (W1) Content without binary assets: map registry, kit avatars, procedural sound
+- Status: decided
+- Date: 2026-10-04
+- Decision: V1 content is code, not files. Maps are box layouts in a registry rotated per match by the server (one source of truth for collision, spawns and pickups; the client renders what the server describes). Avatars are kit accents on the shared figure instead of per-kit models. Sound is synthesized in WebAudio. This keeps the repo asset-free, the actor bundle small, and every piece unit-testable; glTF models and recorded audio can replace each layer later behind the same interfaces (`describeMap`, `applyKitAccent`, `CUES`).
+- Source: owner's V1 plan 2026-10-04 ("maps, objects, players, avatars"); the approved batch order's Phase 4 content.
+- Affects: docs/SPEC.md section 28; `src/shared/maps.js`, `src/server/GameRoom.js` (map per match), `src/client/{scene,game,remote,avatars,audio,settings,settingsPanel}.js`, `index.html`.
+
+### D-026 (W1) Genre parity pass from the competitive audit
+- Status: decided
+- Date: 2026-10-04
+- Decision: Close the gaps the audit (docs/COMPETITIVE_AUDIT.md) found against Krunker, Shell Shockers and mainstream FPS conventions without touching the simulation: text chat (relayed, rate limited, never stored), streak and multi-kill announcements as optional fields on the kill message, right-mouse ADS with a sniper scope and an FOV setting, a first-person view model with kick / reload / sway, and footsteps. Kill cam, CTF, bots and cosmetics are recorded as post-V1 backlog rather than squeezed into V1.
+- Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
+- Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
+

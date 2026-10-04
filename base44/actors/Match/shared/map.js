@@ -43,4 +43,17 @@ export const MAP = {
     { x: -34, z: 0, yaw: -Math.PI / 2 },
     { x: 34, z: 0, yaw: Math.PI / 2 },
   ],
+  // SPEC 21.1 pickup spots: type ids from rules.js PICKUP_TYPES. Centre top holds the sniper (y is the
+  // platform height); health sits at the mid lanes, ammo beside the cover, SMG and shotgun in opposite corners.
+  pickups: [
+    { type: 'sniper', x: 0, y: 2, z: 0 },
+    { type: 'health', x: 0, z: -20 },
+    { type: 'health', x: 0, z: 20 },
+    { type: 'ammo', x: -15, z: -12 },
+    { type: 'ammo', x: 15, z: 12 },
+    { type: 'smg', x: -26, z: -26 },
+    { type: 'shotgun', x: 26, z: 26 },
+    { type: 'ammo', x: 26, z: -26 },
+    { type: 'health', x: -26, z: 26 },
+  ],
 };

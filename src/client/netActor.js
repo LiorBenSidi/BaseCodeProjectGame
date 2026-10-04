@@ -16,11 +16,7 @@ import { createClient } from '@base44/sdk';
 export const STALE_MS = 5000;
 const CONN_KEY = 'bca.connectionId';
 
-export function roomIdFromLocation(search, fallback = 'arena-1') {
-  const raw = new URLSearchParams(search).get('room') ?? fallback;
-  // Printable ASCII without '/', max 64: a subset of what the platform accepts, easy to share.
-  return /^[A-Za-z0-9_-]{1,64}$/.test(raw) ? raw : fallback;
-}
+export { roomIdFromLocation } from '../shared/rooms.js'; // SPEC 26: moved to the shared room grammar
 
 export function connectionId(storage) {
   let id = storage?.getItem(CONN_KEY);
@@ -46,14 +42,14 @@ export class ActorNetwork {
     this.#client = client ?? createClient({ appId, requiresAuth: false });
   }
 
-  connect(name) {
+  connect(name, kit) {
     const ref = this.#client.actors.Match(this.#roomId);
     this.#conn = ref.connect({ id: connectionId(globalThis.sessionStorage) });
     this.#conn.subscribe((msg) => {
       this.#lastMessage = performance.now();
       if (msg && typeof msg.t === 'string' && Object.hasOwn(this.#handlers, msg.t)) this.#handlers[msg.t](msg);
     });
-    this.send({ t: 'join', name });
+    this.send({ t: 'join', name, ...(kit ? { kit } : {}) });
     this.#lastMessage = performance.now();
     this.#watchdog = setInterval(() => {
       if (performance.now() - this.#lastMessage > STALE_MS) this.#handlers.stale?.();

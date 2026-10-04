@@ -92,13 +92,15 @@ Pure function of an env-like object (never reads `process.env` itself). Returns
 `raw` is a string or Buffer. Returns `{ ok:true, msg }` or `{ ok:false, reason }`. Never throws, for any input.
 
 Reasons: `too_large` (byte length > 4096), `bad_json`, `bad_shape` (not a plain object, or unknown/missing `t`),
-`bad_join`, `bad_cmd`.
+`bad_join`, `bad_cmd`, `bad_ping`.
 
 Accepted messages (the returned `msg` is **freshly built from whitelisted fields only**; unknown extra fields such as
 `__proto__`, `isAdmin`, `hp` are dropped):
 
 - `{ t:'join', name? }` → `msg = { t:'join', name }` where `name = sanitizeName(name)` (`''` if absent/non-string).
 - `{ t:'shoot' }` → `msg = { t:'shoot' }`.
+- `{ t:'ping', id, ts }` → `msg = { t:'ping', id, ts }` (§18.2). `id`: safe integer >= 0; `ts`: finite number >= 0 (the
+  client's `Date.now()`). Anything else → `bad_ping`.
 - `{ t:'input', cmds:[...] }`: 1 to `MAX_CMDS_PER_MSG = 8` commands (export this constant), each
   `{ seq, fwd, right, jump, yaw, pitch }`:
   - `seq`: safe integer ≥ 0, otherwise `bad_cmd`.
@@ -424,7 +426,7 @@ layer so their behaviour cannot drift.
   `parseClientMessage` has already refused anything larger, so the check is a no-op there.
 - `join` before a seat creates the player (`GameRoom.addPlayer`); a second `join` on the same connection is
   ignored. A full room sends `{ t: 'error', reason: 'room_full' }` then `close('room_full')`.
-- `input`, `shoot`, `throw` without a seat are dropped. Messages from an unregistered connection are ignored.
+- `input`, `shoot`, `throw` without a seat are dropped; `ping` is answered with or without a seat (§18.2). Messages from an unregistered connection are ignored.
 - `requestRejoin()` sends `{ t: 'rejoin' }` to every seatless connection and returns how many were asked.
 - Close reasons are stable strings; the transport maps them: ws `1008` (rate_limit, protocol_violations),
   `1013` (room_full); actor `4008` / `4013` (Cloudflare accepts application codes 1000 and 3000-4999 only).
@@ -568,8 +570,55 @@ report `snaps` near 30 per second (build 2.0: 16 in 12 s), `clock.source: "clien
 once the setup movement is more than a second behind, and `stepsSinceAnchor` growing between the two diag
 frames. The probe stamps its inputs like `game.js`, so the Node probe exercises `clientClock` on its own.
 
-Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18.4 reconnect tokens,
-18.5 blended reconciliation, 18.6 lag compensation rewind.
+### 18.2 Clock sync: `ping` / `pong` and `src/client/clockSync.js`
+Why: lag compensation (18.6) rewinds the room to the time the shooter saw, and the shooter can only name that
+time in room time. 18.1 made the room clock move; 18.2 gives every client an estimate of it, and a measured
+RTT for the HUD and the probe.
+
+Wire format. The client sends `{ t: 'ping', id, ts }` (`id` counts up from 0 per connection, `ts` is the
+client's `Date.now()`; §7 validates both). The session answers `{ t: 'pong', id, ts, now }` on the same
+connection: `id` and `ts` echoed unchanged, `now` the room clock as the session sees it (`Date.now()` on the
+Node server, the `ClockSource` chosen time on the actor, §18.1). A `ping` is answered with or without a seat,
+so a client can measure before its `join` completes. On the actor the ping's `ts` also feeds the ClockSource
+exactly like an input stamp (`MatchHost.message`), so an idle client still moves the room clock once a second.
+
+Per-connection clamp (`PING_MIN_INTERVAL_MS = 400` and `answerPing(state, msg, now, send)`, exported from
+`matchSession.js`; `MatchSession` and the ws path in `server.js` both call it, so the Node server and the
+actor apply one rule). A ping is dropped,
+silently and without a strike, when it arrives within the interval of the previous accepted ping on both the
+server clock and the client's own stamps. Both, because a frozen server clock (§18.1) would otherwise block
+every ping after the first; a client that forges its stamps to beat the clamp is still bounded by the token
+bucket of §8 and §17.1, and a `pong` costs about 60 bytes. Pings still cost a bucket token like every message.
+
+Client (`src/client/clockSync.js`, pure, no DOM, unit tested in `tests/unit/clockSync.test.js`):
+- `new ClockSync({ intervalMs = PING_INTERVAL_MS (1000), samples = CLOCK_SAMPLES (8), timeoutMs = PING_TIMEOUT_MS (5000) })`.
+- `nextPing(now)`: the `{ t: 'ping', id, ts: now }` to send when at least `intervalMs` passed since the previous
+  one (the first call always sends), otherwise `null`. Outstanding pings older than `timeoutMs` are forgotten.
+- `onPong(pong, now)`: validates the shape and that `id` is outstanding with the echoed `ts`, computes
+  `rtt = now - ts` and `offset = pong.now + rtt / 2 - now`, keeps the newest `samples` samples, returns the
+  sample, or `null` for anything unknown, duplicated or malformed.
+- `rtt` (latest sample), `jitter` (max minus min RTT over the kept samples), `offset` (the offset of the
+  lowest-RTT kept sample: the sample least smeared by queueing), `synced` (at least one sample),
+  `serverTime(now) = now + offset` (`null` while unsynced), `stats()` for display and the probe.
+- `game.js` owns one `ClockSync`, calls `nextPing(Date.now())` every frame while seated and sends the result,
+  routes `pong` into `onPong`. The FPS readout (§19.2) shows `NN FPS · RR ms` once synced; `debugState()`
+  carries `rtt` and `clockOffset`. Nothing else consumes the estimate yet: 18.6 does.
+
+Probe: `npm run actor-probe -- <app-id> [room] [secs] --ping` sends a ping per second through the same
+`ClockSync` and reports `pongs`, `rttMs { p50, max }` and `clockOffsetMs` in the summary.
+
+Tests: `tests/unit/protocol.test.js` (ping shape, `bad_ping`), `tests/unit/matchSession.test.js` (pong echoes
+`id` and `ts` with the injected clock's `now`; answered before `join`; a second ping inside 400 ms on both
+clocks is dropped without a strike; a ping inside 400 ms of server time but 1000 ms of client time is
+answered; no bucket bypass), `tests/unit/matchHost.test.js` (ping stamps advance the ClockSource on a frozen
+runtime), `tests/unit/clockSync.test.js` (interval gating, sample math, lowest-RTT offset, unknown and stale
+pongs ignored, timeout, serverTime), `tests/unit/actorProbeArgs.test.js` (`--ping`).
+
+Live check: `ACTOR_BUILD = "2.2"`. `npm run actor-probe -- <app-id> diag-live-6 12 --inputs --ping` must report
+`pongs` near 12 and an `rttMs.p50` in the same range as the snapshot gap percentiles.
+
+Not started in this batch: 18.3 delta snapshots, 18.4 reconnect tokens, 18.5 blended reconciliation,
+18.6 lag compensation rewind.
 
 
 ## 19. Design and HUD (Batch D1)
@@ -577,14 +626,27 @@ Not started in this batch: 18.2 clock sync (ping/pong), 18.3 delta snapshots, 18
 Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layout resolution.
 
 ### 19.1 In-match HUD
-- HUD state derivation lives in `src/client/hudModel.js` (pure logic):
-  - Crosshair state: expanded briefly on fire, flash on hit (headshot vs body).
-  - Health and ammo readouts: health percentage and segment bar; infinite ammo status display (`INF / READY`).
-  - Hit marker: brief flash with headshot differentiation (`head` vs `hit`).
-  - Directional damage indicator: computes relative angle pointing toward attacker from player position, attacker position, and camera yaw.
-  - Kill feed queue: maximum 5 entries, auto-expiring after 5000 ms.
-  - Respawn countdown: displays centered countdown text (`Respawning in X.Xs...`) derived from local death time and `RESPAWN_MS`.
-- Scoreboard polish: Tab / touch score overlay, aligned columns, highlighted self row (`.row.me`), team color chip based on player ID parity.
+- Pure HUD state derivation lives in `src/client/hudModel.js` (unit tested in `tests/unit/hudModel.test.js`):
+  - `deriveHealthSegments(hp, maxHp, segmentsCount)`: health percentage and an array of fill ratios for the segment bar.
+  - `deriveAmmoStatus()`: weapon status object `{ text: "INF", status: "READY" }` (infinite ammo until the weapons table in Phase 2).
+  - `calculateDamageAngle(player, yaw, attacker)`: screen angle of the attacker in radians, clockwise from the top (0 ahead, +PI/2 right, PI behind). The camera looks down -Z at yaw 0 and +yaw turns left (`src/shared/movement.js`, `aimDir` in `src/shared/hitscan.js`), so the relative angle is `atan2(dx, -dz) + yaw`.
+  - `attributeDamage(threats, now, windowMs)` and `pruneThreats(threats, now, windowMs)`: damage attribution, see below. `DAMAGE_ATTRIBUTION_MS = 300`.
+  - `KillFeedQueue`: queue capped at 5 entries with 5000 ms auto-expiry.
+  - `deriveRespawnText(alive, now, deathTime, respawnMs)`: centered countdown string (`Respawning in X.Xs...`) while dead, `null` while alive.
+  - `deriveTeamColor(playerId)`: `even` (blue) or `odd` (red) by player ID parity. Visual only until Phase 2 TDM assigns real teams.
+  - `sortScoreboardPlayers(players)`: kills descending, then deaths ascending, then ID ascending.
+- Damage attribution. The server never tells the victim who hit them (`hit` and `verdict` go to the shooter only); the victim only sees its own `hp` drop in the next snapshot. The client keeps a list of threats from messages every client already receives: the `from` origin of each remote `shot` and the `at` point of each `boom`. When the local `hp` drops between two snapshots, the newest threat inside `DAMAGE_ATTRIBUTION_MS` is taken as the attacker position and the directional indicator rotates to `calculateDamageAngle(me, yaw, threat)`. With no threat inside the window only the non-directional vignette shows. This is a client-side heuristic that can mis-attribute when two players fire inside the same 300 ms window; it never affects gameplay (the server stays authoritative) and it adds no client-reported data. A server-side `attacker` field on a victim-facing message is the Phase 2 upgrade if the heuristic proves too loose in play.
+- Rendering contract (`index.html`, `src/client/hud.js`, `src/client/combatHud.js`, `src/client/style.css`). `hud.js` is thin DOM glue over `hudModel.js`; every string that originates from another player goes through `textContent`.
+  - `#status` (bottom left): `#hp` holding `#hp-bar` with 5 `.hp-segment` elements whose `.hp-segment-fill` is scaled by the fill ratio (`transform: scaleX`), plus `#hp-value` (rounded HP) and the `HP` unit. `#hp.low` is set at `hp <= 25` and turns the segments to `--danger`. `#ammo` holds the weapon label and `#ammo-value` (`INF / READY`).
+  - `#crosshair`: centered. `.expanded` for `HUD_TIMING.fireExpandMs` (100 ms) on each local shot. `.hit` (body, 150 ms) and `.head` (headshot, 150 ms, scaled and rotated 45 degrees) come from the shooter's `verdict` via `combatHud.js`.
+  - `#hit-info`: hit feedback text below the crosshair (`HEADSHOT 25 · KILL`, `BODY 22`), `.show` for 700 ms.
+  - `#damage-flash`: full-screen red vignette, `.show` for `HUD_TIMING.damageFlashMs` (250 ms) on every local hp drop.
+  - `#damage-indicator`: arrow on a ring around the crosshair, rotated by the attributed angle, `.show` for `HUD_TIMING.damageIndicatorMs` (500 ms); only when a threat was attributed.
+  - `#feed` (top right): kill feed rendered from `KillFeedQueue` (max 5, 5000 ms expiry), one row per entry, re-rendered only when the entry count changes or a new kill arrives.
+  - `#dead`: centered respawn overlay with the `deriveRespawnText` countdown; the death time is the local time of the first snapshot with `alive: 0`.
+  - `#scoreboard`: grid rows (`.row`, header `.row.head`) with columns `.col-chip`, `.col-name`, `.col-k`, `.col-d`; the local player's row is `.row.me`; the team chip is `.chip.team-even` / `.chip.team-odd` (colors from `--team-blue` / `--team-red`). Toggled by Tab (desktop) or the `#touch-score` button (touch mode). Rendered only while visible.
+  - All colors come from the theme CSS variables of 19.2 (fallbacks mirror `PALETTE`). The short-landscape media query (phones) shrinks the status block, the ring and the kill feed and keeps them clear of the safe-area insets.
+- Not in this batch: weapon names and ammo counts beyond `INF / READY` (Phase 2 weapons table), real team assignment (Phase 2 TDM), a server-side attacker field.
 
 ### 19.2 Menu and lobby skin (`src/client/theme.js`)
 - Theme tokens exported from `src/client/theme.js` as JS constants (palette, spacing, typography) and injected as CSS variables (`:root`).
@@ -597,15 +659,18 @@ Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layou
     re-resolves the device mode at once (`Game.updateTouchMode`), also mid-match, without a reload.
   - Show FPS checkbox (`localStorage` key `bca.showFps`): `#fps` bottom-left, frames per 500 ms window.
 
-### 19.3 Arena visual pass (`src/client/scene.js`, `src/client/remote.js`)
-- Hemisphere light and directional sun light with soft shadow mapping enabled.
-- Dark fog matching the horizon/sky background color (`0x0f172a`).
-- Simple gradient skybox generated via inverted sphere geometry with vertex colors.
-- Box materials with slight roughness and metalness variation per box.
-- Toned-down floor grid with lower opacity and subtle line colors.
-- Team color meshes for remote players (Blue for even IDs, Red for odd IDs) with shadows.
-- Name tags above remote players rendered as `THREE.Sprite` using cached `CanvasTexture` per name.
-- Cheap CSS radial vignette overlay for framing.
+### 19.3 Arena visual pass (`src/client/arenaStyle.js`, `src/client/scene.js`, `src/client/remote.js`)
+Rendering only; no game rule changes. The numbers live in `arenaStyle.js` (pure, unit tested); `scene.js` and `remote.js` turn them into Three.js objects.
+- Renderer: ACES filmic tone mapping (exposure 1.15), PCF soft shadow maps. Shadow map 2048, or 1024 when the viewport is a phone (`shadowMapSizeFor(w, h)`: height <= 500 or width < 1000).
+- Sky: inverted sphere (radius 240) with vertex colors from `skyColorAt(h)`, horizon `0x0f172a` to zenith `0x070a16`, smoothstep eased. Vertex colors are converted from sRGB like a material color so the horizon matches the fog. `scene.background` is the horizon color.
+- Fog: `THREE.Fog(0x0f172a, 35, 140)`; `FOG.color === SKY.horizon`, `FOG.far >= MAP.half * 2`.
+- Lights: hemisphere `0x9db1dc` / `0x2a3140` at 1.0; warm sun `0xffe3c2` at 1.9 from `[28, 46, 18]` casting shadows (ortho shadow camera +-46, covers the arena and its walls); cool fill `0x8fa6ff` at 0.7 from `[-24, 20, -30]` without shadows so faces turned away from the sun still read.
+- Floor `0x343e4b` roughness 0.92, receives shadows. Grid helper at opacity 0.22 (`0x5a6b80` / `0x3b4858`).
+- Boxes: `boxMaterialParams(i)` gives hue 0.58 / saturation 0.14, lightness `0.38 + (i % 4) * 0.05`, roughness `0.55 + (i % 3) * 0.15`, metalness `0.04 + (i % 2) * 0.1`; cast and receive shadows.
+- Remote players: `teamColorHex(id)` = `PALETTE.teamBlue` for even ids, `PALETTE.teamRed` for odd ids (parity stands in for teams until Phase 2 TDM). Body, head and visor cast and receive shadows.
+- Name tags: `THREE.Sprite` with a `CanvasTexture` per distinct name (cached), `nameTagLayout(name)`: text capped at 16 code points (`?` when empty), 48 px tall canvas, width from the text, world height 0.36 with the canvas aspect, placed at y 2.05. The name is drawn with `fillText`, never inserted into the DOM. The tag follows the player's `name` in the snapshot and is rebuilt when it changes.
+- Vignette: `#vignette`, a fixed `radial-gradient` overlay under the HUD (`pointer-events: none`).
+- Verification: `tests/unit/arenaStyle.test.js`; a headless Chrome render with two bots in view at 1280x720 and 844x390 shows lit boxes, shadows, both team colors and the name tag.
 
 ### 19.4 Mobile touch controls resolution (`src/client/deviceMode.js`)
 - `resolveDeviceMode({ override, hasTouch, coarsePointer, userAgentMobile })`:
@@ -619,3 +684,245 @@ Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layou
 - Safe-area insets (`env(safe-area-inset-*)`) applied to touch controls and HUD.
 - HUD font sizes scale with `clamp()` on viewport width.
 - Landscape hint overlay (`#rotate`) shown in portrait touch mode.
+
+
+## 20. Weapons (Batch 3a, D-019)
+
+`src/shared/weapons.js` is the table and the per-player state machine, pure and deterministic (time arrives as `nowMs`, randomness as the injected `random`). The server alone decides whether a shot happens; the client reads the table for the interval it uses to pace its `shoot` intents and for cosmetic recoil.
+
+### 20.1 Table (`WEAPONS`)
+Bands use the `combat.js` shape `{ below, damage }` so `bandDamage` and `shotDamage` apply unchanged; `range` equals the last band's `below`. The rifle is the Milestone 1 weapon (`RIFLE` in `combatData.js`): same interval, same bands.
+
+| id | slot | fireIntervalMs | magSize | reserve | reloadMs | switchMs | pellets | spreadBase | spreadPerShot | spreadDecayPerMs | spreadMax | recoilPitch | recoilYaw | bands (below: damage) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rifle | primary | 150 | 30 | 90 | 2000 | 400 | 1 | 0 | 0.006 | 0.00005 | 0.06 | 0.02 | 0.005 | 20: 25, 40: 22, 120: 18 |
+| smg | primary | 90 | 35 | 105 | 1600 | 300 | 1 | 0.012 | 0.006 | 0.00006 | 0.08 | 0.012 | 0.008 | 12: 18, 25: 14, 60: 9 |
+| shotgun | primary | 800 | 8 | 32 | 2500 | 500 | 8 | 0.08 | 0.02 | 0.00004 | 0.12 | 0.06 | 0.015 | 10: 12, 20: 7, 35: 3 |
+| sniper | primary | 1200 | 5 | 20 | 3000 | 600 | 1 | 0.001 | 0.05 | 0.00003 | 0.10 | 0.08 | 0.002 | 50: 85, 100: 75, 200: 65 |
+| pistol | sidearm | 220 | 12 | 48 | 1400 | 250 | 1 | 0.006 | 0.012 | 0.00007 | 0.05 | 0.025 | 0.004 | 15: 22, 30: 16, 70: 10 |
+
+Spread is a cone half-angle in radians. A rifle spread of 0 on the first shot keeps the Milestone 1 tests exact: one shot per interval decays fully (0.006 grows, 0.0075 decays per 150 ms).
+
+### 20.2 State machine
+- Weapon state: `{ id, mag, reserve, spread, reloadingUntil, lastShotAt }`. Loadout: `{ active: 'primary' | 'sidearm', primary, sidearm, switchingUntil }`; `newLoadout()` is a full rifle in hand and a pistol holstered (`DEFAULT_LOADOUT`).
+- `fireBlock(loadout, nowMs)` returns `null` or the reason, checked in this order: `switching`, `reloading`, `empty`, `interval`. `canFire` is `fireBlock === null`.
+- `recordShot(ws, nowMs)`: `lastShotAt = nowMs`, `mag -= 1`, `spread = min(spreadMax, spread + spreadPerShot)`. `decaySpread(ws, dtMs)` moves spread back toward `spreadBase`.
+- `startReload(loadout, nowMs)`: only when not switching, not reloading, mag below magSize and reserve above 0; sets `reloadingUntil = nowMs + reloadMs`. `finishReloadIfDue(ws, nowMs)` moves `min(magSize - mag, reserve)` rounds on the first tick at or after `reloadingUntil`.
+- `switchSlot(loadout, slot, nowMs)`: refused for an unknown slot, the slot already in hand, or while switching; cancels a reload in progress (rounds stay in the reserve) and sets `switchingUntil = nowMs + switchMs` of the weapon now in hand.
+- `spreadDir(dir, spread, random)`: a unit direction inside the cone; spread 0 returns `dir` untouched and consumes no randomness.
+- `addReserve(ws, rounds)` caps the reserve at twice the table value (pickups, Batch 3b).
+
+### 20.3 Messages (extends section 7)
+- `{ t: 'reload' }` and `{ t: 'switch', slot: 'primary' | 'sidearm' }`; any other slot fails with `bad_switch`. Both are intents: the room applies them on its next tick through the state machine, dead players are ignored, and the respawn hands out a fresh `newLoadout()`.
+- `shot` gains `w` (weapon id). A shotgun broadcasts one `shot` per pellet.
+- Per trigger pull: one ray per pellet, each with its own spread sample from the room's `random`; damage is summed per victim and applied once; one `hit` per victim; one `verdict` naming the victim who took the most damage (zone and distance of the first pellet that reached them).
+
+### 20.4 Snapshot fields (extends section 7)
+Every player entry gains `w` (weapon id in hand), `m` (magazine), `r` (reserve), `rel` (1 while reloading). They are public: the information is scoreboard-sized.
+
+### 20.5 Client
+- Keys: `R` reload, `1` primary, `2` sidearm, mouse wheel toggles the slot; touch buttons `touch-reload` and `touch-swap`.
+- `#tryFire` paces `shoot` intents with the in-hand weapon's `fireIntervalMs` (from the snapshot `w`), kicks the aim by `recoilPitch` and a random yaw within `recoilYaw`, and recovers 70 percent of the kick over the next frames.
+- HUD: `deriveAmmoStatus(me)` gives `{ weapon, text: 'mag / reserve', status }` with status `READY`, `LOW` (mag at or below 20 percent), `EMPTY`, `DRY` (no reserve), `RELOADING`; without weapon fields it falls back to `INF / READY`.
+
+### 20.6 Tests
+`tests/unit/weapons.test.js` (table and state machine), `tests/unit/gameRoomWeapons.test.js` (room: magazines, reload, switch, pellets, snapshot, respawn), `tests/unit/protocol.test.js` (intent whitelist), `tests/unit/hudModel.test.js` (readout).
+
+## 21. Pickups, spawn selection and spawn protection (Batch 3b, D-020)
+
+Numbers live in `src/shared/rules.js` (`SPAWN`, `PICKUP`, `PICKUP_TYPES`), shared so the client shows the same values.
+
+### 21.1 Pickups (`src/shared/pickups.js`)
+- Spots are map data: `MAP.pickups = [{ type, x, z, y? }]`; `buildPickups` validates the list once (unknown type or non-finite coordinates are dropped) and gives each spot an index `i`. The arena has 9 spots: sniper on the centre platform (y 2), health at the mid lanes and one corner, ammo beside the cover and one corner, SMG and shotgun in opposite corners.
+- Types: `health` (+50 hp up to `MAX_HP`, back after 20 s), `ammo` (one magazine of the weapon in hand added to its reserve, capped by `addReserve`, back after 15 s), `smg` / `shotgun` (replace the primary with a full one, 30 s), `sniper` (45 s).
+- Reach: horizontal distance from the player's feet to the spot at most `PICKUP.radius` (1.2) and a vertical difference at most `PICKUP.heightTolerance` (1.5).
+- Each tick (`stepPickups`), after respawns: for every available spot, the first living player in reach who would gain something takes it; a player who gains nothing (full hp, full reserve, identical full weapon) leaves it. The spot becomes available again at `now + respawnMs`.
+- Messages: `welcome` gains `pickups: [{ i, type, x, y, z }]`; `snap` gains `items: [i, ...]` (indices available now); the taker receives `{ t: 'pickup', i, kind: 'health' | 'ammo' | 'weapon', amount, weapon? }`.
+- Client (`src/client/pickups.js`): spinning, bobbing marker per spot (cross for health, box for ammo, gun silhouette for weapons) over a ground ring; hidden while taken; the kill feed shows `+30 health`, `+12 ammo`, `Picked up Shotgun`.
+
+### 21.2 Spawn selection and protection (`src/shared/spawning.js`, `SPAWN`)
+- `pickSpawn(spawns, enemies, random)`: with no living enemy the Milestone 1 rule stands (`spawns[floor(random() * n)]`, every index reachable); otherwise the spawn whose nearest living enemy is farthest wins, ties broken by `random` among the tied. Used for the first placement and every respawn.
+- A respawned player is protected for `SPAWN.protectMs` (2000 ms): bullets and blasts apply 0 damage (the shooter's verdict says `dmg: 0`), and the protection ends early the moment the protected player fires. The first spawn after joining is not protected (it is already the safest spot and the player has not been in a fight). Snapshot entries gain `sp` (1 while protected).
+
+### 21.3 Tests
+`tests/unit/pickups.test.js` (spots, heal cap, ammo and weapon swaps, reach, one taker per tick, spawn choice), `tests/unit/pickupsClient.test.js`, and the respawn and protection cases in `tests/unit/gameRoom.test.js`.
+
+## 22. Match modes: deathmatch and team deathmatch (Batch 3c, D-021)
+
+`src/shared/modes.js` holds the mode table and the match state machine, pure (time arrives as `nowMs`).
+
+### 22.1 Modes
+| id | name | teams | timeLimitMs | scoreLimit |
+|---|---|---|---|---|
+| dm | Deathmatch | no | 300000 | 25 kills by one player |
+| tdm | Team Deathmatch | Blue (0) / Red (1) | 480000 | 50 team kills |
+
+`GameRoom` takes `mode` as a constructor option (default `dm`); an unknown id throws `RangeError` before anyone joins. `room.mode` and `room.matchState` expose it for lobbies and tests.
+
+### 22.2 State machine
+- Phases: `waiting` (empty room), `playing`, `ending`. The first join starts the match (`startMatch`: timer, scores reset, match number + 1). When the last player leaves the room goes back to `waiting`.
+- Teams: a joining TDM player goes to the smaller team, ties to Blue; DM players have team -1. `welcome` carries `mode` and `team`; snapshot entries carry `tm`.
+- Scoring: a kill on an enemy adds one to the killer's team; a kill on a teammate costs the team one (never below 0); self-kills score nothing. Player kills and deaths keep counting in every mode.
+- Friendly fire: bullets and grenade blasts from a teammate apply 0 damage (the shooter's verdict says `dmg: 0`); your own grenade still hurts you.
+- End: `endReason` is `time` when `now >= endsAt`, `score` when a DM player or a TDM team reaches the limit, checked once per tick after respawns. `endMatch` broadcasts `{ t: 'matchEnd', reason, winner, ranking, teamScores, number }` where `winner` is `{ type: 'player', id, name }`, `{ type: 'team', team, name }` or `{ type: 'draw' }` (equal top kills and deaths in DM, equal team scores in TDM), and `ranking` is kills desc, deaths asc, id asc.
+- End screen: for `ENDING_MS` (8000) nobody can shoot or throw; respawns still happen. Then every player is reset (kills, deaths, hp, loadout, placed on the safest spawn, no protection) and `{ t: 'matchStart', mode, phase, left, ts, number }` is broadcast.
+- Snapshot: `match: { mode, phase, left, ts }` with `left` in whole seconds and `ts` the team scores (`null` in DM).
+
+### 22.3 Client
+- Top centre: `m:ss` timer while playing and `Blue n  Red n` in TDM (`deriveMatchStatus`).
+- `matchEnd` opens the end screen (`Victory`, `<name> wins`, `<Team> team wins`, `Draw`, top three `name k/d`) and the scoreboard; `matchStart` closes both.
+- Team colors: `teamColorHex(id, team)` and `deriveTeamColor(id, team)` follow the server team when present (remote bodies, scoreboard chips); DM keeps the id parity two-tone.
+
+### 22.4 Tests
+`tests/unit/modes.test.js`, `tests/unit/gameRoomModes.test.js`, the SPEC 22 cases in `tests/unit/hudModel.test.js`.
+
+## 23. Movement set: sprint, crouch, slide, step-up, mantle, wall jump, air control (Batch 3d, D-022)
+
+All in `src/shared/movement.js` (`stepPlayer`, plus `heightOf(p)` and `eyeOf(p)`), deterministic and pure as in section 3. Numbers live in `PLAYER` (`src/shared/constants.js`). `cmd` gains two booleans, `sprint` and `crouch`, parsed with `!!` in `protocol.js` (absent means false). Player state gains `h` (current hitbox height), `slide` (seconds left), `slideDx` / `slideDz`, `wallJumps`, `jumpHeld`, `crouchHeld`; all created on first use so Milestone 1 callers and tests keep working.
+
+### 23.1 Stance
+- `crouch` sets the hitbox height to `crouchHeight` (1.2) at once and ground speed to `speed * crouchMul` (0.55). Standing up requires head room for the full `height`; under a low ceiling the player stays crouched.
+- `playerBox` (hitscan) uses `heightOf(p)`; `zoneAt` scales the point height by `height / heightOf(p)`, so a crouched head is still a head. `eyeOf(p)` scales `PLAYER.eye` the same way; the server fires and throws from that eye, the client camera follows it (smoothed on the client only).
+- Snapshot entries gain `h` (rounded to 3 decimals). Remote bodies are squashed to `h / height`; the name tag follows.
+
+### 23.2 Sprint and slide
+- `sprint` with `fwd > 0` (not crouched, not sliding) multiplies ground speed by `sprintMul` (1.35). Sideways or backward input never sprints.
+- Slide: on the ground, with `sprint` held and a horizontal input, a fresh `crouch` press starts a slide of `slideTime` (0.7 s): speed starts at `slideSpeed` (11) and decays linearly to crouch speed, the direction is locked to the input at the start, the hitbox is the crouch height. Holding crouch does not re-trigger; a crouch tap without sprint only crouches. A jump ends the slide (the momentum carries into the air).
+
+### 23.3 Step-up and mantle
+- Step-up: walking (on the ground) into a box whose top is at most `stepHeight` (0.55) above the feet moves the player onto it when the space above is free, no jump needed.
+- Mantle: airborne, moving into a box whose top is at most `mantleHeight` (1.5) above the feet, while `vy <= jump / 2` (past the first half of the rise), snaps the feet to the top with `vy = 0` and `onGround = true`. A taller box is a wall.
+
+### 23.4 Air control
+- In the air the horizontal velocity moves toward the wanted velocity (`input * speed`) by at most `airAccel * dt` (30 m/s^2) per step; with no input the momentum is kept. On the ground the Milestone 1 rule stands: velocity equals input times speed, no input stops at once.
+
+### 23.5 Wall jump
+- Airborne, pressed against a wall this step (a horizontal move was blocked), a fresh `jump` press (not held from the ground) and `wallJumps > 0`: `vy = jump * wallJumpMul` (0.9) and the velocity on the blocked axis becomes `wallJumpPush` (6) away from the wall. `wallJumpsPerAir` (1) resets on landing.
+
+### 23.6 Client
+- Keys: Shift sprint, C or left Ctrl crouch, Space jump (press again on a wall). Touch: RUN toggles sprint, a crouch button holds crouch. The menu hint lists them.
+
+### 23.7 Tests
+`tests/unit/movementParkour.test.js` (12 cases: sprint, crouch and head room, zone scaling, slide start / lock / decay / no re-trigger, step-up vs wall, mantle with and without a jump, wall jump and its reset, fresh-press rule, air control, determinism), the SPEC 23 cases in `tests/unit/protocol.test.js`, and the `h` key in the snapshot key lists.
+
+## 24. Kits and abilities (Batch 3e, D-023)
+
+`src/shared/abilities.js` (pure, time and randomness injected). Four kits, two abilities each, slot 0 on Q and slot 1 on E:
+
+| Kit | Slot 0 | Slot 1 |
+|---|---|---|
+| Vanguard (default) | `dash` 5 s: 0.2 s burst at `PLAYER.dashSpeed` (18 m/s) in the movement direction, else facing | `shield` 12 s: a 3 x 2.2 x 0.3 m wall 1.5 m ahead across the facing axis, 8 s |
+| Phantom | `blink` 8 s: 8 m horizontal teleport along the facing, stopped 5 cm short of the first box (box widened by the player radius), clamped to the arena | `decoy` 14 s: a player-shaped marker walking forward at 4 m/s for 6 s, 25 hp, dies on any damage |
+| Engineer | `grapple` 7 s: an anchor on the first box along the aim within 25 m (else `no_anchor`, no cooldown); pulled at 16 m/s until within 1.2 m, a jump press, or 1.5 s | `scan` 10 s: enemies within 25 m carry `sc: 1` for 5 s |
+| Medic | `heal` 12 s: a 4 m zone for 6 s healing 10 hp/s to the owner (DM) or the owner's team (TDM), capped at `MAX_HP` | `stasis` 15 s: a 6 m field for 6 s; enemies inside have their movement input scaled by 0.5 (server side, sprint off) |
+
+### 24.1 Intents and state
+- Join: `{ t: 'join', name, kit? }`; an unknown kit falls back to `vanguard`. `welcome` carries `kit`.
+- `{ t: 'ability', slot: 0 | 1 }`: validated in `protocol.js`; the room applies it once per tick in `#stepAbilities` (before weapons and movement) when the match is `playing`, the player is alive and the slot is off cooldown. Success broadcasts `{ t: 'ability', id, ability, slot, cd }`; a refusal is private: `{ t: 'ability', id, slot, denied: 'cooldown' | 'dead' | 'no_anchor' | ... }`.
+- `{ t: 'kit', id }`: stored as `nextKit`, applied on the next spawn (and on match restart). Cooldowns survive death and reset on match restart.
+- Player state: `kitState { kit, readyAt[2] }`, `nextKit`, `grapple`, `scannedUntil`, `dash`, `dashDx`, `dashDz`.
+
+### 24.2 Dash and prediction
+The dash runs inside `stepPlayer` (`p.dash` seconds left, `dashDx` / `dashDz`): velocity is the dash vector at `dashSpeed`, the slide is cancelled, gravity still applies. The recipient's private `self` block carries `dash`, `dashDx`, `dashDz` while active so client prediction replays the same burst.
+
+### 24.3 Effects and combat
+The room keeps `#fx` (shields, decoys, heal zones, stasis fields), stepped by `stepEffects` after grenades. Shields are extra boxes for `resolveShot`, `stepGrenade` and `blastDamage` (they block bullets, bounce grenades, stop blast line of sight). Decoys are shot targets with id `-fxId`: pellets that hit one give the shooter a `hit` marker with the negative id and a zero-damage verdict, and the decoy dies. Scanned players are flagged `sc: 1`. The grapple pull is applied before each command (`applyGrapple`), setting the velocity toward the anchor.
+
+### 24.4 Stasis
+`slowFactor(fx, p)` is 0.5 for an enemy inside a stasis field. `#runCommands` scales `fwd` and `right` and clears `sprint` on a copy of each command; the client predicts at full speed and reconciles to the server's position (accepted V1 trade-off, documented in D-023).
+
+### 24.5 Snapshot
+- Per player: `kt` (index into `KIT_IDS`), `lv` (level), `sc` (scanned).
+- Top level: `fx: [{ id, k, o, tm, x, y, z, yaw?, r?, nm?, ttl }]` from `describeEffects`.
+- Per recipient `self`: `{ cd: [ms, ms], kit, dash?, dashDx?, dashDz?, grapple?, xp, lvl, offer?, perks? }`. Optional keys are omitted when idle so a full room with 16 grenades stays under 4096 bytes (measured 4040).
+
+### 24.6 Client
+Menu kit picker (`kitUi.js`, remembered in `localStorage` key `bca.kit`), Q / E send the ability intent, two ability chips with a cooldown sweep and a red flash on refusal, `effects.js` renders shields (translucent box), decoys (player silhouette in the owner's color), heal and stasis domes. A kit change in the menu while joined sends `{ t: 'kit' }` and prints "kit on next spawn" in the feed. The debug harness exposes `useAbility`, `pickPerk`, `selectKit`.
+
+## 25. In-match progression: XP, levels, perks (Batch 3e, D-023)
+
+`src/shared/progression.js` (pure). Everything resets on match restart.
+
+### 25.1 XP
+Kill 100. Assist 50 (anyone else who damaged the victim within 10 s; team mates of the victim excluded). Damage 1 XP per 10 hp applied, capped at 10 XP per victim per life. Levels at 0 / 100 / 250 / 500 / 850 XP (levels 1 to 5). Each award sends `{ t: 'xp', amount, xp, lvl, levelUp?, offer }` to the earner.
+
+### 25.2 Perks
+Each level-up offers two distinct perks not yet taken (deterministic from the room's `random`); a second level-up while an offer is open queues the next offer. Perks: `faster_reload` (reload 0.8x), `cooldown` (ability cooldowns 0.8x), `grenadier` (+1 grenade per life), `thick_skin` (damage taken 0.9x), `quick_switch` (weapon switch 0.5x). Multipliers live in `progress.mods` and apply in the room (`#stepWeapons`, `#stepAbilities`, `#fire`, `#stepGrenades`, `#respawn`); nothing touches shared prediction.
+
+### 25.3 Intents
+`{ t: 'perk', id }` (string, max 32 chars) picks from the open offer; a pick outside the offer is ignored. Success: `{ t: 'perk', id, perks }`. Client keys 3 / 4 pick the first / second card.
+
+### 25.4 Client
+XP bar with level and `xp / next` label under the ability chips; a perk offer card pair at the top while an offer is open; feed lines for level-up and the chosen perk.
+
+### 25.5 Tests
+`tests/unit/abilities.test.js` (14: kit table, cooldowns, every ability, stepEffects, grapple, scan, heal, stasis, room welcome and snapshot, intent flow and denial, shield and decoy in the firing path, kit change on spawn and XP), `tests/unit/progression.test.js` (5), `tests/unit/kitUi.test.js` (4), SPEC 24 cases in `protocol.test.js`, snapshot key lists updated.
+
+## 26. Rooms and lobby (Batch 4, D-024)
+
+`src/shared/rooms.js` (pure). A room is one Match actor instance; its id carries the mode.
+
+### 26.1 Room ids
+`<mode>-<code>`: mode in `MODE_IDS` (`dm`, `tdm`), code `[a-z0-9]{4,12}`; generated codes are 6 chars from `ROOM_CODE_ALPHABET` (no i, l, o, 0, 1). `arena-1` (the legacy default) and `diag-*` rooms parse as `dm`. `modeForRoomId(id)` is what the actor hands to `GameRoom({ mode })`, so the first joiner's choice binds everyone (`MatchHost` reads it from `instanceId`). `roomIdFromLocation(search)` reads `?room=` and falls back to `arena-1` for anything that is not a room id; `roomLink(origin, id)` is the shareable link.
+
+### 26.2 Registry (entity `Room`)
+One row per room, written by the actor's service role on persistence paths only (join, leave, match start, match end; never per tick), coalesced to one write in flight per room (`base44/actors/Match/persistence.js`). Fields: `room_id`, `mode`, `players`, `max_players`, `phase`, `match_number`, `status` (`empty` / `open` / `full`), `last_seen`. RLS: read everyone, write nobody (the service role bypasses RLS). `lobbyRooms(rows, now)` shows `open` rows seen within `ROOM_STALE_MS` (120 s), fullest first.
+
+### 26.3 Hooks
+`GameRoom({ hooks })`: `roster({ players, maxPlayers, phase, matchNumber, nowMs })` after join, leave, match start and match end; `matchEnd({ result, players, mode, nowMs })` after the `matchEnd` broadcast. A throwing hook is logged and ignored; the simulation never waits on a write.
+
+### 26.4 Client
+Menu (actor transport only; the Node dev server shows "Local server: one room, no sign-in" and hides the lobby): mode select, Quick Play (`quickPlayRoom`: the fullest open room with space in that mode, else a new room), Create room (new code), Join by room id or link (`resolveJoinInput`), the open-room list (click to join), refreshed every 5 s from `entities.Room.list('-players', 50)`. Picking a room writes `?room=<id>` with `history.replaceState` and submits the menu. The HUD match bar shows the room id (hidden for `arena-1`).
+
+## 27. Sign-in binding and persistence (Batch 5, D-024)
+
+### 27.1 Identity
+`wrapConn` exposes `userId` only when `conn.identity.type === 'authenticated'`; `MatchSession` passes it to `addPlayer({ userId })`, never from the join payload. Anonymous players play normally and get no persistent stats.
+
+### 27.2 Entities
+- `PlayerStats` (keyed by `user_id`): `name` (last callsign), `kills`, `deaths`, `xp`, `matches`, `wins`, `best_kills`, `last_played`. Merged per match with `mergeStats` (totals add, `best_kills` is a max).
+- `MatchResult`: `room_id`, `mode`, `match_number`, `reason`, `winner { type, name?, team? }`, `team_scores`, `players [{ name, user_id, kills, deaths, team, xp, level }]`, `ended_at`.
+- Both RLS read everyone, write nobody. Schemas in `base44/entities/*.jsonc`; they reach the app with `base44 entities push` (or `base44 deploy`), which is an owner action like the actor deploy.
+
+### 27.3 Writes
+`Persistence.matchEnd` creates the `MatchResult`, then for each signed-in player reads the `PlayerStats` row by `user_id` and updates or creates it. Failures are logged per record; nothing propagates to the room. A win is by player id in DM and by team in TDM; a draw wins for nobody (`playerWon`).
+
+### 27.4 Client
+Account line from `auth.me()` with Sign in (`auth.redirectToLogin(href)`) / Sign out; the callsign defaults to the user's name. Leaderboard: top 10 `PlayerStats` by kills, wins, then fewer deaths (`leaderboard`), refreshed with the room list.
+
+### 27.5 Tests
+`tests/unit/rooms.test.js` (4), `persistence.test.js` (5, including the room hooks), `persistenceActor.test.js` (3: identity mapping, a `tdm-*` instance runs TDM and writes registry, result and stats through a fake service-role client, a failing write never reaches the room), `lobby.test.js` (2). `netActor.test.js` updated to the room grammar.
+
+## 28. Content: maps, avatars, sound (Batch 6, D-025)
+
+### 28.1 Map registry and rotation
+`src/shared/maps.js`: `MAPS` = `arena` (the original `MAP`), `foundry` (two raised decks joined by a bridge over a sunken lane, half 36), `crossfire` (a plus of 4 m walls splitting the floor into four rooms around an open hub, half 40). Each map: `{ id, name, half, boxes, spawns, pickups }` with 8 spawns and 9 pickup spots including one sniper and at least two health. `mapForMatch(number)` rotates in registry order starting at `arena` for match 1; an empty room resets to match 0, so a fresh room always opens on Arena. `GameRoom` keeps `#map`, feeds its boxes / half to movement, hitscan, grenades, abilities, effects and spawns, and switches map (`#switchMap`) before the restart respawns so players land on the new map; pickups and grenades are rebuilt. `welcome.map` and `matchStart.map` carry `describeMap(m)` = `{ id, name, half, boxes }`; `matchStart.pickups` carries the new spots. The client (`Game.#setMap`) replaces its prediction collision set and calls `scene.setMap`, which rebuilds the arena group (floor, grid, boxes) and disposes the old geometry; the kill feed shows "Map: <name>". Validity test: every spawn and pickup stands on free ground, raised pickups sit on a box top (`tests/unit/maps.test.js`).
+
+### 28.2 Kit avatars
+`src/client/avatars.js`: the shared box figure gets one accent group per kit (`KIT_ACCENTS`, index = `kt` from the snapshot): Vanguard shoulder plate and pauldrons, Phantom hood and cloak, Engineer backpack and antenna, Medic chest cross. The body material stays shared so team color still drives the figure. `RemotePlayers` reapplies the accent when `kt` changes (kit swap at respawn, decoys copy their owner's kit).
+
+### 28.3 Procedural sound
+`src/client/audio.js`: no audio assets; every cue is a WebAudio oscillator sweep with an optional noise burst (`CUES`: per-weapon shots, hit, kill, death, boom, pickup, ability, denied, level, match). `cueFor(event, data)` is pure and keeps private cues private (another player's kill, pickup or denied ability is silent). `falloff(d)` attenuates world-positioned cues (full inside 4 m, silent at 60 m). The context is created inside the Play click (`Game.join` calls `unlock()`), and the module is inert without an `AudioContext`. Settings panel: "Sound" checkbox (`bca.sound`, default on).
+
+## 29. Genre parity: chat, streaks, ADS, view model, footsteps (D-026)
+
+Source: docs/COMPETITIVE_AUDIT.md. Everything here is client feel or relayed text; the simulation (movement, hitscan, damage) is untouched, so no balance changes ride along.
+
+### 29.1 Text chat
+Client `{ t: 'chat', text }` (protocol: string, 1 to 400 chars, inside the 4 KB frame rule). `GameRoom.handleChat` relays `{ t: 'chat', id, name, team, text }` to everyone after `sanitizeChat` (control characters to spaces, trimmed, cut at `CHAT_MAX_CHARS` = 120 code points) and `chatAllowed` (one line per `CHAT_MIN_INTERVAL_MS` = 1000 per player; faster lines are dropped silently, not counted as strikes). Nothing is stored. Client: Enter opens the chat line, Enter sends, Escape cancels; `Input.chatOpen` zeroes movement while typing; the HUD keeps the newest `CHAT_KEEP` = 6 lines for 12 s, names tinted by team.
+
+### 29.2 Streaks and multi-kills
+`src/shared/social.js`: `recordKill(p, now)` bumps `p.streak` and `p.multi` (kills within `MULTI_WINDOW_MS` = 4000); `resetStreak(victim)` on death. The kill message carries `streak` + `streakText` only at a milestone (3 Killing Spree, 5 Rampage, 7 Unstoppable, 10 Godlike, 15 Legendary) and `multi` + `multiText` only for a multi-kill (Double, Triple, Multi), plus `ended` when a streak of 5 or more was ended, so the plain kill message shape of SPEC 20 is unchanged. Client: the killer sees a centred banner (multi-kill wins over streak); everyone else gets a feed line for streaks of 5 or more and for ended streaks.
+
+### 29.3 ADS and field of view
+`src/client/aim.js`. Right mouse held (`Input.ads`) eases the camera fov toward `ADS_FOV[weapon]` (sniper 28, rifle 58, SMG 62, shotgun 68, pistol 64), never above the player's setting, at `ADS_LERP` 18 / s; mouse sensitivity is scaled by `tan(fov / 2) / tan(base / 2)` so screen-space aim speed is constant. The sniper below 60% of the base fov shows the scope overlay (`#scope`) and hides the crosshair and the view model. Settings: Field of view slider 60 to 110 (`bca.fov`, default 80). Spread and damage are unchanged by ADS in V1.
+
+### 29.4 Weapon view model
+`src/client/weaponView.js`: a box gun per weapon (`WEAPON_VIEW`) parented to the camera, pose from `pose({ ads, kick, reload, swayX, swayY })`: hip rest at `REST`, centred at `ADS_POS` while aiming, `KICK` 6 cm back per shot decaying at 9 / s, a sine dip of `RELOAD_DIP` across the weapon's reload time (started when the snapshot first reports `rel: 1`), walk sway scaled by ground speed and suppressed while aiming. Hidden while dead or scoped.
+
+### 29.5 Footsteps
+Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: `RemotePlayers.moving(now)` reports grounded players moving above 1 m/s from the last two snapshots; each gets a positional `step` cue (falloff of SPEC 28.3) no more often than once per 2.4 m.
+
+### 29.6 Tests
+`tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
+

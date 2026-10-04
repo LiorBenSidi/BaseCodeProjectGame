@@ -33,8 +33,18 @@ export class TouchControls {
 
     this.#hold('touch-fire', (down) => { input.firing = down; });
     this.#hold('touch-jump', (down) => { input.touch.jump = down; });
+    // SPEC 23: sprint is a toggle (tap on, tap off), crouch is a hold; sprint then crouch slides.
+    zone('touch-sprint')?.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      input.touch.sprint = !input.touch.sprint;
+      e.currentTarget.classList.toggle('on', input.touch.sprint);
+    });
+    this.#hold('touch-crouch', (down) => { input.touch.crouch = down; });
     this.#hold('touch-score', (down) => actions.scoreboard(down));
     zone('touch-nade')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.grenade(); });
+    // SPEC 20: reload and weapon swap as taps
+    zone('touch-reload')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.reload?.(); });
+    zone('touch-swap')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.swap?.(); });
 
     window.addEventListener('resize', () => this.updateRotate());
     this.updateRotate();
