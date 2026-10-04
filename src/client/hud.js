@@ -9,6 +9,8 @@ import {
   deriveHealthSegments,
   deriveRespawnText,
   deriveTeamColor,
+  deriveMatchStatus,
+  deriveMatchEndText,
   sortScoreboardPlayers,
 } from './hudModel.js';
 
@@ -26,6 +28,12 @@ export class Hud {
   #hpValue = $('hp-value');
   #segments = [...$('hp-bar').querySelectorAll('.hp-segment-fill')];
   #ammoValue = $('ammo-value');
+  #matchTimer = $('match-timer');
+  #matchTeams = $('match-teams');
+  #endScreen = $('match-end');
+  #endTitle = $('match-end-title');
+  #endSub = $('match-end-sub');
+  #lastMatchLine = '';
   #ammoLabel = document.querySelector('#ammo .label');
   #lastAmmo = null;
   #lastWeapon = null;
@@ -87,12 +95,39 @@ export class Hud {
   }
 
   // Called once per snapshot with the local player's row and the full player list.
-  update(me, players, now = Date.now()) {
+  update(me, players, now = Date.now(), match = null) {
     this.#renderHealth(me.hp);
     this.#renderAmmo(me);
+    this.#renderMatch(match);
     this.#renderRespawn(me, now);
     this.#renderFeed(now);
     if (!this.#board.hidden) this.#renderScoreboard(me, players);
+  }
+
+  // SPEC 22: timer and team scores at the top; the end screen shows while the match is ending.
+  #renderMatch(match) {
+    const st = deriveMatchStatus(match);
+    const line = `${st.timer}|${st.teams}|${st.ending}`;
+    if (line === this.#lastMatchLine) return;
+    this.#lastMatchLine = line;
+    if (this.#matchTimer) { this.#matchTimer.textContent = st.timer; this.#matchTimer.hidden = !st.timer; }
+    if (this.#matchTeams) { this.#matchTeams.textContent = st.teams; this.#matchTeams.hidden = !st.teams; }
+    if (this.#endScreen && !st.ending) this.#endScreen.hidden = true;
+    if (!st.ending) this.setScoreboardVisible(false);
+  }
+
+  matchEnd(m, myId) {
+    if (!this.#endScreen) return;
+    this.#endTitle.textContent = deriveMatchEndText(m, myId);
+    const top = (m.ranking ?? []).slice(0, 3).map((r) => `${r.name} ${r.k}/${r.d}`).join('   ');
+    this.#endSub.textContent = top ? `Top: ${top}` : '';
+    this.#endScreen.hidden = false;
+    this.setScoreboardVisible(true);
+  }
+
+  matchStart() {
+    if (this.#endScreen) this.#endScreen.hidden = true;
+    this.setScoreboardVisible(false);
   }
 
   notice(text) {
@@ -138,7 +173,7 @@ export class Hud {
       const row = document.createElement('div');
       row.className = p.id === me.id ? 'row me' : 'row';
       const chip = document.createElement('span');
-      chip.className = `chip team-${deriveTeamColor(p.id)}`;
+      chip.className = `chip team-${deriveTeamColor(p.id, p.tm)}`;
       const chipCell = document.createElement('span');
       chipCell.className = 'col-chip';
       chipCell.append(chip);

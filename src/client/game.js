@@ -145,6 +145,8 @@ export class Game {
       verdict: (m) => this.#combat.verdict(m),
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); },
       kill: (m) => this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`),
+      matchEnd: (m) => this.#hud.matchEnd(m, this.#id), // SPEC 22
+      matchStart: () => this.#hud.matchStart(),
       pong: (m) => this.#clock.onPong(m, Date.now()),
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
       close: () => { this.#id = null; this.#hud.notice('Disconnected. Reload to rejoin.'); },
@@ -177,7 +179,7 @@ export class Game {
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c);
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
     this.#onDamage(mine);
-    this.#hud.update(mine, snap.players);
+    this.#hud.update(mine, snap.players, Date.now(), snap.match);
   }
 
   // SPEC 19.1 damage direction: the server does not tell the victim who hit them, so a drop in our hp

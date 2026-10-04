@@ -73,6 +73,7 @@ export class RemotePlayers {
       mesh.rotation.y = lerpAngle(pa.yaw, pb.yaw, k);
       mesh.visible = pb.alive === 1;
       if (mesh.userData.name !== pb.name) this.#setTag(mesh, pb.name);
+      if (mesh.userData.team !== pb.tm) this.#setTeam(mesh, id, pb.tm);
     }
     for (const [id, mesh] of this.#meshes) {
       if (seen.has(id)) continue;
@@ -81,10 +82,17 @@ export class RemotePlayers {
     }
   }
 
+  // SPEC 22: body color follows the team in the snapshot (tm); -1 keeps the id parity colors.
+  #setTeam(mesh, id, team) {
+    mesh.userData.team = team;
+    mesh.userData.bodyMaterial?.color.set(teamColorHex(id, team));
+  }
+
   #create(id) {
     const group = new THREE.Group();
     const color = new THREE.Color(teamColorHex(id));
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1 });
+    group.userData.bodyMaterial = mat;
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.3, 0.8), mat);
     body.position.y = 0.65;
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), mat);

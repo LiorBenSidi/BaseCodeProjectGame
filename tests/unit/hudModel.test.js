@@ -7,6 +7,8 @@ import {
   deriveHealthSegments,
   deriveRespawnText,
   deriveTeamColor,
+  deriveMatchStatus,
+  deriveMatchEndText,
   sortScoreboardPlayers,
   attributeDamage,
   pruneThreats,
@@ -171,4 +173,21 @@ test('deriveRespawnText: counts down from RESPAWN_MS and never goes negative', (
   assert.equal(deriveRespawnText(0, 2500, 1000).text, 'Respawning in 1.5s...');
   assert.equal(deriveRespawnText(0, 9000, 1000).text, 'Respawning in 0.0s...');
   assert.equal(deriveRespawnText(1, 9000, 1000), null);
+});
+
+// SPEC 22
+test('deriveTeamColor follows the server team when present', () => {
+  assert.equal(deriveTeamColor(1, 0), 'even');
+  assert.equal(deriveTeamColor(2, 1), 'odd');
+  assert.equal(deriveTeamColor(2, -1), 'even');
+});
+
+test('deriveMatchStatus formats the timer and team scores; deriveMatchEndText names the winner', () => {
+  assert.deepEqual(deriveMatchStatus({ mode: 'dm', phase: 'playing', left: 125, ts: null }), { timer: '2:05', teams: '', ending: false });
+  assert.deepEqual(deriveMatchStatus({ mode: 'tdm', phase: 'ending', left: 0, ts: [3, 5] }), { timer: '', teams: 'Blue 3  Red 5', ending: true });
+  assert.deepEqual(deriveMatchStatus(null), { timer: '', teams: '', ending: false });
+  assert.equal(deriveMatchEndText({ winner: { type: 'player', id: 4, name: 'Zed' } }, 4), 'Victory');
+  assert.equal(deriveMatchEndText({ winner: { type: 'player', id: 4, name: 'Zed' } }, 1), 'Zed wins');
+  assert.equal(deriveMatchEndText({ winner: { type: 'team', team: 1, name: 'Red' } }, 1), 'Red team wins');
+  assert.equal(deriveMatchEndText({ winner: { type: 'draw' } }, 1), 'Draw');
 });

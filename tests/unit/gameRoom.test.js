@@ -154,7 +154,8 @@ test('ids are never reused even when the lowest id leaves', () => {
 test('addPlayer sends exactly one welcome with id and tickRate before returning', () => {
   const { room } = newRoom();
   const j = join(room, 'a');
-  assert.equal(j.inbox.length, 1);
+  // SPEC 22: the first player also receives the matchStart that follows the welcome.
+  assert.deepEqual(j.inbox.map((m) => m.t), ['welcome', 'matchStart']);
   const [w] = j.inbox;
   assert.equal(w.t, 'welcome');
   assert.equal(w.id, 1);
@@ -329,7 +330,7 @@ test('snapshot entry has exactly the documented keys', () => {
   const e = entry(lastSnap(a), a.p.id);
   // SPEC 20.4 added w, m, r, rel (weapon in hand, magazine, reserve, reloading flag).
   // SPEC 21.2 added sp (spawn protection).
-  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'hp', 'id', 'k', 'm', 'name', 'pitch', 'r', 'rel', 'sp', 'vy', 'w', 'x', 'y', 'yaw', 'z']);
+  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'hp', 'id', 'k', 'm', 'name', 'pitch', 'r', 'rel', 'sp', 'tm', 'vy', 'w', 'x', 'y', 'yaw', 'z']);
 });
 
 test('snapshot numbers are rounded to 3 decimals', () => {

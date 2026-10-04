@@ -19,6 +19,8 @@ import { sanitizeName } from './security.js';
 import { buildPickups, stepPickups, availableIndices, describePickups } from '../shared/pickups.js';
 import { pickSpawn } from '../shared/spawning.js';
 import { SPAWN } from '../shared/rules.js';
+// SPEC 22: match modes (DM / TDM), timer, end screen, restart.
+import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot } from '../shared/modes.js';
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
 export const MAX_QUEUE = 12; // beyond this a client is flooding or speed-hacking: oldest cmds are dropped
@@ -37,12 +39,23 @@ export class GameRoom {
   #random;
   #log;
   #maxPlayers;
+  #match;
 
-  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS } = {}) {
+  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE } = {}) {
     this.#now = now;
     this.#random = random;
     this.#log = logger;
     this.#maxPlayers = maxPlayers;
+    this.#match = newMatch(mode); // throws RangeError on an unknown mode, before any player can join
+  }
+
+  get mode() {
+    return this.#match.mode;
+  }
+
+  // Read-only view for lobbies and tests: { mode, phase, left, ts }.
+  get matchState() {
+    return matchSnapshot(this.#match, this.#now());
   }
 
   get playerCount() {
@@ -79,10 +92,12 @@ export class GameRoom {
       wantsReload: false,
       wantsSwitch: null,
       protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
+      team: assignTeam(this.#match, this.#players.values()), // SPEC 22: -1 in DM, 0 Blue / 1 Red in TDM
     };
     this.#place(p);
     this.#players.set(id, p);
-    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups) });
+    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), mode: this.#match.mode, team: p.team });
+    if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
     return p;
   }
@@ -90,6 +105,7 @@ export class GameRoom {
   removePlayer(id) {
     const removed = this.#players.delete(id);
     if (removed) this.#log?.info('player left', { id, players: this.#players.size });
+    if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
     return removed;
   }
 
@@ -146,6 +162,7 @@ export class GameRoom {
     for (const p of this.#players.values()) {
       if (!p.alive && now >= p.respawnAt) this.#respawn(p, now);
     }
+    this.#stepMatch(now);
     for (const got of stepPickups(this.#pickups, this.#players.values(), now)) {
       const taker = this.#players.get(got.playerId);
       this.#sendTo(taker, { t: 'pickup', i: got.i, kind: got.kind, amount: got.amount, ...(got.weapon ? { weapon: got.weapon } : {}) });
@@ -184,8 +201,35 @@ export class GameRoom {
     decaySpread(lo.sidearm, TICK_MS);
   }
 
+  // SPEC 22: the match ends on time or score, shows the end screen for ENDING_MS, then restarts.
+  #stepMatch(now) {
+    const reason = endReason(this.#match, this.#players.values(), now);
+    if (reason !== null) {
+      const result = endMatch(this.#match, this.#players.values(), now, reason);
+      this.#log?.info('match end', { reason, number: result.number });
+      this.#broadcast({ t: 'matchEnd', ...result });
+      return;
+    }
+    if (shouldRestart(this.#match, now)) {
+      for (const p of this.#players.values()) {
+        p.kills = 0;
+        p.deaths = 0;
+        p.respawnAt = 0;
+        this.#respawn(p, now);
+        p.protectedUntil = -Infinity;
+      }
+      this.#startMatch(now);
+    }
+  }
+
+  #startMatch(now) {
+    startMatch(this.#match, now);
+    this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
+    this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number });
+  }
+
   #fire(p, now) {
-    if (!p.alive || fireBlock(p.loadout, now) !== null) return;
+    if (!p.alive || this.#match.phase !== 'playing' || fireBlock(p.loadout, now) !== null) return;
     const ws = activeWeapon(p.loadout);
     const weapon = weaponDef(ws.id);
     const spread = ws.spread;
@@ -220,7 +264,7 @@ export class GameRoom {
     const killed = [];
     for (const [id, acc] of perVictim) {
       const victim = this.#players.get(id);
-      const r = this.#protected(victim, now) ? { applied: 0, killed: false } : applyDamage(victim, acc.damage);
+      const r = this.#protected(victim, now) || sameTeam(p, victim) ? { applied: 0, killed: false } : applyDamage(victim, acc.damage);
       this.#sendTo(p, { t: 'hit', id: victim.id });
       if (r.killed) killed.push(victim);
       if (best === null || r.applied > best.applied) best = { victim, zone: acc.zone, dist: acc.dist, applied: r.applied, kill: r.killed };
@@ -230,7 +274,7 @@ export class GameRoom {
   }
 
   #throw(p) {
-    if (!p.alive || p.grenades <= 0) return;
+    if (!p.alive || p.grenades <= 0 || this.#match.phase !== 'playing') return;
     p.grenades -= 1;
     const g = launchGrenade(this.#nextGrenadeId++, p.id, [p.x, p.y + PLAYER.eye, p.z], aimDir(p.yaw, p.pitch));
     g.ownerName = p.name;
@@ -248,6 +292,8 @@ export class GameRoom {
       const victims = [];
       for (const q of this.#players.values()) {
         if (!q.alive || this.#protected(q, now)) continue;
+        const owner = this.#players.get(g.owner);
+        if (owner && owner !== q && sameTeam(owner, q)) continue; // SPEC 22: no friendly fire; your own grenade still hurts you
         const { applied, killed } = applyDamage(q, blastDamage(at, q, MAP.boxes));
         if (applied <= 0) continue;
         hits.push({ id: q.id, dmg: applied, kill: killed });
@@ -265,6 +311,7 @@ export class GameRoom {
     victim.respawnAt = now + RESPAWN_MS;
     const killer = this.#players.get(killerId);
     if (killer && killer !== victim) killer.kills += 1;
+    scoreKill(this.#match, killer, victim);
     this.#log?.info('kill', { killer: killerId, victim: victim.id });
     this.#broadcast({ t: 'kill', killer: killerId, victim: victim.id, killerName, victimName: victim.name });
   }
@@ -308,12 +355,14 @@ export class GameRoom {
         // SPEC 20.4: weapon in hand, magazine, reserve, reloading flag (public: a scoreboard-sized leak at most)
         w: ws.id, m: ws.mag, r: ws.reserve, rel: isReloading(ws, now) ? 1 : 0,
         sp: this.#protected(p, now) ? 1 : 0, // SPEC 21.2 spawn protection
+        tm: p.team, // SPEC 22: -1 in DM, 0 / 1 in TDM
       });
     }
     const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));
     const items = availableIndices(this.#pickups, now);
+    const match = matchSnapshot(this.#match, now);
     for (const p of this.#players.values()) {
-      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items });
+      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items, match });
     }
   }
 

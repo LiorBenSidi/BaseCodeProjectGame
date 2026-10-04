@@ -79,8 +79,28 @@ export function deriveAmmoStatus(me) {
   return { weapon: WEAPONS[me.w]?.name ?? name, text: `${me.m} / ${me.r}`, status };
 }
 
-export function deriveTeamColor(playerId) {
+export function deriveTeamColor(playerId, team = -1) {
+  if (team === 0) return 'even';
+  if (team === 1) return 'odd';
   return playerId % 2 === 0 ? 'even' : 'odd';
+}
+
+// SPEC 22: top-centre match line. { timer: 'm:ss', teams: 'Blue 3  Red 5' | '', ending: bool }
+export function deriveMatchStatus(match) {
+  if (!match) return { timer: '', teams: '', ending: false };
+  const left = Math.max(0, match.left | 0);
+  const mm = Math.floor(left / 60);
+  const ss = String(left % 60).padStart(2, '0');
+  const teams = Array.isArray(match.ts) ? `Blue ${match.ts[0]}  Red ${match.ts[1]}` : '';
+  return { timer: match.phase === 'playing' ? `${mm}:${ss}` : '', teams, ending: match.phase === 'ending' };
+}
+
+// SPEC 22: the end screen headline for a matchEnd message, from the local player's point of view.
+export function deriveMatchEndText(m, myId, myTeam = -1) {
+  const w = m?.winner;
+  if (!w || w.type === 'draw') return 'Draw';
+  if (w.type === 'team') return `${w.name} team wins`;
+  return w.id === myId ? 'Victory' : `${w.name} wins`;
 }
 
 export function sortScoreboardPlayers(players) {

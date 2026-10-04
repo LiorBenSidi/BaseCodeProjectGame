@@ -40,7 +40,10 @@ export function boxMaterialParams(i) {
 }
 
 /** Team by player id parity until Phase 2 TDM assigns real teams: even blue, odd red (theme palette). */
-export function teamColorHex(id) {
+export function teamColorHex(id, team = -1) {
+  // SPEC 22: in TDM the server's team (0 Blue, 1 Red) decides; in DM the id parity keeps the two-tone look.
+  if (team === 0) return PALETTE.teamBlue;
+  if (team === 1) return PALETTE.teamRed;
   return id % 2 === 0 ? PALETTE.teamBlue : PALETTE.teamRed;
 }
 

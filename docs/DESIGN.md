@@ -62,6 +62,13 @@ decision cite its ID.
 - Source: owner approved V1 plan 2026-10-04.
 - Affects: docs/SPEC.md section 21; `src/shared/rules.js`, `src/shared/pickups.js`, `src/shared/spawning.js`, `src/shared/map.js`, `src/server/GameRoom.js`, `src/client/pickups.js`, `src/client/game.js`.
 
+### D-021 (W1, W8) Match modes: deathmatch and team deathmatch
+- Status: decided
+- Date: 2026-10-04
+- Decision: A pure match state machine (waiting / playing / ending) with a 5 minute 25 kill deathmatch and an 8 minute 50 kill team deathmatch; teams balanced on join, no friendly fire, 8 s end screen, automatic restart; the room takes `mode` as an option so rooms and lobbies pick it.
+- Source: owner approved V1 plan 2026-10-04.
+- Affects: docs/SPEC.md section 22; `src/shared/modes.js`, `src/server/GameRoom.js`, `src/client/hud.js`, `src/client/hudModel.js`, `src/client/remote.js`, `src/client/arenaStyle.js`, `index.html`.
+
 ### D-018 (T, N) Event-driven clock in the Match actor
 - Status: decided
 - Date: 2026-10-03

@@ -747,3 +747,32 @@ Numbers live in `src/shared/rules.js` (`SPAWN`, `PICKUP`, `PICKUP_TYPES`), share
 ### 21.3 Tests
 `tests/unit/pickups.test.js` (spots, heal cap, ammo and weapon swaps, reach, one taker per tick, spawn choice), `tests/unit/pickupsClient.test.js`, and the respawn and protection cases in `tests/unit/gameRoom.test.js`.
 
+## 22. Match modes: deathmatch and team deathmatch (Batch 3c, D-021)
+
+`src/shared/modes.js` holds the mode table and the match state machine, pure (time arrives as `nowMs`).
+
+### 22.1 Modes
+| id | name | teams | timeLimitMs | scoreLimit |
+|---|---|---|---|---|
+| dm | Deathmatch | no | 300000 | 25 kills by one player |
+| tdm | Team Deathmatch | Blue (0) / Red (1) | 480000 | 50 team kills |
+
+`GameRoom` takes `mode` as a constructor option (default `dm`); an unknown id throws `RangeError` before anyone joins. `room.mode` and `room.matchState` expose it for lobbies and tests.
+
+### 22.2 State machine
+- Phases: `waiting` (empty room), `playing`, `ending`. The first join starts the match (`startMatch`: timer, scores reset, match number + 1). When the last player leaves the room goes back to `waiting`.
+- Teams: a joining TDM player goes to the smaller team, ties to Blue; DM players have team -1. `welcome` carries `mode` and `team`; snapshot entries carry `tm`.
+- Scoring: a kill on an enemy adds one to the killer's team; a kill on a teammate costs the team one (never below 0); self-kills score nothing. Player kills and deaths keep counting in every mode.
+- Friendly fire: bullets and grenade blasts from a teammate apply 0 damage (the shooter's verdict says `dmg: 0`); your own grenade still hurts you.
+- End: `endReason` is `time` when `now >= endsAt`, `score` when a DM player or a TDM team reaches the limit, checked once per tick after respawns. `endMatch` broadcasts `{ t: 'matchEnd', reason, winner, ranking, teamScores, number }` where `winner` is `{ type: 'player', id, name }`, `{ type: 'team', team, name }` or `{ type: 'draw' }` (equal top kills and deaths in DM, equal team scores in TDM), and `ranking` is kills desc, deaths asc, id asc.
+- End screen: for `ENDING_MS` (8000) nobody can shoot or throw; respawns still happen. Then every player is reset (kills, deaths, hp, loadout, placed on the safest spawn, no protection) and `{ t: 'matchStart', mode, phase, left, ts, number }` is broadcast.
+- Snapshot: `match: { mode, phase, left, ts }` with `left` in whole seconds and `ts` the team scores (`null` in DM).
+
+### 22.3 Client
+- Top centre: `m:ss` timer while playing and `Blue n  Red n` in TDM (`deriveMatchStatus`).
+- `matchEnd` opens the end screen (`Victory`, `<name> wins`, `<Team> team wins`, `Draw`, top three `name k/d`) and the scoreboard; `matchStart` closes both.
+- Team colors: `teamColorHex(id, team)` and `deriveTeamColor(id, team)` follow the server team when present (remote bodies, scoreboard chips); DM keeps the id parity two-tone.
+
+### 22.4 Tests
+`tests/unit/modes.test.js`, `tests/unit/gameRoomModes.test.js`, the SPEC 22 cases in `tests/unit/hudModel.test.js`.
+

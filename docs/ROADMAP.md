@@ -31,7 +31,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - ~~Weapons table (rifle, smg, shotgun, sniper, pistol) with ammo, reload, spread, recoil.~~ Done 2026-10-04 (D-019).
 - ~~Headshot hitbox (split the AABB), damage falloff.~~ Done in the milestone 1 combat slice.
 - ~~Pickups, respawn logic by safest spawn, spawn protection.~~ Done 2026-10-04 (D-020).
-- Game modes: deathmatch with match timer, then team deathmatch.
+- ~~Game modes: deathmatch with match timer, then team deathmatch.~~ Done 2026-10-04 (D-021).
 - Movement polish: crouch, slide, step-up, air control.
 
 ## Phase 3 - Rooms and lobby
