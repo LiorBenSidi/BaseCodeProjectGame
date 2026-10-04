@@ -3,6 +3,7 @@
 // player named "<img src=x onerror=...>" from becoming stored XSS in everyone else's browser.
 // All state derivation lives in hudModel.js (pure, unit tested); this file only moves it into the DOM.
 
+import { crosshairStyle } from './prefs.js'; // PRO-menu: SPEC 33.4
 import { CHAT_KEEP } from '../shared/social.js';
 import { deriveAbilityChips, deriveXpBar, perkCards } from './kitUi.js';
 import {
@@ -25,6 +26,24 @@ export const HUD_TIMING = Object.freeze({
 const $ = (id) => document.getElementById(id);
 
 export class Hud {
+  // PRO-menu begin (SPEC 33.4): crosshair, HUD scale and opacity, feature toggles
+  applyPrefs(p) {
+    const doc = document;
+    const vars = crosshairStyle(p);
+    for (const mark of [doc.getElementById('crosshair'), doc.getElementById('ch-preview-mark')]) {
+      if (!mark) continue;
+      if (!mark.querySelector('.h')) for (const c of ['h', 'd', 'r']) { const e = doc.createElement('span'); e.className = c; mark.append(e); } // horizontal lines, dot, ring
+      for (const [k, v] of Object.entries(vars)) mark.style.setProperty(k, v);
+      mark.classList.toggle('static', !p.crosshairDynamic);
+    }
+    const hud = doc.getElementById('hud');
+    if (hud) { hud.style.setProperty('--hud-scale', String(p.hudScale)); hud.style.setProperty('--hud-opacity', String(p.hudOpacity)); }
+    doc.getElementById('feed')?.toggleAttribute('hidden', !p.killFeed);
+    doc.getElementById('hit-info')?.classList.toggle('off', !p.damageNumbers);
+    doc.getElementById('damage-flash')?.classList.toggle('off', !p.damageFlash);
+    this.prefs = p;
+  }
+  // PRO-menu end
   #root = $('hud');
   #hp = $('hp');
   #hpValue = $('hp-value');

@@ -296,3 +296,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Replace the three box guns and the two box figure with a shared procedural weapon parts table (first and third person), an articulated rig with a distance driven walk cycle, hit flash and a death pose. Procedural geometry, no downloaded models (same reasoning as D-027's amendment).
 - Source: owner's Pro program approval 2026-10-04.
 - Affects: docs/SPEC.md section 31; `src/client/{weaponModels,characterRig,weaponView,remote,game}.js`.
+
+### D-030 (P4) Menu and settings
+- Status: decided
+- Date: 2026-10-05
+- Decision: A tabbed settings modal with a schema driven preference store (`prefs.js`, 38 fields across Controls, Video, Audio, HUD), a keybind editor with keyboard and mouse maps and click to rebind, mouse buttons and wheel as bindable codes, and live application of every value. Fonts that are not CC0 are not shipped.
+- Source: owner 2026-10-05 00:22: "see a mapping of the keybinds, on both mouse and keyboard, and be able to change them, and have a lot of customization overall, just like modern FPS games like CSGO and COD".
+- Affects: docs/SPEC.md section 33; `src/client/{prefs,bindings,input,settingsPanel,hud,audio,game}.js`, `index.html`, `style.css`.

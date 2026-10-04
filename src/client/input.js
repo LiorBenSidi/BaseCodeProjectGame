@@ -1,5 +1,6 @@
 import { getSensitivity } from './settings.js';
 import { bind, isBound } from './bindings.js';
+import { defaults as prefDefaults } from './prefs.js'; // PRO-menu: SPEC 33 control preferences
 
 const MAX_PITCH = 1.5533; // keep in sync with server/protocol.js clamp
 const GAMEPAD_DEADZONE = 0.15;
@@ -42,6 +43,13 @@ export class Input {
   #tac = false;
   #gpPrev = {}; // previous gamepad button state for edge detection
   #gpEdges = []; // actions pressed this frame on the gamepad, consumed by takeGamepadActions()
+  // PRO-menu begin (SPEC 33.1): preferences and toggle states
+  prefs = prefDefaults();
+  #adsToggle = false;
+  #crouchToggle = false;
+  #sprintToggle = false;
+  #mouseEdges = []; // wheel and extra mouse button actions, consumed with the gamepad edges
+  // PRO-menu end
 
   constructor(canvas) {
     this.#canvas = canvas;
@@ -51,37 +59,77 @@ export class Input {
       const now = performance.now();
       // SPEC 32.6: a double tap on crouch dives, a double tap on sprint starts the tactical sprint
       if (isBound('crouch', e.code)) {
-        if (now - this.#lastCrouchTap < DOUBLE_TAP_MS) this.#dive = true;
+        if (now - this.#lastCrouchTap < DOUBLE_TAP_MS && this.prefs.diveDoubleTap) this.#dive = true;
         this.#lastCrouchTap = now;
       }
-      if (isBound('sprint', e.code)) {
-        if (now - this.#lastSprintTap < DOUBLE_TAP_MS) this.#tac = true;
-        this.#lastSprintTap = now;
-      }
+      // sprint double tap (tactical sprint) is handled in #onPress with the mouse path
       if (isBound('dive', e.code)) this.#dive = true;
+      this.#onPress(e.code, now);
     });
-    window.addEventListener('keyup', (e) => this.#keys.delete(e.code));
-    window.addEventListener('blur', () => { this.#keys.clear(); this.#mouseFire = false; this.#mouseAds = false; this.firing = false; this.ads = false; });
+    window.addEventListener('keyup', (e) => { this.#keys.delete(e.code); this.#syncMouseState(); });
+    window.addEventListener('blur', () => { this.#keys.clear(); this.#mouseFire = false; this.#mouseAds = false; this.firing = false; this.ads = false; this.#adsToggle = false; this.#crouchToggle = false; this.#sprintToggle = false; });
     window.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       this.inputType = 'mouse';
-      this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity);
+      this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity * (this.prefs.invertY ? -1 : 1)); // PRO-menu: invert Y
     });
+    // PRO-menu: mouse buttons are keys named Mouse0..Mouse4 so any action can live on the mouse (SPEC 33.2)
     window.addEventListener('mousedown', (e) => {
       if (!this.locked) return;
-      if (e.button === 0) { this.#mouseFire = true; this.firing = true; }
-      if (e.button === 2) { this.#mouseAds = true; this.ads = true; }
+      const code = `Mouse${e.button}`;
+      this.#keys.add(code);
+      const now = performance.now();
+      if (isBound('crouch', code)) { if (now - this.#lastCrouchTap < DOUBLE_TAP_MS && this.prefs.diveDoubleTap) this.#dive = true; this.#lastCrouchTap = now; }
+      if (isBound('dive', code)) this.#dive = true;
+      this.#onPress(code, now);
     });
-    window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) { this.#mouseFire = false; this.firing = false; }
-      if (e.button === 2) { this.#mouseAds = false; this.ads = false; }
-    });
+    window.addEventListener('mouseup', (e) => { this.#keys.delete(`Mouse${e.button}`); this.#syncMouseState(); });
+    window.addEventListener('wheel', (e) => {
+      if (!this.locked || e.deltaY === 0) return;
+      const code = e.deltaY > 0 ? 'WheelDown' : 'WheelUp';
+      for (const a of ['nextWeapon', 'prevWeapon', 'weapon1', 'weapon2', 'reload', 'grenade', 'jump', 'inspect', 'ability1', 'ability2']) if (isBound(a, code)) this.#mouseEdges.push(a);
+      if (isBound('jump', code)) { this.#keys.add(code); setTimeout(() => this.#keys.delete(code), 60); } // a wheel jump is one short press
+    }, { passive: true });
     window.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); }); // SPEC 29.3: right mouse aims
   }
 
   get locked() {
     return document.pointerLockElement === this.#canvas;
   }
+
+  // PRO-menu begin (SPEC 33.1)
+  #held(action) {
+    return this.#keys.has(bind(action)) || this.#keys.has(bind(`${action}Alt`));
+  }
+
+  // A fresh press of any code: edge actions (fire / ads toggles, sprint double tap) and the held mouse state.
+  #onPress(code, now) {
+    if (isBound('ads', code) && this.prefs.adsMode === 'toggle') this.#adsToggle = !this.#adsToggle;
+    if (isBound('crouch', code) && this.prefs.crouchMode === 'toggle') this.#crouchToggle = !this.#crouchToggle;
+    if (isBound('sprint', code)) {
+      if (now - this.#lastSprintTap < DOUBLE_TAP_MS && this.prefs.tacSprintDoubleTap) this.#tac = true;
+      this.#lastSprintTap = now;
+      if (this.prefs.sprintMode === 'toggle') this.#sprintToggle = !this.#sprintToggle;
+    }
+    if (isBound('jump', code) && !/^Key|^Space|^Shift|^Control|^Alt/.test(code) && !this.#keys.has(code)) this.#keys.add(code);
+    this.#syncMouseState();
+  }
+
+  #syncMouseState() {
+    this.#mouseFire = this.#held('fire');
+    this.#mouseAds = this.prefs.adsMode === 'toggle' ? this.#adsToggle : this.#held('ads');
+    this.firing = this.#mouseFire || this.firing && !this.locked; // touch keeps its own firing flag
+    if (this.locked) { this.firing = this.#mouseFire; this.ads = this.#mouseAds; }
+  }
+
+  // Wheel and mouse button actions since the last call, merged into takeGamepadActions().
+  takeMouseActions() {
+    if (this.#mouseEdges.length === 0) return [];
+    const out = this.#mouseEdges;
+    this.#mouseEdges = [];
+    return out;
+  }
+  // PRO-menu end
 
   // Pointer captured (desktop), touch controls enabled (mobile), or a gamepad connected.
   get active() {
@@ -124,12 +172,12 @@ export class Input {
     const rsX = applyDeadzone(gp.axes[2] ?? 0);
     const rsY = applyDeadzone(gp.axes[3] ?? 0);
     if (rsX !== 0 || rsY !== 0) {
-      this.aimTurn(-stickCurve(rsX) * this.gamepadSensitivity, -stickCurve(rsY) * this.gamepadSensitivity, 'gamepad');
+      this.aimTurn(-stickCurve(rsX) * this.gamepadSensitivity * this.prefs.gamepadSens, -stickCurve(rsY) * this.gamepadSensitivity * this.prefs.gamepadSens * (this.prefs.invertY ? -1 : 1), 'gamepad'); // PRO-menu
     }
     const rt = (gp.buttons[7]?.value ?? 0) > 0.2 || btn(7);
     const lt = (gp.buttons[6]?.value ?? 0) > 0.2 || btn(6);
     this.firing = this.#mouseFire || rt;
-    this.ads = this.#mouseAds || lt;
+    this.ads = this.#mouseAds || (this.prefs.adsMode === 'toggle' ? false : lt);
     const now = performance.now();
     const edge = (name, down) => { const was = !!this.#gpPrev[name]; this.#gpPrev[name] = down; return down && !was; };
     if (edge('crouch', btn(1))) {
@@ -153,8 +201,9 @@ export class Input {
 
   // Gamepad button presses since the last call (reload, switch, ability1, ability2, grenade, scoreboard).
   takeGamepadActions() {
-    if (this.#gpEdges.length === 0) return [];
-    const out = this.#gpEdges;
+    const mouse = this.takeMouseActions(); // PRO-menu: wheel and extra mouse buttons share the edge channel
+    if (this.#gpEdges.length === 0) return mouse;
+    const out = this.#gpEdges.concat(mouse);
     this.#gpEdges = [];
     return out;
   }
@@ -169,7 +218,12 @@ export class Input {
     }
     const gp = this.#pollGamepad();
     const k = (action) => (this.#keys.has(bind(action)) ? 1 : 0);
-    const held = (action) => this.#keys.has(bind(action)) || this.#keys.has(bind(`${action}Alt`));
+    const held = (action) => this.#held(action);
+    // PRO-menu: toggle and auto modes (SPEC 33.1)
+    const fwdK = k('fwd') - k('back');
+    const sprintPref = this.prefs.sprintMode === 'toggle' ? this.#sprintToggle && fwdK !== 0 : this.prefs.sprintMode === 'auto' ? fwdK > 0 : held('sprint');
+    const crouchPref = this.prefs.crouchMode === 'toggle' ? this.#crouchToggle : held('crouch');
+    if (this.prefs.sprintMode === 'toggle' && fwdK === 0 && !held('sprint')) this.#sprintToggle = false;
     const dive = this.#dive || !!this.touch.dive;
     const tac = this.#tac || !!this.touch.tac;
     this.#dive = false;
@@ -179,8 +233,8 @@ export class Input {
       right: clamp1(k('right') - k('left') + (gp?.right ?? 0) + this.touch.right),
       jump: held('jump') || !!gp?.jump || !!this.touch.jump,
       // SPEC 23 / 32: Shift sprints (any direction), C or Ctrl crouches (tap while sprinting to slide)
-      sprint: held('sprint') || !!this.touch.sprint,
-      crouch: held('crouch') || !!gp?.crouch || !!this.touch.crouch,
+      sprint: sprintPref || !!this.touch.sprint,
+      crouch: crouchPref || !!gp?.crouch || !!this.touch.crouch,
       dive, // SPEC 32.2 one-command pulse
       tac,
     };

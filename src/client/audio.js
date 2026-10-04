@@ -63,7 +63,14 @@ export class Audio {
 
   setEnabled(on) {
     this.#enabled = !!on;
-    if (this.#master) this.#master.gain.value = this.#enabled ? 1 : 0;
+    if (this.#master) this.#master.gain.value = this.#enabled ? this.#volume : 0;
+  }
+
+  // PRO-menu (SPEC 33.3): master volume 0..1 from the audio preferences; the on/off switch still wins.
+  #volume = 1;
+  setVolume(v) {
+    this.#volume = Math.min(1, Math.max(0, Number(v) || 0));
+    if (this.#master) this.#master.gain.value = this.#enabled ? this.#volume : 0;
   }
 
   // Call from a user gesture (the Play click): browsers block audio before one.
@@ -72,7 +79,7 @@ export class Audio {
     if (this.#ctx) { this.#ctx.resume?.(); return true; }
     this.#ctx = new this.#Ctx();
     this.#master = this.#ctx.createGain();
-    this.#master.gain.value = this.#enabled ? 1 : 0;
+    this.#master.gain.value = this.#enabled ? this.#volume : 0;
     this.#master.connect(this.#ctx.destination);
     return true;
   }
