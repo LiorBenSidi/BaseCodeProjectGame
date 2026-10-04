@@ -68,3 +68,9 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 
 ## Standing work
 Weekly dependency PRs, monthly independent security review recorded in `docs/HARDENING_REVIEW.md`.
+
+## From the 2026-10-05 research (deferred, see docs/RESEARCH_ADOPTION.md)
+- High contrast enemy outline mode (BO6 accessibility): outline pass in post.js, pref under accessibility.
+- Crosshair RGB picker and import / export share codes (CS2).
+- Server side snapshot occlusion culling (Valorant fog of war): visibility test per viewer in GameRoom snapshots; anti wallhack and bandwidth.
+- Node version matrix in CI once a second runtime target exists.

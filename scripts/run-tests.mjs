@@ -2,7 +2,7 @@
 // Runs the node:test suites under tests/<dir>. Refuses to pass when nothing was collected:
 // a runner that finds 0 tests and exits 0 is a false green (the most dangerous kind of CI result).
 //
-// Usage:  node scripts/run-tests.mjs [unit|integration|system|security|stress|all] [--coverage]
+// Usage:  node scripts/run-tests.mjs [unit|integration|system|security|stress|regression|latency|all] [--coverage]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +13,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const coverage = args.includes('--coverage');
 const suite = args.find((a) => !a.startsWith('--')) ?? 'all';
-const SUITES = ['unit', 'integration', 'system', 'security', 'stress'];
+const SUITES = ['unit', 'integration', 'system', 'security', 'stress', 'regression', 'latency'];
 
 if (suite !== 'all' && !SUITES.includes(suite)) {
   process.stderr.write(`unknown suite "${suite}" (expected one of: ${SUITES.join(', ')}, all)\n`);

@@ -6,10 +6,11 @@
 // wants { id, send(obj), close(reason) }; wrapConn adapts one to the other.
 
 import { modeForRoomId } from './shared/rooms.js';
+import { botConfigFor } from './shared/modes.js'; // PRO-audio: SPEC 35.3
 import { GameRoom } from './server/GameRoom.js';
 import { createLogger } from './server/logger.js';
 import { MatchSession } from './server/matchSession.js';
-import { TICK_RATE } from './shared/constants.js';
+import { TICK_RATE, isDiagRoom } from './shared/constants.js';
 
 /** One simulation step per TICK_MS of wall time (D-006). */
 export const TICK_MS = 1000 / TICK_RATE;
@@ -74,7 +75,8 @@ export class MatchHost {
         matchEnd: (info) => persistence.matchEnd({ ...info, roomId: instanceId }),
       }
       : null;
-    const room = new GameRoom({ now, mode: modeForRoomId(instanceId), hooks, logger: createLogger(`room:${instanceId}`, { level: logLevel, sink: logSink }) });
+    const botCfg = botConfigFor(modeForRoomId(instanceId)); // PRO-audio: SPEC 35.3
+    const room = new GameRoom({ now, mode: modeForRoomId(instanceId), hooks, botFill: isDiagRoom(instanceId) || this.#diag ? 0 : botCfg.fill, botDifficulty: botCfg.difficulty, logger: createLogger(`room:${instanceId}`, { level: logLevel, sink: logSink }) });
     this.#session = new MatchSession({ room, logger: this.#log, now });
   }
 

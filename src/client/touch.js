@@ -122,7 +122,7 @@ export class TouchControls {
       this.#setKnob(v.right, -v.fwd);
     } else if (this.#look?.id === e.pointerId) {
       const d = lookDelta(e.clientX - this.#look.x, e.clientY - this.#look.y);
-      this.#input.turn(d.yaw, d.pitch);
+      this.#input.aimTurn(d.yaw, d.pitch, 'touch'); // SPEC 32.5: touch aim may be assisted
       this.#look.x = e.clientX;
       this.#look.y = e.clientY;
     }

@@ -54,7 +54,7 @@ menu.addEventListener('submit', (e) => {
   // Both must run inside the user gesture.
   if (isTouchDevice()) game.enableTouch();
   else capturePointer();
-  menu.querySelector('#settings').hidden = true;
+  document.getElementById('settings')?.setAttribute('hidden', ''); // P4 moved the panel out of the form; SPEC 33
 });
 
 // Re-capture the mouse after Esc.

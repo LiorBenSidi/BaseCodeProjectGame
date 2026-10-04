@@ -7,6 +7,7 @@
 
 import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER } from '../shared/constants.js';
 import { MAPS, mapForMatch, describeMap } from '../shared/maps.js'; // SPEC 28: one map per match
+import { newBrain, botStep, botName, botsWanted, seededRng, isDifficulty } from '../shared/bots.js'; // PRO-audio: SPEC 35.3 bots
 import { sanitizeChat, chatAllowed, recordKill, resetStreak, streakEndedText } from '../shared/social.js'; // SPEC 29
 import { stepPlayer, eyeOf, heightOf } from '../shared/movement.js';
 import { aimDir } from '../shared/hitscan.js';
@@ -24,7 +25,9 @@ import { SPAWN } from '../shared/rules.js';
 import { DEFAULT_KIT, KIT_IDS, isKit, newKitState, useAbility, stepEffects, applyGrapple, slowFactor, shieldBoxes, decoyTargets, describeEffects, cooldownLeft } from '../shared/abilities.js';
 import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnapshot, XP } from '../shared/progression.js';
 // SPEC 22: match modes (DM / TDM), timer, end screen, restart.
-import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot } from '../shared/modes.js';
+import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot, updateIntroPhase, recordVote, tallyVotes, voteCandidatesFor, voteCounts } from '../shared/modes.js';
+import { MAP_IDS } from '../shared/maps.js'; // PRO-ceremony: SPEC 34.4 vote candidates
+import { newMedalTracker, recordKillMedals, matchEndMedals } from '../shared/medals.js'; // PRO-ceremony: SPEC 34.3
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
 export const MAX_QUEUE = 12; // beyond this a client is flooding or speed-hacking: oldest cmds are dropped
@@ -47,13 +50,26 @@ export class GameRoom {
   #log;
   #maxPlayers;
   #match;
+  #medals = newMedalTracker(); // PRO-ceremony: SPEC 34.3
+  #nextMapId = null; // PRO-ceremony: SPEC 34.4 the voted map for the next match
 
   // SPEC 26 / 27: `hooks.roster({ players, maxPlayers, phase, matchNumber })` fires on join, leave and
   // match start / end; `hooks.matchEnd({ result, players })` fires after the matchEnd broadcast. Both are
   // persistence paths (never per tick); a hook that throws is logged and ignored.
   #hooks;
 
-  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE, hooks = null } = {}) {
+  // PRO-audio begin (SPEC 35.3): bots fill seats up to `botFill` while humans are present, and leave as humans arrive
+  #bots = new Map(); // bot player id -> brain
+  #botFill = 0;
+  #botDifficulty = 'medium';
+  #botRng = seededRng(1);
+  #botSeed = 1;
+  // PRO-audio end
+  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE, hooks = null, botFill = 0, botDifficulty = 'medium', botSeed = 1 } = {}) {
+    this.#botFill = Math.max(0, botFill | 0);
+    this.#botDifficulty = isDifficulty(botDifficulty) ? botDifficulty : 'medium';
+    this.#botSeed = botSeed;
+    this.#botRng = seededRng(botSeed);
     this.#now = now;
     this.#hooks = hooks;
     this.#random = random;
@@ -75,7 +91,7 @@ export class GameRoom {
     return this.#players.size;
   }
 
-  addPlayer({ send, name, kit, userId = null } = {}) {
+  addPlayer({ send, name, kit, userId = null, bot = false } = {}) {
     if (typeof send !== 'function') throw new TypeError('addPlayer requires a send(obj) function');
     if (this.#players.size >= this.#maxPlayers) return null;
 
@@ -83,6 +99,7 @@ export class GameRoom {
     const p = {
       id,
       name: sanitizeName(name) || `Player${id}`,
+      bot, // PRO-audio: SPEC 35.3
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
       onGround: true,
       yaw: 0,
@@ -122,14 +139,72 @@ export class GameRoom {
     this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), map: describeMap(this.#map), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
+    this.#balanceBots();
     this.#roster();
     return p;
   }
+
+  // PRO-audio begin (SPEC 35.3)
+  get humanCount() {
+    let n = 0;
+    for (const p of this.#players.values()) if (!p.bot) n += 1;
+    return n;
+  }
+
+  get botCount() {
+    return this.#bots.size;
+  }
+
+  // Adds one bot. Bots are ordinary players with `bot: true`; their messages go nowhere.
+  addBot(difficulty = this.#botDifficulty) {
+    const brain = newBrain(difficulty, this.#botSeed + this.#bots.size + this.#nextId);
+    const taken = new Set([...this.#players.values()].map((p) => p.name));
+    const p = this.addPlayer({ send: () => {}, name: botName(brain, taken), kit: undefined, userId: null, bot: true });
+    if (!p) return null;
+    this.#bots.set(p.id, brain);
+    this.#log?.info('bot joined', { id: p.id, difficulty: brain.difficulty });
+    return p;
+  }
+
+  removeBot(id) {
+    if (!this.#bots.has(id)) return false;
+    this.#bots.delete(id);
+    return this.removePlayer(id);
+  }
+
+  // Keeps `botFill` seats filled while at least one human is in the room; an empty room has no bots.
+  #balanceBots() {
+    if (this.#balancing) return;
+    this.#balancing = true;
+    try {
+      const humans = this.humanCount;
+      const wanted = humans === 0 ? 0 : botsWanted(humans, this.#botFill, this.#maxPlayers);
+      while (this.#bots.size > wanted) this.removeBot([...this.#bots.keys()].at(-1));
+      while (this.#bots.size < wanted && this.#players.size < this.#maxPlayers) if (!this.addBot()) break;
+    } finally { this.#balancing = false; }
+  }
+  #balancing = false;
+
+  // Bots think before the commands run, so their input lands in the same tick as a human's.
+  #stepBots(now) {
+    if (this.#bots.size === 0) return;
+    const all = [...this.#players.values()];
+    for (const [id, brain] of this.#bots) {
+      const bot = this.#players.get(id);
+      if (!bot) { this.#bots.delete(id); continue; }
+      const r = botStep(brain, bot, all, this.#map, now, this.#botRng, sameTeam);
+      this.handleInput(id, [r.cmd]);
+      if (r.reload) this.handleReload(id);
+      if (r.shoot) this.handleShoot(id);
+    }
+  }
+  // PRO-audio end
 
   removePlayer(id) {
     const removed = this.#players.delete(id);
     if (removed) this.#log?.info('player left', { id, players: this.#players.size });
     if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
+    if (removed && !this.#balancing) this.#balanceBots(); // PRO-audio: humans leaving or arriving change the fill
     if (removed) this.#roster();
     return removed;
   }
@@ -199,6 +274,7 @@ export class GameRoom {
     this.#tick += 1;
     const now = this.#now();
 
+    this.#stepBots(now); // PRO-audio: SPEC 35.3
     for (const p of this.#players.values()) this.#runCommands(p);
     this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
@@ -235,7 +311,7 @@ export class GameRoom {
       const raw = p.queue.shift();
       const cmd = slow < 1 ? { ...raw, fwd: raw.fwd * slow, right: raw.right * slow, sprint: false } : raw;
       if (p.alive && p.grapple) applyGrapple(p, cmd.jump, this.#now());
-      if (p.alive) stepPlayer(p, cmd, this.#map.boxes, this.#map.half);
+      if (p.alive && this.#match.phase !== 'intro') stepPlayer(p, cmd, this.#map.boxes, this.#map.half); // PRO-ceremony: frozen during the intro countdown
       p.yaw = cmd.yaw;
       p.pitch = cmd.pitch;
       p.lastSeq = cmd.seq;
@@ -296,17 +372,27 @@ export class GameRoom {
 
   // SPEC 22: the match ends on time or score, shows the end screen for ENDING_MS, then restarts.
   #stepMatch(now) {
+    // PRO-ceremony: the intro countdown ends, the match goes live
+    if (updateIntroPhase(this.#match, now)) {
+      this.#broadcast({ t: 'matchLive', ...matchSnapshot(this.#match, now) });
+      this.#roster();
+    }
+    if (this.#match.phase !== 'playing') { this.#stepRestart(now); return; }
     const reason = endReason(this.#match, this.#players.values(), now);
     if (reason !== null) {
-      const result = endMatch(this.#match, this.#players.values(), now, reason);
-      const roster = [...this.#players.values()];
+      const medals = matchEndMedals(this.#medals, this.#players.values()); // PRO-ceremony: flawless and the medal totals
+      const result = { ...endMatch(this.#match, this.#players.values(), now, reason, voteCandidatesFor(MAP_IDS, this.#map.id)), medals };
+      const roster = [...this.#players.values()].filter((p) => !p.bot); // PRO-audio: persistence records humans only
       this.#log?.info('match end', { reason, number: result.number });
       this.#broadcast({ t: 'matchEnd', ...result });
       this.#hook('matchEnd', { result, players: roster, mode: this.#match.mode, nowMs: now });
       this.#roster();
-      return;
     }
+  }
+
+  #stepRestart(now) {
     if (shouldRestart(this.#match, now)) {
+      this.#nextMapId = tallyVotes(this.#match); // PRO-ceremony: SPEC 34.4, null when nobody could vote
       this.#switchMap(this.#match.number + 1); // SPEC 28: before respawns, so they land on the new map
       for (const p of this.#players.values()) {
         p.kills = 0;
@@ -318,13 +404,26 @@ export class GameRoom {
         this.#respawn(p, now);
         p.protectedUntil = -Infinity;
       }
-      this.#startMatch(now);
+      this.#medals = newMedalTracker(); // PRO-ceremony: medals are per match
+      this.#startMatch(now, true); // PRO-ceremony: a restart runs the intro countdown
     }
   }
 
+  // PRO-ceremony begin (SPEC 34.4): one vote per player, only during the end screen, only for an offered map
+  handleVote(id, mapId) {
+    const p = this.#players.get(id);
+    if (!p || !recordVote(this.#match, id, mapId)) return;
+    this.#broadcast({ t: 'vote', counts: voteCounts(this.#match) });
+  }
+  // PRO-ceremony end
+
   // SPEC 28: the map rotates with the match number; pickups and grenades are rebuilt for it.
+  #mapForNumber = 1; // PRO-ceremony: the match number the current map was chosen for (the vote decides once)
   #switchMap(matchNumber) {
-    const next = MAPS[mapForMatch(matchNumber)];
+    if (this.#mapForNumber === matchNumber && this.#nextMapId === null) return; // already chosen for this match
+    const next = MAPS[this.#nextMapId ?? mapForMatch(matchNumber)]; // PRO-ceremony: the vote wins over the rotation
+    this.#nextMapId = null;
+    this.#mapForNumber = matchNumber;
     if (next === this.#map) return;
     this.#map = next;
     this.#pickups = buildPickups(this.#map.pickups);
@@ -332,7 +431,7 @@ export class GameRoom {
   }
 
   #roster() {
-    this.#hook('roster', { players: this.#players.size, maxPlayers: this.#maxPlayers, phase: this.#match.phase, matchNumber: this.#match.number, nowMs: this.#now() });
+    this.#hook('roster', { players: this.humanCount, maxPlayers: this.#maxPlayers, bots: this.#bots.size, phase: this.#match.phase, matchNumber: this.#match.number, nowMs: this.#now() });
   }
 
   #hook(name, info) {
@@ -345,9 +444,9 @@ export class GameRoom {
     }
   }
 
-  #startMatch(now) {
+  #startMatch(now, intro = false) {
     this.#fx = []; // SPEC 24: no effects carry over
-    startMatch(this.#match, now);
+    startMatch(this.#match, now, { intro });
     this.#switchMap(this.#match.number);
     this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
     this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number, map: describeMap(this.#map), pickups: describePickups(this.#pickups) });
@@ -407,7 +506,7 @@ export class GameRoom {
       if (best === null || r.applied > best.applied) best = { victim, zone: acc.zone, dist: acc.dist, applied: r.applied, kill: r.killed };
     }
     this.#sendTo(p, { t: 'verdict', target: best.victim.id, zone: best.zone, dmg: best.applied, dist: best.dist, kill: best.kill });
-    for (const v of killed) this.#kill(p.id, p.name, v, now);
+    for (const v of killed) this.#kill(p.id, p.name, v, now, { zone: best.victim === v ? best.zone : null, dist: best.dist }); // PRO-ceremony: medal inputs
   }
 
   #throw(p) {
@@ -444,13 +543,16 @@ export class GameRoom {
   }
 
   // A self-kill (own grenade) counts a death and no kill. The killer may have left the room.
-  #kill(killerId, killerName, victim, now) {
+  #kill(killerId, killerName, victim, now, { zone = null, dist = NaN } = {}) {
     victim.alive = false;
     victim.deaths += 1;
     victim.respawnAt = now + RESPAWN_MS;
     const killer = this.#players.get(killerId);
     if (killer && killer !== victim) killer.kills += 1;
     scoreKill(this.#match, killer, victim);
+    // PRO-ceremony (SPEC 34.3): medals are judged here, where the kill is authoritative, and broadcast with the kill
+    const awarded = recordKillMedals(this.#medals, { killerId, victimId: victim.id, isHeadshot: zone === 'head', nowMs: now, dist });
+    if (awarded.length) this.#broadcast({ t: 'medal', id: killerId, name: killerName, medals: awarded });
     // SPEC 25.1: kill and assist XP
     if (killer && killer !== victim) this.#award(killer, XP.kill);
     for (const aid of assistsFor(victim.progress, killerId, now)) {
@@ -509,7 +611,7 @@ export class GameRoom {
     for (const p of this.#players.values()) {
       const ws = activeWeapon(p.loadout);
       players.push({
-        id: p.id, name: p.name,
+        id: p.id, name: p.name, ...(p.bot ? { bot: 1 } : {}), // PRO-audio: bots are marked for the scoreboard
         x: round3(p.x), y: round3(p.y), z: round3(p.z), vy: round3(p.vy),
         g: p.onGround ? 1 : 0,
         h: round3(heightOf(p)), // SPEC 23: current hitbox height (crouch, slide)

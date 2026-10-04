@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { TICK_RATE } from '../shared/constants.js';
 import { GameRoom } from './GameRoom.js';
+import { botConfigFor, DEFAULT_MODE } from '../shared/modes.js'; // PRO-audio
 import { createLogger } from './logger.js';
 import { parseClientMessage, MAX_MESSAGE_BYTES } from './protocol.js';
 import { answerPing } from './matchSession.js';
@@ -102,10 +103,12 @@ export async function startServer(options = {}) {
     logLevel = 'info',
     client = isProd ? 'static' : 'vite',
     sink,
+    botFill = null, // PRO-audio: null = the mode default
   } = options;
 
   const log = createLogger('server', { level: logLevel, ...(sink ? { sink } : {}) });
-  const room = new GameRoom({ logger: createLogger('room', { level: logLevel, ...(sink ? { sink } : {}) }) });
+  const botCfg = botConfigFor(DEFAULT_MODE); // PRO-audio: SPEC 35.3
+  const room = new GameRoom({ logger: createLogger('room', { level: logLevel, ...(sink ? { sink } : {}) }), botFill: botFill ?? botCfg.fill, botDifficulty: botCfg.difficulty });
 
   const httpServer = http.createServer();
   // Slowloris defence: bound how long a client may take to send headers/body.
@@ -226,6 +229,8 @@ export async function startServer(options = {}) {
         room.handleSwitch(player.id, msg.slot);
       } else if (player && msg.t === 'chat') {
         room.handleChat(player.id, msg.text); // SPEC 29.1
+      } else if (player && msg.t === 'vote') {
+        room.handleVote(player.id, msg.mapId); // PRO-ceremony: SPEC 34.4
       } else if (player && msg.t === 'ability') {
         room.handleAbility(player.id, msg.slot);
       } else if (player && msg.t === 'kit') {

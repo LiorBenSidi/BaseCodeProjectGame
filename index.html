@@ -7,11 +7,11 @@
     <link rel="stylesheet" href="/src/client/style.css" />
   </head>
   <body>
-    <canvas id="game"></canvas>
+          <canvas id="game"></canvas>
     <div id="vignette" aria-hidden="true"></div>
 
     <div id="hud" hidden>
-      <div id="crosshair"></div>
+      <div id="crosshair" class="crosshair-mark"></div>
       <div id="damage-flash"></div>
       <div id="damage-indicator"></div>
       <div id="status">
@@ -36,7 +36,20 @@
         <div id="xp-bar" aria-label="Experience"><div id="xp-fill"></div><span id="xp-label">LVL 1  0 / 100 XP</span></div>
       </div>
       <div id="perk-offer" hidden aria-label="Perk offer"></div>
-      <div id="match-end" hidden><div id="match-end-title"></div><div id="match-end-sub"></div><div class="match-end-hint">Next match starts shortly</div></div>
+      <div id="tutorial" hidden aria-live="polite"><p class="tut-step" id="tut-step"></p><p class="tut-title" id="tut-title"></p><p class="tut-text" id="tut-text"></p><button type="button" id="tut-skip" class="ghost">Skip tutorial</button></div>
+      <div id="tip" hidden aria-live="polite"></div>
+      <div id="match-end" hidden>
+        <div id="match-end-title"></div>
+        <div id="match-end-sub"></div>
+        <ol id="podium" aria-label="Top players"></ol>
+        <div id="my-medals" aria-label="Your medals"></div>
+        <div id="vote" aria-label="Next map vote" hidden><p class="vote-title">Vote for the next map</p><div id="vote-options"></div></div>
+        <div class="match-end-hint" id="match-end-hint">Next match starts shortly</div>
+      </div>
+      <div id="intro" hidden aria-live="assertive"><div id="intro-count"></div><div id="intro-sub"></div></div>
+      <div id="killcam" hidden><span class="kc-label">KILLCAM</span><span id="killcam-who"></span></div>
+      <div id="medals" aria-live="polite"></div>
+      <canvas id="minimap" width="160" height="160" aria-label="Minimap"></canvas>
       <div id="feed"></div>
       <div id="hit-info"></div>
       <div id="combat-log" aria-live="polite"></div>
@@ -86,7 +99,7 @@
       <section id="lobby" aria-label="Rooms">
         <p class="kit-title">Rooms</p>
         <div class="room-actions">
-          <select id="create-mode" aria-label="Mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option></select>
+          <select id="create-mode" aria-label="Mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option><option value="range">Practice Range</option></select>
           <button id="quick-play" type="button" class="primary">Quick Play</button>
           <button id="create-room" type="button" class="ghost">Create room</button>
         </div>
@@ -97,24 +110,21 @@
       </section>
       <p id="room-line" class="room-line" hidden></p>
       <button type="submit" class="primary">Play</button>
-      <p class="hint">WASD move · Shift sprint · C crouch · Space jump (again on a wall) · Mouse aim · Click shoot · R reload · 1 / 2 weapons · G grenade · Q / E abilities · 3 / 4 pick a perk · Tab scoreboard · Esc release mouse</p>
+      <p class="hint">WASD move · Shift sprint (double tap: tactical) · C crouch / slide · V dive · Space jump · Mouse aim · R reload · Wheel swaps · G grenade · Q / E abilities · F inspect · Rebind everything in Settings → Keybinds · Also: 3 / 4 pick a perk · Tab scoreboard · Esc release mouse</p>
 
-      <section id="settings" hidden aria-label="Settings">
-        <h2>Settings</h2>
-        <label for="sensitivity">Mouse sensitivity <output id="sensitivity-value" for="sensitivity"></output></label>
-        <input id="sensitivity" type="range" min="0.0005" max="0.01" step="0.0001" />
-        <label for="fov">Field of view <output id="fov-value" for="fov"></output></label>
-        <input id="fov" type="range" min="60" max="110" step="1" />
-        <fieldset id="touch-mode">
-          <legend>Touch controls</legend>
-          <label><input type="radio" name="touch-mode" value="auto" /> Auto</label>
-          <label><input type="radio" name="touch-mode" value="on" /> On</label>
-          <label><input type="radio" name="touch-mode" value="off" /> Off</label>
-        </fieldset>
-        <label class="check"><input id="show-fps" type="checkbox" /> Show FPS</label>
-        <label class="check"><input id="sound" type="checkbox" checked /> Sound</label>
-      </section>
     </form>
+
+    <section id="settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
+      <div class="settings-card">
+        <header class="settings-head">
+          <h2>Settings</h2>
+          <button type="button" class="settings-close ghost" aria-label="Close settings">Close</button>
+        </header>
+        <input type="search" class="settings-search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" />
+        <nav class="tabs" role="tablist" aria-label="Settings sections"></nav>
+        <div class="tab-body"></div>
+      </div>
+    </section>
 
     <script type="module" src="/src/client/main.js"></script>
   </body>

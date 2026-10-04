@@ -153,7 +153,7 @@ test('a valid single-command input message is accepted with all fields preserved
   const c = goodCmd({ seq: 7, fwd: 1, right: -1, jump: true, yaw: 1.25, pitch: 0.5 });
   const r = parseClientMessage(input([c]));
   assert.equal(r.ok, true);
-  assert.deepEqual(r.msg, { t: 'input', cmds: [{ ...c, sprint: false, crouch: false }] }); // SPEC 23: absent stance flags are false
+  assert.deepEqual(r.msg, { t: 'input', cmds: [{ ...c, sprint: false, crouch: false, dive: false, tac: false }] }); // SPEC 23 and 32: absent flags are false
 });
 
 test('SPEC 23: sprint and crouch are coerced to booleans and never anything else', () => {
@@ -318,7 +318,7 @@ test('command extra fields are dropped and __proto__ inside a command has no eff
   const raw = '{"t":"input","cmds":[{"seq":1,"fwd":0,"right":0,"yaw":0,"pitch":0,"isAdmin":true,"hp":500,"__proto__":{"jump":true}}]}';
   const r = parseClientMessage(raw);
   assert.equal(r.ok, true);
-  assert.deepEqual(r.msg.cmds[0], { seq: 1, fwd: 0, right: 0, jump: false, sprint: false, crouch: false, yaw: 0, pitch: 0 });
+  assert.deepEqual(r.msg.cmds[0], { seq: 1, fwd: 0, right: 0, jump: false, sprint: false, crouch: false, dive: false, tac: false, yaw: 0, pitch: 0 });
   assert.equal(r.msg.isAdmin, undefined);
 });
 
@@ -460,5 +460,23 @@ test('reload and switch intents are whitelisted; switch needs a known slot', () 
   assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot: 'primary', mag: 99 })), { ok: true, msg: { t: 'switch', slot: 'primary' } });
   for (const slot of ['knife', '', 0, null, undefined, {}, '__proto__']) {
     assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot })), { ok: false, reason: 'bad_switch' }, String(slot));
+  }
+});
+
+test('SPEC 32.2: dive and tac are coerced to booleans like the other stance flags', () => {
+  const r = parseClientMessage(input([goodCmd({ dive: 1, tac: 'yes' })]));
+  assert.equal(r.msg.cmds[0].dive, true);
+  assert.equal(r.msg.cmds[0].tac, true);
+  const z = parseClientMessage(input([goodCmd({ dive: { a: 1 }, tac: 0 })]));
+  assert.equal(z.msg.cmds[0].dive, true, 'truthy object coerces to true, never passes through');
+  assert.equal(z.msg.cmds[0].tac, false);
+  assert.equal(typeof z.msg.cmds[0].dive, 'boolean');
+});
+
+// SPEC 34: ceremony protocol messages
+test('vote: mapId string <= 32 chars is whitelisted', () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'vote', mapId: 'foundry', extra: 'drop' })), { ok: true, msg: { t: 'vote', mapId: 'foundry' } });
+  for (const badMap of ['', 123, null, 'a'.repeat(33), {}, []]) {
+    assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'vote', mapId: badMap })), { ok: false, reason: 'bad_vote' }, String(badMap));
   }
 });

@@ -9,6 +9,7 @@ test('empty env yields the documented defaults', () => {
     isProd: false,
     allowedOrigins: [],
     logLevel: 'info',
+    botFill: null, // SPEC 35.3: the mode default applies
   });
 });
 
@@ -125,5 +126,5 @@ test('two loadConfig calls return independent allowedOrigins arrays', () => {
 });
 
 test('the returned config has exactly the documented keys', () => {
-  assert.deepEqual(Object.keys(loadConfig({})).sort(), ['allowedOrigins', 'host', 'isProd', 'logLevel', 'port']);
+  assert.deepEqual(Object.keys(loadConfig({})).sort(), ['allowedOrigins', 'botFill', 'host', 'isProd', 'logLevel', 'port']);
 });

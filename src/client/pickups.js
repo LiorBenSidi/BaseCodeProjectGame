@@ -15,23 +15,40 @@ const BOB_AMPLITUDE = 0.12;
 const BOB_RAD_PER_MS = 0.003;
 const HOVER_Y = 0.9;
 
+// SPEC 30.7: small readable models. A medkit case with a cross, an ammo can with brass tips, a gun silhouette.
+// The accent material (set by the caller) colors the recognisable part; the case material is neutral.
+const CASE_MAT = new THREE.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.5, metalness: 0.1 });
+const CAN_MAT = new THREE.MeshStandardMaterial({ color: 0x3b4a3a, roughness: 0.6, metalness: 0.3 });
+
 function geometryFor(shape) {
+  const g = new THREE.Group();
   if (shape === 'cross') {
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.16)));
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.16)));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.36, 0.3), CASE_MAT);
+    g.add(body);
+    const a = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.04)); a.position.z = 0.17;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.26, 0.04)); b.position.z = 0.17;
+    const a2 = a.clone(); a2.position.z = -0.17; const b2 = b.clone(); b2.position.z = -0.17;
+    g.add(a, b, a2, b2);
+    g.userData.accentOnly = true;
     return g;
   }
   if (shape === 'gun') {
-    const g = new THREE.Group();
     g.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.12)));
     const grip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 0.12));
     grip.position.set(-0.15, -0.18, 0);
-    g.add(grip);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1));
+    mag.position.set(0.08, -0.15, 0);
+    g.add(grip, mag);
     return g;
   }
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.26)));
+  const can = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.26), CAN_MAT);
+  g.add(can);
+  for (let i = 0; i < 3; i++) {
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.12, 8));
+    tip.position.set(-0.08 + i * 0.08, 0.19, 0);
+    g.add(tip);
+  }
+  g.userData.accentOnly = true;
   return g;
 }
 
@@ -53,7 +70,7 @@ export class Pickups {
       if (!style) continue;
       const material = new THREE.MeshStandardMaterial({ color: style.color, emissive: style.emissive, roughness: 0.35, metalness: 0.4 });
       const group = geometryFor(style.shape);
-      group.traverse((o) => { if (o.isMesh) o.material = material; });
+      group.traverse((o) => { if (o.isMesh && (!group.userData.accentOnly || o.material === undefined || o.material.type === 'MeshBasicMaterial')) o.material = material; });
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.7, 24), new THREE.MeshBasicMaterial({ color: style.color, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(s.x, s.y + 0.02, s.z);

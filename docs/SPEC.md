@@ -786,7 +786,7 @@ All in `src/shared/movement.js` (`stepPlayer`, plus `heightOf(p)` and `eyeOf(p)`
 - Snapshot entries gain `h` (rounded to 3 decimals). Remote bodies are squashed to `h / height`; the name tag follows.
 
 ### 23.2 Sprint and slide
-- `sprint` with `fwd > 0` (not crouched, not sliding) multiplies ground speed by `sprintMul` (1.35). Sideways or backward input never sprints.
+- `sprint` with `fwd > 0` (not crouched, not sliding) multiplies ground speed by `sprintMul` (1.35). Sideways or backward input never sprints. **Amended by SPEC 32.1 (D-029): sprint works in every direction and `sprintMul` is 7.2 / 5.6; the numbers in this section are the Batch 3d values, SPEC 32 holds the current table.**
 - Slide: on the ground, with `sprint` held and a horizontal input, a fresh `crouch` press starts a slide of `slideTime` (0.7 s): speed starts at `slideSpeed` (11) and decays linearly to crouch speed, the direction is locked to the input at the start, the hitbox is the crouch height. Holding crouch does not re-trigger; a crouch tap without sprint only crouches. A jump ends the slide (the momentum carries into the air).
 
 ### 23.3 Step-up and mantle
@@ -926,3 +926,202 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 ### 29.6 Tests
 `tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
 
+
+## 30. Pro environment and graphics (Pro batch P1, D-027)
+
+Everything in this section is client rendering (`src/client/`), except the pure props data in `src/shared/props.js`.
+No asset is downloaded: every texture, sky and prop is generated procedurally at load, so the game has no licensing
+surface, works offline and ships nothing but code (docs/ASSETS.md records this).
+
+### 30.1 Art direction
+docs/ART_DIRECTION.md. Three themes in `src/client/themes.js`, keyed by map id, arena as the fallback:
+- Arena: clean industrial dusk, concrete floor and walls, slate metal cover, blue accent lamps.
+- Foundry: rusted steel and oxidised copper under a hot orange horizon, orange accents.
+- Crossfire: desert sandstone and weathered masonry under a hard noon sun, no grid.
+Team colors and player silhouettes (arenaStyle.js, SPEC 19.3 / 22) stay above every theme: a theme never uses the team hues (tested).
+
+### 30.2 Procedural PBR surfaces (`src/client/textures.js`)
+Five surface recipes (`concrete`, `metal`, `rust`, `sand`, `masonry`) built from a tiling, seeded value noise (`hash2`, `valueNoise`, `fbm`): an albedo tile the theme color tints, and a roughness map, with the recipe's metalness. Plates and bricks get a darker mortar grid with per plate tone; speckle adds grain. Tiles repeat by world size (`tileRepeat(w, h, tile)`, half tile steps, never below one), sides and tops of a box get their own repeat so tall walls do not stretch. Textures are cached per surface and size (256 px on low, 512 px otherwise); without a DOM the material falls back to a flat color (tests run without a GPU).
+
+### 30.3 Sky and lighting
+Per theme: a vertex colored dome graded horizon to zenith with a sun disc and halo along `sky.sunDir`, fog, a shadow casting sun, a hemisphere light and a colored fill, `renderer.toneMappingExposure` per theme. `setMap` rebuilds sky, lights, arena and props together; the previous meshes, materials and textures are disposed.
+
+### 30.4 Visual props (`src/shared/props.js`, `src/client/props.js`)
+`propsFor(map)` derives props deterministically from the collision boxes: lamps on the inner face of the four perimeter walls every 16 m at 3.5 m (above head height), a trim strip along each wall top, and crates or barrels on top of cover between 2 m and 5 m high with a footprint of at least 3 x 3 m, never within 1.5 m of a spawn. Nothing is placed on the floor, so no prop needs collision. `propIsValid` is the invariant (inside the arena, 2 m or higher). Lamps carry a point light on medium and high quality (at most 8).
+
+### 30.5 Post-processing and quality tiers (`src/client/post.js`, `themes.js`)
+EffectComposer: render pass, UnrealBloom (strength 0.22, radius 0.35, threshold 0.85), FXAA, OutputPass (ACES filmic, sRGB). Tiers: `low` (no composer, no shadows, pixel ratio 1, 256 px textures), `medium` (shadows 1024, bloom, pixel ratio up to 1.5), `high` (shadows 2048, bloom, pixel ratio up to 2). `qualityTierFor` picks automatically from touch, cores, memory and resolution; `settings.getQuality / setQuality` (`bca.quality`) persist an override, `Game.setQuality(tier)` applies it live. The settings control arrives with batch P4.
+
+### 30.6 Combat visuals (`src/client/combatFx.js`)
+Pooled and capped: 6 muzzle flash point lights (70 ms, flicker down), 24 additive spark sprites at the impact point (320 ms, rising then falling), explosion light (260 ms, orange, 18 m). Fed from the replicated `shot` and `boom` messages in `game.js` (`// PRO-env`), so every client sees the same flashes.
+
+### 30.7 Pickup models (`src/client/pickups.js`)
+Medkit case with a cross on both faces, ammo can with three brass tips, gun silhouette with grip and magazine; the accent material colors the recognisable part only. Spin and bob unchanged from SPEC 21.1.
+
+### 30.8 Tests
+`tests/unit/proEnv.test.js` (6: themes and team color separation, surface kinds and tiling, noise determinism and periodicity, texel rules, props invariants on every map, quality tiers and persistence).
+## 32. BO6 feel: tuning, omnimovement, tactical sprint, dive, camera, gunplay, gamepad, aim assist (Pro batch P3, D-029)
+
+Reference: Call of Duty Black Ops 6. Everything in 32.1 and 32.2 is shared deterministic movement (`src/shared/movement.js`,
+server authoritative, client prediction); 32.3 to 32.6 are client only. The server never sees camera feel, recoil or
+aim assist: hits are still resolved from the real view ray.
+
+### 32.1 Tuning table (`PLAYER` in `src/shared/constants.js`)
+
+| Quantity | Batch 3d | SPEC 32 | Note |
+|---|---|---|---|
+| walk `speed` | 7 | 5.6 m/s | |
+| sprint | 9.45 | 7.2 m/s (`sprintMul` 7.2 / 5.6) | any direction (omnimovement) |
+| tactical sprint | none | 8.5 m/s (`tacSprintMul` 8.5 / 5.6) | forward only, `tacBurst` 2.5 s, `tacCooldown` 4 s |
+| crouch | 0.55x | 0.5x (2.8 m/s) | |
+| `jump` / `gravity` | 8 / 24 (1.33 m apex) | 8 / 32 (1.0 m apex) | snappier arc, 0.5 s air time |
+| `airAccel` | 30 | 12 m/s^2 | weightier jumps, less air strafing |
+| `slideSpeed` / `slideTime` | 11 / 0.7 | 10 / 0.65 s | |
+| `slideCancelWindow` | none | 0.25 s | |
+| `diveTime` / `diveSpeed` | none | 0.6 s / 2.5 m per dive | |
+
+Unchanged: `stepHeight`, `mantleHeight`, wall jump, dash (SPEC 24.2).
+
+### 32.2 Movement rules
+- Sprint (`cmd.sprint`) applies in any direction with a horizontal input; with no input it does nothing.
+- Slide: a fresh `crouch` press while sprinting on the ground starts a slide along the input direction (backwards and strafe slides included). Speed decays linearly from `slideSpeed` to crouch speed over `slideTime`. Starting a slide ends a tactical sprint.
+- Slide cancel: a fresh `jump` inside the first `slideCancelWindow` seconds of a slide keeps the current slide velocity through the jump. A later jump still jumps but keeps only the decayed slide speed of that step (unchanged from SPEC 23).
+- Tactical sprint (`cmd.tac`, edge triggered): starts on the ground with `fwd > 0.5`, no slide, no dive, cooldown over. Runs for `tacBurst` seconds at `tacSprintMul` while `fwd > 0.1` and not crouched; ends at once when the forward input stops, the player crouches, slides or dives. Every end starts `tacCooldown`. Timers `p.tac` and `p.tacCd` live on the player and are not in the snapshot: like the slide, the client keeps its own copy.
+- Dive (`cmd.dive`, edge triggered): on the ground while sprinting or tactical sprinting with a horizontal input. Locks the input direction for `diveTime`, moves at `diveSpeed`, uses the crouch hitbox from the first step, ignores steering, cannot jump, falls under gravity if it leaves a ledge. Ends a tactical sprint. After the dive the player stands if there is head room, else stays crouched.
+- `p.mantled` is true for exactly the step in which an airborne climb (SPEC 23.3 mantle) happened; the client camera dips on it.
+- Protocol (`src/server/protocol.js`): `dive` and `tac` are coerced to booleans like `sprint` and `crouch`; everything else about a command is unchanged.
+
+### 32.3 Camera feel (`src/client/cameraFeel.js`, applied in `game.js` inside `// PRO-feel`)
+Landing dip by fall speed (none below 1 m/s, capped at 0.25 m, recovers in under a second), head bob by ground speed (off in ADS), fov kick +5 sprinting and +8 in tactical sprint (eased, not applied while aiming), 3 degree roll while sliding, 0.25 m lowering while diving, 150 ms dip on mantle. Lateral bob is applied in camera space.
+
+### 32.4 Gunplay
+`WEAPONS[id].adsMs` (rifle 250, SMG 180, shotgun 220, sniper 320, pistol 160) paces the fov ease: `adsLerpRate = 3000 / adsMs`, so the sight is within 5% of the target after `adsMs`. `adsSensMul` (0.8, sniper 0.65) multiplies the zoom sensitivity scale while aiming (`adsSensitivity`). The cosmetic recoil kick (SPEC 20) now recovers over `RECOIL_RECOVERY_MS` = 120. Hit resolution is unchanged. Client events on `src/client/eventBus.js`: `bodyHit`, `headshot`, `killConfirm` (from the verdict, with the verdict as payload) and `kill` (from the kill broadcast, with `mine` and `me` flags); HUD, audio and view model batches subscribe instead of reaching into `game.js`.
+
+### 32.5 Aim assist (`src/client/aimAssist.js`)
+For `gamepad` and `touch` aim only; mouse aim is never assisted. Inside a 10 degree cone (1.5 m to 60 m, live enemies of the last snapshot, teammates excluded in TDM) the turn is scaled by 0.6, and while turning or moving the view drifts toward the target by 3.5% of the remaining angle per update. Client view angles only.
+
+### 32.6 Controls (`src/client/bindings.js`, `src/client/input.js`)
+Keys are read through `bind(action)` / `isBound(action, code)` with the default map (W A S D, Space, Shift sprint, C or Ctrl crouch, V dive, R reload, 1 / 2 weapons, G grenade, Q / E abilities, 3 / 4 perks, F inspect, Tab scoreboard, Enter chat); `setBinding`, `loadBindings` and `conflicts` serve the settings editor (batch P4). Double tap crouch dives, double tap sprint starts the tactical sprint. Gamepad standard mapping: left stick move, right stick aim (deadzone 0.15, power curve 1.5), RT shoot, LT ADS, A jump, B crouch (double tap dives), X reload, Y switch, LB / RB abilities, right stick click tactical sprint, Start grenade, Select scoreboard. Touch aim goes through `Input.aimTurn`, so it may be assisted.
+
+### 32.7 Tests
+`tests/unit/movementOmni.test.js` (8: tuning table, tactical sprint burst, cooldown and ends, backwards slide, slide cancel early and late, dive distance, lock and hitbox, dive ends tactical sprint and cannot jump, mantled flag), `proFeel.test.js` (5: bindings, camera curves, aim assist, event bus, stick helpers), `aim.test.js` (+1: ADS multiplier and per weapon pace), `protocol.test.js` (+1: dive and tac coercion), and the SPEC 23 suites retuned to the new numbers without weakening (`movement.test.js`, `movementParkour.test.js`, `gameRoom.test.js`).
+## 31. Pro weapons and characters (Pro batch P2, D-028)
+
+Client rendering only; no gameplay number changes. Readability rule from SPEC 30.1 applies: the figure stays one
+team colored material, accents are small.
+
+### 31.1 Weapon models (`src/client/weaponModels.js`, `weaponView.js`)
+One parts table per weapon (receiver, barrel, handguard or pump, grip, magazine, stock, sights or scope with glass ends) in weapon space (muzzle toward -Z), four materials (`body`, `accent` per weapon, `wood`, `glass`), shared by the first person view and the hands of remote players. `weaponLength` ranks sniper > shotgun > rifle > SMG > pistol (tested). The view model adds forearms and gloves so the weapon is held. `WeaponView.inspect()` (F, SPEC 32.6) lifts and rolls the weapon over `INSPECT_MS` = 1400 and back, never while aiming; `pose()` gains `inspect`, `yaw` and `roll`.
+
+### 31.2 Character rig (`src/client/characterRig.js`, `remote.js`)
+Torso, pelvis, head, visor, two arms and two legs with pivots at shoulders and hips, dimensions in `RIG`. `walkCycle(phase, speed, { airborne, crouchK })` returns leg and arm angles, bob and forward lean (sprint leans more, crouch steps shorter, airborne tucks); `advancePhase` ties the cycle to distance (one cycle per 1.6 m, so feet match the ground at any speed). The head follows the snapshot pitch. The weapon in hand follows `w` from the snapshot. Kit accents (SPEC 28.2) and crouch squash (SPEC 23) are unchanged.
+
+### 31.3 Hit flash and death pose
+A verdict with damage flashes the victim's body emissive for 120 ms (`hitFlash`), so the shooter sees the hit land on the figure, not only on the HUD. A player whose `alive` turns 0 tips over (`deathPose`: roll to 0.92 of a quarter turn and sink 0.35 m over 450 ms, fading out in the last 30%) before the mesh hides; respawn resets it.
+
+### 31.4 Tests
+`tests/unit/proWeapons.test.js` (4: model coverage, materials and lengths; rig cycle; phase, flash and death curves; inspect pose).
+
+## 33. Pro menu and settings (Pro batch P4, D-030)
+
+Client only. The menu's settings button opens a tabbed modal (`src/client/settingsPanel.js`, markup in `index.html`
+`#settings`, styles in `style.css` under `PRO-menu`): Controls, Keybinds, Video, Audio, HUD. Every change applies at
+once (`Game.applyPrefs`) and persists at once. Esc closes the modal unless a key capture is running.
+
+### 33.1 Preferences (`src/client/prefs.js`)
+One JSON object under `bca.prefs`, validated field by field against `PREFS_SCHEMA` on load (`sanitize`: own keys only, ranges clamped and snapped to their step, enums and booleans checked, anything else falls back to the default). The five legacy settings (`settings.js`: sensitivity, fov, fps, sound, touch controls, quality) keep their keys and appear in the same tabs.
+- Controls: ADS sensitivity multiplier (0.3 to 2), invert vertical look, ADS hold / toggle, crouch hold / toggle, sprint hold / toggle / auto, double tap sprint for tactical sprint, double tap crouch to dive, auto reload, controller sensitivity and deadzone, aim assist on / off (sticks and touch only, never mouse).
+- Video: graphics quality (auto / low / medium / high, SPEC 30.5), head bob 0 to 1, sprint FOV kick, camera shake 0 to 1 (landing dip, slide tilt), screen flash when hit, weapon sway.
+- Audio: master, effects and interface volumes, hit marker sound, footsteps. `Audio.setVolume` scales the master gain; the sound switch still wins.
+- HUD: crosshair style (cross, dot, circle, T, cross with dot), color (six presets), size, gap, thickness, outline, dynamic expansion; hit markers, damage numbers, kill feed, minimap, HUD scale 0.7 to 1.3, HUD opacity 0.4 to 1, team color mode (default / deuteranopia / tritanopia).
+Fields marked for later batches (minimap, hit markers, team color mode, footsteps, auto reload, weapon sway, hit sound, interface volume) are stored and exposed on `game.prefs` / `hud.prefs`; P5 and P6 read them.
+
+### 33.2 Keybinds (`src/client/bindings.js`, editor in the Keybinds tab)
+Mouse buttons are keys named `Mouse0` to `Mouse4`, the wheel `WheelUp` / `WheelDown`; `fire` (Mouse0), `ads` (Mouse2), `nextWeapon` (WheelDown) and `prevWeapon` (WheelUp) join the action table, so any action can live on either device. Every action has a primary and a secondary (`*Alt`) key; only secondary keys can be cleared. The tab shows a keyboard map (every key with its action, bound keys highlighted), a mouse map (each button and wheel direction with its action) and a grouped table (Movement, Combat, Kit, Interface). Clicking a key, on the table or on the map, starts a capture: the next key, mouse button or wheel movement is bound; Esc cancels; Backspace clears a secondary key. Conflicts (one code on two actions) are highlighted and counted; Reset to defaults restores `DEFAULT_BINDINGS`. Bindings persist under `bca.bindings` as `{ action: code }`, restored on load (`restoreBindings`), junk ignored.
+`input.js` holds the mouse state in the same key set as the keyboard (`#held('fire')`), so toggle modes, double taps and Alt keys work on mouse buttons too; wheel and extra mouse button actions are queued and consumed with the gamepad edge actions in `game.js`.
+
+### 33.3 Live application
+`Game.applyPrefs` sets `input.prefs` (toggle modes, invert, controller sensitivity, double taps), audio volume, graphics quality (`setQuality`, SPEC 30.5) and HUD prefs. The camera feel (SPEC 32.3) is scaled by head bob and camera shake and the FOV kick can be disabled; the ADS sensitivity multiplier multiplies the SPEC 32.4 zoom scale while aiming; aim assist can be switched off.
+
+### 33.4 Crosshair and HUD (`hud.applyPrefs`, `.crosshair-mark` in style.css)
+The crosshair is drawn from CSS variables (`crosshairStyle(prefs)`): color, size, gap, thickness, outline, which parts show (vertical lines, horizontal lines, dot, ring). The HUD tab shows a live preview mark on a dark backdrop. `--hud-scale` and `--hud-opacity` on `#hud` scale and fade the status, kit, match, feed and combat log blocks; the kill feed, damage numbers and the damage flash can be hidden.
+
+### 33.5 Assets
+The Rajdhani font files added by the earlier P4 draft were removed: the owner's rule is CC0 only and Rajdhani is OFL. The menu uses the system font stack from theme.js.
+
+### 33.6 Tests
+`tests/unit/proMenu.test.js` (7: schema, coercion and prototype safety, persistence, crosshair variables, key labels and keyboard map coverage, mouse bindings and conflicts, bindings persistence).
+## 34. Pro ceremony: intro, podium, medals, vote, kill cam, minimap (Pro batch P5, D-031)
+
+### 34.1 Match intro (`src/shared/modes.js`, `GameRoom.js`)
+The first match of a room still starts the moment someone joins (nobody is waiting). A restart after the end screen runs an `intro` phase of `INTRO_MS` = 5000: players are respawned on the next map but `stepPlayer` is skipped, so nobody moves, and firing is blocked as in any non-playing phase. The snapshot's `match.left` counts the seconds down; when it reaches zero the room broadcasts `{ t: 'matchLive' }` and the clock of the match starts. `ENDING_MS` is 15000 so there is time to read the podium and vote. Client: a full screen countdown (`#intro`), then GO.
+
+### 34.2 End screen (`#match-end`, `hud.matchEnd`)
+Headline (win / loss / draw as before), MVP line (the top of the ranking), a podium of the top three with K / D, K/D ratio and medal count (`podium()` in `src/client/ceremony.js`), my medal lines, the vote block and a live "Next match in Ns" hint. The raw scoreboard no longer opens automatically at the end; Tab still shows it.
+
+### 34.3 Medals (`src/shared/medals.js`)
+Judged on the server in `#kill` where the kill is authoritative, broadcast as `{ t: 'medal', id, name, medals: [ids] }`, and rendered only for the earning player as toasts (`#medals`). Kill medals: First Blood, Double / Triple / Quad (kills within `MULTI_KILL_MS` = 4000), Headshot, Longshot (30 m or more), Point Blank (under 2 m), Revenge, Comeback (after three deaths in a row), Buzzkill (ended a streak of 5 or more). End medal: Flawless (3 or more kills, no deaths). `matchEndMedals` returns `{ playerId: { medalId: n } }` on `matchEnd` as `medals`. The tracker resets per match. Medals carry no XP of their own (XP stays SPEC 25).
+
+### 34.4 Next-map vote
+`matchEnd` carries `voteCandidates`: the two maps after the current one in rotation order (`voteCandidatesFor`). Clients send `{ t: 'vote', mapId }` (protocol: string, 1 to 32 chars; the room accepts only an offered id, during `ending`, one vote per player, changeable). The room broadcasts `{ t: 'vote', counts }`. At restart `tallyVotes` picks the most voted map; ties go to the first offered candidate; no votes at all keeps the rotation. The vote is consumed once for that match number (`#mapForNumber`). Client: two buttons with share bars, keys 1 and 2 while the end screen is up.
+
+### 34.5 Kill cam (client only, `ceremony.js`, `remote.js`, `game.js`)
+`RemotePlayers` keeps 6 s of history per player (position, yaw, pitch, height). On my death with a killer other than me, the camera replays the killer's last `KILLCAM_LOOKBACK_MS` = 2500 (capped to `RESPAWN_MS` - 500) from their eyes, interpolating samples (`killcamSample`, yaw wraps the short way), the killer's mesh is hidden while the camera sits in it, and the `KILLCAM  name  ·  weapon` tag shows. It ends on respawn or when the window runs out; `matchEnd` ends it too.
+
+### 34.6 Minimap (`#minimap`, `minimapLayout`)
+A 160 px north-up canvas (110 px on phones): collision boxes of 0.8 m or taller (tall cover drawn darker), me as a green arrow rotated by yaw (yaw 0 looks toward -Z, up on the map), allies always as cyan dots, enemies as red dots only when within `MINIMAP_NEAR_M` = 12 or when they fired within `MINIMAP_REVEAL_MS` = 2000 (from `shot` messages). Hidden when `hud.prefs.minimap` is false (SPEC 33).
+
+### 34.7 Tests
+`tests/unit/proCeremony.test.js` (7: medals; match flow and intro; vote rules and protocol; room end to end with vote, voted map, frozen intro and matchLive; ceremony views; kill cam math; minimap). `gameRoomModes.test.js` restart test extended for the intro.
+
+## 35. Sound engine, bots, practice range, onboarding (Pro batch P6, D-032)
+
+### 35.1 Sound engine (`src/client/audio.js`, `src/client/audioModel.js`)
+Still fully procedural: no audio assets in the repo (the CC0 rule is satisfied trivially, synthesis has no license). Each cue is now a list of layers (`osc` sweep, `noise` burst with its own highpass or lowpass, `sub` thump), with per-layer delay for staged sounds (reload: mag out, mag in, bolt). Buses: `master`, `sfx`, `ui` (`Audio.setLevel(bus, 0..1)`, read by the SPEC 33 settings). Positional cues pass their world position to `Audio.play(cue, volume, at)`: a `StereoPannerNode` pans from the listener (`panFor`, yaw 0 looks toward -Z, capped at 0.85 so headphones never go fully one sided) and a lowpass drops with distance (`cutoffFor`: 18 kHz near, 900 Hz at 60 m). Gunfire heard from 30 m or more (`DISTANT_M`) plays `shot_distant` (no crack, long low tail) instead of the weapon's own cue. Own shots and blasts duck the sfx bus (`DUCK`: 0.55 for 180 ms); ui sounds are never ducked. A node cap (48 live cues) keeps a grenade in a crowd from piling up hundreds of nodes. New cues: headshot, damage, reload, switch, empty, jump, land, slide, medal, countdown, go, ui_hover / ui_click / ui_back. `Audio.setListener(x, z, yaw)` runs once per frame from the camera.
+
+### 35.2 Bots (`src/shared/bots.js`, `GameRoom.js`)
+A pure, deterministic brain: `botStep(brain, bot, others, map, nowMs, rng)` returns `{ cmd, shoot, reload }`, randomness only from the injected `seededRng` (mulberry32), so a seed replays a match. Decisions at ~8 Hz (`THINK_MS`), movement every tick. Patrol: waypoints are spawn points or free arena spots never inside a wall; a bot that makes no progress for 900 ms re-routes and hops. Combat: the nearest visible enemy (`castRay` from eye to chest against map boxes, team aware), a reaction delay before the first shot, a slow wandering aim error instead of per tick jitter, strafing that flips every 0.5 to 1.3 s, closing beyond 18 m and backing off inside 6 m, reload when the magazine is empty. Difficulties: `dummy` (walks, never fires; the range), `easy`, `medium`, `hard` (reaction 650 / 380 / 180 ms, aim error 0.11 / 0.05 / 0.02 rad). Bots are ordinary players with `bot: true`, marked `bot: 1` in snapshots and `[BOT]` on the scoreboard; their messages go nowhere. Seat filling (`botsWanted`): per mode (`BOT_CONFIG`: dm fills to 2 with medium, tdm to 4, range to 4 with dummies); bots join when a human joins, leave one by one as humans arrive, and all leave with the last human. Diag rooms and `diag: true` hosts never get bots. Persistence (roster, MatchResult, PlayerStats) records humans only. Dev server: `BOT_FILL` env overrides the mode default (0 disables).
+
+### 35.3 Practice range (`modes.js`)
+Mode `range` (`Practice Range` in the lobby, rooms `range-xxxxxx`): no time or score limit (`timeLimitMs: Infinity`; `matchSnapshot.left` = -1 and the HUD shows no timer), three dummies, otherwise the normal match loop.
+
+### 35.4 Onboarding (`src/client/tutorial.js`)
+First run in a practice range (never finished before, `localStorage` `bca.tutorialDone`): a card with ten steps that advance only on the real action (move, look, jump, slide, hit a dummy, reload, switch, grenade, ability, done). Skip ends it. Contextual tips (`TIPS`, `bca.tipsSeen`): one line, shown once ever, on the first match start, first enemy shot heard, first death, first hit, first kill, never in the range or during the tutorial.
+
+### 35.5 Tests
+`tests/unit/audio.test.js` (4: cue table and variants, falloff, pan / filter / bus math, fake context graph incl. panner, lowpass, cap), `proBots.test.js` (6: rng and names, waypoints and LOS, brain behaviour per difficulty, seat math and range mode, room fill / leave, a medium bot lands hits and dummies never do), `proTutorial.test.js` (2). Live check on the dev server: one human joins, bot "Rook" joins, moves and fires.
+
+## 36. Research polish (D-033)
+
+What the two read-only research passes (docs/RESEARCH_ADOPTION.md) added on top of the six Pro batches.
+
+### 36.1 Telemetry readout (`src/client/telemetry.js`)
+The FPS readout becomes the CS2 style telemetry row: `60 FPS · 31 ms · ±4 · 1% loss`. Pure rolling statistics over a 60 sample window: ping is the latest RTT, jitter the standard deviation of the RTT samples, loss the share of snapshot intervals longer than 2.5 ticks. `level()` colours the row (ok / warn / bad: warn at ping > 80, jitter > 15, loss > 2 %, fps < 55; bad at 150 / 40 / 10 % / 30). Pref `telemetry` turns it on; the F3 style toggle still works.
+
+### 36.2 Audio mix presets (`audio.js` `MIXES`, `setMix`)
+A `DynamicsCompressorNode` after the master bus. `default` (threshold -6 dB, ratio 2), `night` (-30 dB, ratio 8, makeup 1.6: footsteps and reloads stay audible at low volume), `headphones` (-16 dB, ratio 3, makeup 1.15). Pref `audioMix`.
+
+### 36.3 Controller response (`src/client/gamepadCurve.js`)
+Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales from 0, outer lets a worn stick reach full tilt early) and three response curves (`standard` power 1.5, `linear`, `dynamic` smoothstep S curve). Prefs `gamepadDeadzone` (inner), `gamepadOuterDeadzone`, `gamepadCurve`. Applied to the right stick in input.js.
+
+### 36.4 Render scale and frame cap
+`post.setRenderScale(pct)` multiplies the pixel ratio by 0.5 .. 1 (pref `renderScale`, 50 .. 100 %). `frameDue(last, now, cap)` skips rendering between frames when pref `fpsCap` is 30 / 60 / 120 / 144 (`off` = uncapped); simulation and networking keep running every frame.
+
+### 36.5 Measured scaling (dev server, 2026-10-05)
+`node src/server/index.js` with N clients each sending inputs at 60 Hz for 15 s, snapshot gaps measured client side: 8 clients: 29.3 snaps/s each, gap p50 33.4 ms, p90 35.4, p99 47.3, max 98. 24 clients: the room cap (16) rejects the surplus, the 16 seated get 29.1 snaps/s, p50 33.5, p90 37.1, p99 48.3, max 59. Tick rate holds at a full room.
+
+### 36.6 Tests
+`tests/unit/researchPolish.test.js` (3): telemetry math and levels, deadzones and curves, mix presets through a fake compressor plus the prefs fields.
+
+### 36.6 Settings search
+`searchFields(query)` in prefs.js: every word of the query must appear in a field's label, key, tab name or one of its enum values; an empty query returns nothing and the tabs take over. The settings panel renders the hits in place of the tab body, each row prefixed with its tab name. Reference: the CS2 and BO6 settings search bars.
+
+### 36.7 Test disciplines adopted from the owner's repositories (D-034)
+- `tests/regression/protocolContract.test.js`: contract invariants read from the source. Every client message type `protocol.js` accepts is dispatched by both `server.js` and `matchSession.js` (the V1 double-dispatch gotcha); every server message type the room can send has a `game.js` handler; the actor mirror carries every `src/shared` module byte for byte (replica parity).
+- `tests/regression/baselines.test.js`: numbers players feel (weapon table, match flow constants, bot seat config, default keybinds and preference defaults) and bot determinism (same seed, same decisions). Moving one is allowed, silently is not: update the baseline and this spec together.
+- `tests/latency/tickBudget.test.js`: a 16 seat room (12 humans sending every tick, 4 medium bots), 600 ticks, p99 per tick under 6 ms (measured locally: p50 0.08 ms, p99 0.7 ms).
+- `test:dry` includes regression; the two CI steps (`npm run test:regression`, `npm run test:latency`) are listed in docs/TESTING.md for the owner to add to ci.yml (the agent token cannot edit workflows).
+- `.env.example` documents every variable `config.js` validates. `CLAUDE.md` points AI tools at AGENTS.md.
+
+### 36.8 Browser smoke run (D-035)
+`scripts/smoke-browser.mjs <steps.json> [baseUrl]` drives the built client in headless Chrome over the DevTools protocol (no new dependency) and prints what each step read from the DOM. Step files live in docs/smoke: `settings.json` (every tab, keybinds, video fields, the search bar), `deathmatch.json` (join, HUD, telemetry row, scoreboard with a bot, bots fighting back, minimap), `range-tutorial.json` (range room, tutorial steps, dummies). The Node dev server hosts one deathmatch room, so the range and tutorial files only mean something against the live actor. The first run found and fixed a crash in the Play handler (the settings dialog had moved out of the menu form in P4; `tests/unit/researchPolish.test.js` now guards it).

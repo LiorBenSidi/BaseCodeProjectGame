@@ -146,6 +146,8 @@ export class MatchSession {
       this.#room.handleSwitch(s.player.id, msg.slot);
     } else if (s.player && msg.t === 'chat') {
       this.#room.handleChat(s.player.id, msg.text);
+    } else if (s.player && msg.t === 'vote') {
+      this.#room.handleVote(s.player.id, msg.mapId); // PRO-ceremony: SPEC 34.4
     }
   }
 

@@ -81,3 +81,31 @@ npm run coverage      # node's built-in coverage, no extra dependency
 Before merging non-trivial logic, apply a handful of one-line mutations to the implementation (flip a `>=`
 to `>`, empty an allow-list, remove a clamp) and confirm each is caught by at least one test. A mutation that
 survives is a coverage gap. Record the result in the PR.
+
+## Regression, contract and latency suites (SPEC 36.7, D-034)
+
+| Suite | Command | Guards |
+| --- | --- | --- |
+| regression | `npm run test:regression` | Protocol contract invariants (both dispatchers, client handlers, actor mirror parity) and gameplay baselines (weapons, match flow, bots, defaults) |
+| latency | `npm run test:latency` | Tick budget: 16 seat room, 600 ticks, p99 under 6 ms |
+
+Changing a baseline on purpose: edit the number in the test and the matching line in docs/SPEC.md in the same commit.
+
+CI wiring (owner step: the agent's GitHub token has no `workflow` scope, so this edit to `.github/workflows/ci.yml` is applied by hand). Add after the "Unit tests" step in the `checks` job:
+
+```yaml
+      - name: Regression baselines and contract invariants
+        run: npm run test:regression
+      - name: Latency budget (tick p99)
+        run: npm run test:latency
+```
+
+## Browser smoke run (SPEC 36.8)
+
+```bash
+PORT=8820 ALLOWED_ORIGINS=http://localhost:8820 NODE_ENV=production node src/server/index.js &
+node scripts/smoke-browser.mjs docs/smoke/settings.json
+node scripts/smoke-browser.mjs docs/smoke/deathmatch.json
+node scripts/smoke-browser.mjs docs/smoke/range-tutorial.json https://<live host>   # actor only
+```
+Each step prints a JSON line of what it read from the page; screenshots land in /tmp/smoke. Needs google-chrome.

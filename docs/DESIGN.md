@@ -274,3 +274,66 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
 - Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
 
+
+### D-027 (W1, proposed) Pro Environment and Graphics
+- Status: decided
+- Date: 2026-10-04
+- Decision: Upgrade environment visuals from flat boxes to browser-tier PBR materials, HDRI lighting, glTF props, post-processing, and enhanced combat particles. Pure map data in `src/shared/maps.js` holds visual prop positions without touching collision boxes. Tiling uses world scale UV repeats. Assets are CC0 licensed from Poly Haven, ambientCG, and Kenney with full fallback to flat procedural visuals on failure. Quality settings adapt to device tiers automatically via `deviceMode.js`.
+- Source: Pro brief approval 2026-10-04 (Batch P1, SPEC section 30).
+- Affects: docs/SPEC.md section 30; `docs/ART_DIRECTION.md`, `docs/ASSETS.md`, `src/shared/maps.js`, `src/client/{scene,arenaStyle,effects,pickups,theme}.js`, `public/assets/env/**`.
+- Amendment 2026-10-05: shipped as procedural generation (textures, sky, props, pickup models) instead of downloaded glTF / HDRI assets: zero licensing surface, offline, nothing but code in the bundle. The CC0 rule stays for any future download.
+
+### D-029 (P3) BO6 omnimovement and feel
+- Status: decided
+- Date: 2026-10-04
+- Decision: Retune movement to the Black Ops 6 reference (5.6 / 7.2 / 8.5 m/s, 1.0 m jump), add omnidirectional sprint and slide, tactical sprint, dive, slide cancel, per weapon ADS time and sensitivity, 120 ms recoil recovery, camera feel, gamepad support and aim assist for sticks and touch only. All movement stays in the shared deterministic step; all feel stays client side.
+- Source: owner's Pro program approval 2026-10-04 ("Approve all six"), BO6 as the feel reference.
+- Affects: docs/SPEC.md section 32 (amends 23.2); `src/shared/{constants,movement,weapons}.js`, `src/server/protocol.js`, `src/client/{input,aim,bindings,cameraFeel,aimAssist,eventBus,touch,remote,game}.js`.
+- Alternatives: keep the Batch 3d arcade tuning (rejected: floaty against the reference); sync tac and dive timers in the snapshot (rejected for now: the slide already works client local, and the snapshot stays small).
+### D-028 (P2) Weapons and characters
+- Status: decided
+- Date: 2026-10-05
+- Decision: Replace the three box guns and the two box figure with a shared procedural weapon parts table (first and third person), an articulated rig with a distance driven walk cycle, hit flash and a death pose. Procedural geometry, no downloaded models (same reasoning as D-027's amendment).
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 31; `src/client/{weaponModels,characterRig,weaponView,remote,game}.js`.
+
+### D-030 (P4) Menu and settings
+- Status: decided
+- Date: 2026-10-05
+- Decision: A tabbed settings modal with a schema driven preference store (`prefs.js`, 38 fields across Controls, Video, Audio, HUD), a keybind editor with keyboard and mouse maps and click to rebind, mouse buttons and wheel as bindable codes, and live application of every value. Fonts that are not CC0 are not shipped.
+- Source: owner 2026-10-05 00:22: "see a mapping of the keybinds, on both mouse and keyboard, and be able to change them, and have a lot of customization overall, just like modern FPS games like CSGO and COD".
+- Affects: docs/SPEC.md section 33; `src/client/{prefs,bindings,input,settingsPanel,hud,audio,game}.js`, `index.html`, `style.css`.
+### D-031 (P5) Ceremony, medals, vote, kill cam, minimap
+- Status: decided
+- Date: 2026-10-05
+- Decision: Intro countdown only on restarts (the first match of a room starts at once, which also keeps every existing room test valid), server judged medals broadcast with the kill, a two-candidate next-map vote with rotation as the fallback, a client side kill cam from 6 s of remote history (no server replay state), and a north-up minimap with ally-always / enemy-on-reveal rules so the map does not become a radar.
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 34; `src/shared/{modes,medals}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{ceremony,hud,remote,game}.js`, `index.html`, `style.css`, actor mirror.
+
+### D-032 (P6) Sound engine, bots, range, onboarding
+- Status: decided
+- Date: 2026-10-05
+- Decision: Keep audio procedural (layered synthesis, panning, distance filter, buses, ducking) instead of shipping sample files: zero license risk, zero download, and the palette is tunable in code. Bots are a pure seeded brain run by the room, filling seats per mode and yielding to humans, so nobody ever plays an empty room. The practice range is a mode (so it reuses rooms, lobby and the match loop) with dummies, and the tutorial lives there, advancing only on real actions.
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 35; `src/client/{audio,audioModel,tutorial,game,hud,hudModel}.js`, `src/shared/{bots,modes}.js`, `src/server/{GameRoom,config,server}.js`, `base44/actors/Match/matchHost.js`, actor mirror, `index.html`, `style.css`.
+
+### D-033 Research polish
+- Status: decided
+- Date: 2026-10-05
+- Decision: Adopt the small, high value items from the two research passes (docs/RESEARCH_ADOPTION.md) directly in the Pro integration: telemetry row, audio mix presets, controller deadzones and curves, render scale, frame cap. Larger items (snapshot occlusion culling, high contrast outlines, crosshair share codes) go to the ROADMAP with their reference, not into this PR.
+- Source: Lior, 2026-10-05 ("make sure you really learned from the deep researches and implement in our game").
+- Affects: docs/SPEC.md section 36; `src/client/{telemetry,gamepadCurve,audio,post,scene,input,prefs,game}.js`, `style.css`.
+
+### D-034 Test disciplines and conventions from the owner's repositories
+- Status: decided
+- Date: 2026-10-05
+- Decision: Adopt the three test disciplines that recur across Lior's repositories (contract invariants, regression baselines, latency budgets) as first class suites with their own folders and CI steps, plus `.env.example` and `CLAUDE.md`. Keep the existing lowercase `tests/<suite>` naming (the runner and CI depend on it) rather than renaming to `Unit_Tests/`; the categories are the point, not the casing.
+- Source: Lior, 2026-10-05 ("make sure you really learned from my repos").
+- Affects: tests/regression, tests/latency, scripts/run-tests.mjs, package.json, .github/workflows/ci.yml, .env.example, CLAUDE.md, docs/TESTING.md, docs/SPEC.md 36.6 and 36.7.
+
+### D-035 Headless browser smoke runs in the repo
+- Status: decided
+- Date: 2026-10-05
+- Decision: Keep a dependency free DevTools-protocol driver and its step files in the repository so the built client is exercised in a real browser before a release, locally against the Node server and after Publish against the live actor. Unit suites cannot see a null element dereference in a DOM handler; this run caught one on its first pass.
+- Source: smoke run 2026-10-05 (Play handler TypeError), Lior's "test everything, including live".
+- Affects: scripts/smoke-browser.mjs, docs/smoke/*.json, docs/SPEC.md 36.8, docs/TESTING.md.
