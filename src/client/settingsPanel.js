@@ -2,7 +2,7 @@
 // which the unit tests cover. The panel is a tabbed modal: Controls, Keybinds (table + keyboard and mouse maps with
 // click to rebind), Video, Audio, HUD. Every change applies live through game.applyPrefs and persists at once.
 import { getFov, getSensitivity, getShowFps, getSound, getTouchControls, setFov, setSensitivity, setShowFps, setSound, setTouchControls } from './settings.js';
-import { PREFS_SCHEMA, TABS, fieldsFor, loadPrefs, savePrefs, defaults as prefDefaults, keyLabel, KEYBOARD_ROWS, isMouseCode } from './prefs.js';
+import { PREFS_SCHEMA, TABS, fieldsFor, searchFields, loadPrefs, savePrefs, defaults as prefDefaults, keyLabel, KEYBOARD_ROWS, isMouseCode } from './prefs.js';
 import { ACTION_LABELS, ACTION_GROUPS, REBINDABLE, bind, setBinding, resetBindings, getAllBindings, loadBindings, conflicts } from './bindings.js';
 
 export const BINDINGS_KEY = 'bca.bindings';
@@ -33,6 +33,9 @@ export function bindSettingsPanel(doc, game) {
   if (!panel || !openBtn) return;
   const tabsBar = panel.querySelector('.tabs');
   const body = panel.querySelector('.tab-body');
+  const search = panel.querySelector('.settings-search'); // SPEC 36.6
+  let query = '';
+  search?.addEventListener('input', () => { query = search.value; render(); });
   const closeBtn = panel.querySelector('.settings-close');
   let tab = 'controls';
   let prefs = loadPrefs();
@@ -227,6 +230,15 @@ export function bindSettingsPanel(doc, game) {
 
   // ---- render
   function render() {
+    if (query.trim()) { // SPEC 36.6: a search replaces the tab view with every matching field, labelled by its tab
+      tabsBar.replaceChildren();
+      const hits = searchFields(query);
+      const frag = doc.createDocumentFragment();
+      if (hits.length === 0) frag.append(el(doc, 'p', { class: 'muted', text: `No settings match "${query.trim()}"` }));
+      for (const k of hits) { const row = control(k); row.dataset.tab = PREFS_SCHEMA[k].tab; frag.append(row); }
+      body.replaceChildren(frag);
+      return;
+    }
     tabsBar.replaceChildren(...TABS.map((t) => el(doc, 'button', { type: 'button', role: 'tab', 'aria-selected': String(t.id === tab), text: t.label, onclick: () => { tab = t.id; render(); } })));
     const frag = doc.createDocumentFragment();
     if (tab === 'controls') {

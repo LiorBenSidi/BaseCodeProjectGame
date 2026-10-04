@@ -318,3 +318,7 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 /* SPEC 36.1 telemetry levels */
 #fps[data-level="warn"] { color: #ffd23f; }
 #fps[data-level="bad"] { color: #ff5252; }
+
+/* SPEC 36.6 settings search */
+.settings-search { width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line, #30363d); background: var(--bg-2, #161b22); color: var(--text, #e6edf3); font: inherit; }
+.tab-body [data-tab]::before { content: attr(data-tab); display: inline-block; margin-right: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #8b949e); }

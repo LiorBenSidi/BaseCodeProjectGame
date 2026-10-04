@@ -1112,3 +1112,13 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 
 ### 36.6 Tests
 `tests/unit/researchPolish.test.js` (3): telemetry math and levels, deadzones and curves, mix presets through a fake compressor plus the prefs fields.
+
+### 36.6 Settings search
+`searchFields(query)` in prefs.js: every word of the query must appear in a field's label, key, tab name or one of its enum values; an empty query returns nothing and the tabs take over. The settings panel renders the hits in place of the tab body, each row prefixed with its tab name. Reference: the CS2 and BO6 settings search bars.
+
+### 36.7 Test disciplines adopted from the owner's repositories (D-034)
+- `tests/regression/protocolContract.test.js`: contract invariants read from the source. Every client message type `protocol.js` accepts is dispatched by both `server.js` and `matchSession.js` (the V1 double-dispatch gotcha); every server message type the room can send has a `game.js` handler; the actor mirror carries every `src/shared` module byte for byte (replica parity).
+- `tests/regression/baselines.test.js`: numbers players feel (weapon table, match flow constants, bot seat config, default keybinds and preference defaults) and bot determinism (same seed, same decisions). Moving one is allowed, silently is not: update the baseline and this spec together.
+- `tests/latency/tickBudget.test.js`: a 16 seat room (12 humans sending every tick, 4 medium bots), 600 ticks, p99 per tick under 6 ms (measured locally: p50 0.08 ms, p99 0.7 ms).
+- `test:dry` includes regression; the two CI steps (`npm run test:regression`, `npm run test:latency`) are listed in docs/TESTING.md for the owner to add to ci.yml (the agent token cannot edit workflows).
+- `.env.example` documents every variable `config.js` validates. `CLAUDE.md` points AI tools at AGENTS.md.

@@ -323,3 +323,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Adopt the small, high value items from the two research passes (docs/RESEARCH_ADOPTION.md) directly in the Pro integration: telemetry row, audio mix presets, controller deadzones and curves, render scale, frame cap. Larger items (snapshot occlusion culling, high contrast outlines, crosshair share codes) go to the ROADMAP with their reference, not into this PR.
 - Source: Lior, 2026-10-05 ("make sure you really learned from the deep researches and implement in our game").
 - Affects: docs/SPEC.md section 36; `src/client/{telemetry,gamepadCurve,audio,post,scene,input,prefs,game}.js`, `style.css`.
+
+### D-034 Test disciplines and conventions from the owner's repositories
+- Status: decided
+- Date: 2026-10-05
+- Decision: Adopt the three test disciplines that recur across Lior's repositories (contract invariants, regression baselines, latency budgets) as first class suites with their own folders and CI steps, plus `.env.example` and `CLAUDE.md`. Keep the existing lowercase `tests/<suite>` naming (the runner and CI depend on it) rather than renaming to `Unit_Tests/`; the categories are the point, not the casing.
+- Source: Lior, 2026-10-05 ("make sure you really learned from my repos").
+- Affects: tests/regression, tests/latency, scripts/run-tests.mjs, package.json, .github/workflows/ci.yml, .env.example, CLAUDE.md, docs/TESTING.md, docs/SPEC.md 36.6 and 36.7.

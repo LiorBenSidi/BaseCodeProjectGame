@@ -32,16 +32,37 @@ where it lives in the game, or why it waits.
 | --- | --- | --- | --- |
 | 1 | Batch milestone report | Done | docs/PRO_BATCH_REPORTS.md (P1 to P6), docs/DESIGN.md decisions |
 | 2 | Getting started guide | Already covered | README "Quick start" and "Commands" |
-| 3 | Secrets and env documentation | Already covered | README "Running on Base44", `src/server/config.js` validates every variable (incl. BOT_FILL) |
+| 3 | Secrets and env documentation | Done | `.env.example` (every variable config.js validates) plus README "Running on Base44" |
 | 4 | Git hooks installer | Already covered | `scripts/setup-hooks.sh` |
 | 5 | README architecture diagram | Already covered | docs/ARCHITECTURE.md |
 | 6 | Demo runbook | Already covered | docs/LIVE_TESTING.md, `npm run actor-probe` |
 | 7 | Dependency audit | Already covered | `npm run audit:deps` in CI |
 | 8 | Node version matrix | Deferred | CI runs Node 22 (the deploy target); a matrix doubles minutes for no deploy benefit |
-| 9 | Test suite by category | Already covered | `npm run test:unit / integration / system / security` |
-| 10 | Scaling report | Done | SPEC 36.5 measured 8 and 24 clients |
+| 9 | Test suite by category | Done | unit / integration / system / security / stress, plus regression and latency added (SPEC 36.7) |
+| 10 | Scaling report | Done | SPEC 36.5 measured 8 and 24 clients; tick budget test keeps it honest (SPEC 36.7) |
 | 11 | Production compose | Not applicable | production is the Base44 actor, not a container |
 | 12 | Hardening tracker | Already covered | docs/HARDENING_REVIEW.md, SECURITY.md |
 | 13 | Seed script | Deferred | persistence is three entities written by the actor; seed when a leaderboard page needs fixtures |
 | 14 | ADR index | Already covered | docs/adr |
 | 15 | Configurable logging | Already covered | LOG_LEVEL in `config.js`, `src/server/logger.js` |
+
+## Recurring conventions from the homework repositories
+
+| Convention | Status | Where |
+| --- | --- | --- |
+| Tests categorised by scope (Unit, Integration, System, Security, Regression, Latency) | Done | tests/<suite>, SPEC 36.7 |
+| Operational tooling in dedicated folders | Already covered | scripts/, base44/tools/ |
+| Root AI and developer guidance (CLAUDE.md, AGENTS.md, CONTRIBUTING.md) | Done | CLAUDE.md added, AGENTS.md and CONTRIBUTING.md existed |
+| Deliverable tracking documents | Already covered | docs/SPEC.md, docs/DESIGN.md, docs/ROADMAP.md, docs/PRO_BATCH_REPORTS.md |
+| Contract, parity, regression and latency testing | Done | tests/regression, tests/latency |
+| Environment template and lockfile discipline | Done | `.env.example`, package-lock.json with `npm ci` in CI |
+
+## Smaller game reference items
+
+| Item | Status |
+| --- | --- |
+| Settings search bar (CS2 / BO6) | Done, SPEC 36.6 |
+| Hold / toggle for ADS, crouch, sprint | Done in P4 (SPEC 33.2) |
+| Per zoom sensitivity | Done in P3 (ADS sensitivity multiplier, SPEC 32.4) |
+| Tooltips with visual previews | Deferred (crosshair preview exists) |
+| Subtitles | Not applicable (no voice lines) |

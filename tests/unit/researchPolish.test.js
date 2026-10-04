@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { newTelemetry, recordPing, recordSnapshot, stats, level, format, frameDue, WINDOW } from '../../src/client/telemetry.js';
 import { applyDeadzones, responseCurve, shapeStick, CURVES } from '../../src/client/gamepadCurve.js';
 import { MIXES, Audio } from '../../src/client/audio.js';
-import { PREFS_SCHEMA } from '../../src/client/prefs.js';
+import { PREFS_SCHEMA, searchFields } from '../../src/client/prefs.js';
 
 test('telemetry: ping is the latest sample, jitter its spread, loss the share of snapshot gaps over 2.5 ticks; windows are bounded', () => {
   const t = newTelemetry();
@@ -74,4 +74,15 @@ test('audio mix presets exist and apply through a compressor; prefs expose the n
   for (const f of ['gamepadOuterDeadzone', 'gamepadCurve', 'renderScale', 'fpsCap', 'telemetry', 'audioMix']) assert.ok(PREFS_SCHEMA[f], f);
   assert.deepEqual(PREFS_SCHEMA.gamepadCurve.values, [...CURVES]);
   assert.deepEqual(PREFS_SCHEMA.audioMix.values, Object.keys(MIXES));
+});
+
+test('settings search: every word must match label, key, tab or an enum value; empty query matches nothing', () => {
+  assert.deepEqual(searchFields(''), []);
+  assert.deepEqual(searchFields('   '), []);
+  assert.ok(searchFields('volume').includes('masterVolume'));
+  assert.ok(searchFields('VOLUME master').includes('masterVolume') && !searchFields('volume master').includes('sfxVolume'));
+  assert.ok(searchFields('night').includes('audioMix'), 'enum values are searchable');
+  assert.ok(searchFields('controller curve').includes('gamepadCurve'));
+  assert.ok(searchFields('video').length >= 3, 'the tab name is searchable');
+  assert.deepEqual(searchFields('zzzz-no-such-setting'), []);
 });

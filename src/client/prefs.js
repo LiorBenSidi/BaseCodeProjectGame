@@ -104,6 +104,18 @@ export function fieldsFor(tab) {
   return PREF_KEYS.filter((k) => PREFS_SCHEMA[k].tab === tab);
 }
 
+// SPEC 36.6 settings search (the CS2 / BO6 search bar): every word of the query must appear in the label, the key,
+// the tab name or one of the enum values. Case insensitive; an empty query matches nothing (the tabs take over).
+export function searchFields(query) {
+  const words = String(query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  return PREF_KEYS.filter((k) => {
+    const s = PREFS_SCHEMA[k];
+    const hay = [s.label, k, s.tab, ...(s.values ?? [])].join(' ').toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
+
 // Crosshair CSS variables for #crosshair from the prefs (SPEC 33.4).
 export function crosshairStyle(p) {
   const color = CROSSHAIR_COLORS[p.crosshairColor] ?? CROSSHAIR_COLORS.green;
