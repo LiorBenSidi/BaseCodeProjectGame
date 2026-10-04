@@ -926,3 +926,38 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 ### 29.6 Tests
 `tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
 
+
+## 30. Pro Environment and Graphics (Batch 1, D-027)
+
+### 30.1 Art Direction and Style Guide
+Defined in docs/ART_DIRECTION.md. Maps feature distinct PBR visual themes:
+- Arena: Clean industrial concrete and slate metal.
+- Foundry: Rusted steel, oxidized copper, dark industrial iron.
+- Crossfire: Desert sandstone, weathered masonry, terracotta.
+Gameplay readability: Team colors (blue/red) and high-contrast player silhouettes strictly take visual priority over environment props and textures.
+
+### 30.2 PBR Textured Materials
+World-space tiled PBR textures (diffuse/albedo, normal, roughness) for floors, walls, and box tops/sides.
+Loaded via TextureLoader with graceful fallback to flat procedural colors (boxMaterialParams / FLOOR) when textures are unavailable or fail to load.
+Textures tile by world dimensions using UV repeat = surface size / tile scale.
+
+### 30.3 Sky and HDRI Environment
+Equirectangular HDRI / sky texture per map loaded into environment lighting and sky dome.
+Fallback to procedural gradient sky (buildSky) if HDRI texture fails or is disabled.
+
+### 30.4 Visual Props
+MAPS in src/shared/maps.js includes a pure props array per map entry defining visual-only glTF props ({ id, assetId, position: [x, y, z], rotation: [rx, ry, rz], scale: [sx, sy, sz] }).
+Props have no physics collision (physics box geometry remains unchanged).
+
+### 30.5 Post-Processing Pipeline
+EffectComposer pipeline with ACES Filmic tonemapping, subtle bloom, ambient occlusion (cheap AO/SSAO), and FXAA antialiasing.
+Exported as setQuality('low' | 'medium' | 'high') with automatic quality tier defaulting based on device capability via deviceMode.js.
+
+### 30.6 Combat Visuals
+Enhanced muzzle flashes (sprite + point light flicker), bullet tracers, capped impact decal sprites with spark particles, and grenade explosion lighting with smoke puffs in src/client/effects.js.
+
+### 30.7 Pickup Models
+3D prop models for pickup spots (medkit crate for health, ammo box for ammo, weapon crates/models for weapons) with smooth rotation and vertical bobbing.
+
+### 30.8 Dynamic Shadow and Sun Lighting
+Map-specific directional sun position and color, hemisphere ambient fill, and player-centered shadow map updates.

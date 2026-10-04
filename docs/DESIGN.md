@@ -274,3 +274,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
 - Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
 
+
+### D-027 (W1, proposed) Pro Environment and Graphics
+- Status: decided
+- Date: 2026-10-04
+- Decision: Upgrade environment visuals from flat boxes to browser-tier PBR materials, HDRI lighting, glTF props, post-processing, and enhanced combat particles. Pure map data in `src/shared/maps.js` holds visual prop positions without touching collision boxes. Tiling uses world scale UV repeats. Assets are CC0 licensed from Poly Haven, ambientCG, and Kenney with full fallback to flat procedural visuals on failure. Quality settings adapt to device tiers automatically via `deviceMode.js`.
+- Source: Pro brief approval 2026-10-04 (Batch P1, SPEC section 30).
+- Affects: docs/SPEC.md section 30; `docs/ART_DIRECTION.md`, `docs/ASSETS.md`, `src/shared/maps.js`, `src/client/{scene,arenaStyle,effects,pickups,theme}.js`, `public/assets/env/**`.
