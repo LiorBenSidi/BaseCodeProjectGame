@@ -321,7 +321,7 @@ test('snapshot entry has exactly the documented keys', () => {
   const a = join(room, 'a');
   room.tick();
   const e = entry(lastSnap(a), a.p.id);
-  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z']);
+  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'h', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z'] /* SPEC 23 adds h */);
 });
 
 test('snapshot numbers are rounded to 3 decimals', () => {

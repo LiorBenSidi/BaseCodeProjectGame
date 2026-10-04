@@ -3,11 +3,14 @@
 
 import { castRay, playerBox } from './hitscan.js';
 import { ZONE_LAYOUT, ZONE_MULTIPLIERS } from './combatData.js';
+import { heightOf } from './movement.js';
+import { PLAYER } from './constants.js';
 
 const round2 = (v) => Math.round(v * 100) / 100;
 
 export function zoneAt(p, point) {
-  const h = point.y - p.y;
+  // SPEC 23: zones scale with the current height, so a crouched head is still a head.
+  const h = (point.y - p.y) * (PLAYER.height / heightOf(p));
   if (h >= ZONE_LAYOUT.upperTorsoTop) return 'head';
   if (h < ZONE_LAYOUT.legsTop) return 'legs';
   // The target's right vector at its yaw (yaw 0 faces -Z, right is +X).

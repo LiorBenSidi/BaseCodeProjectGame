@@ -7,7 +7,7 @@
 
 import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER } from '../shared/constants.js';
 import { MAP } from '../shared/map.js';
-import { stepPlayer } from '../shared/movement.js';
+import { stepPlayer, eyeOf, heightOf } from '../shared/movement.js';
 import { aimDir } from '../shared/hitscan.js';
 import { applyDamage, resolveShot } from '../shared/combat.js';
 import { GRENADE, RIFLE } from '../shared/combatData.js';
@@ -142,7 +142,7 @@ export class GameRoom {
     if (!p.alive || now - p.lastShotAt < RIFLE.cooldownMs) return;
     p.lastShotAt = now;
 
-    const origin = [p.x, p.y + PLAYER.eye, p.z];
+    const origin = [p.x, p.y + eyeOf(p), p.z];
     const dir = aimDir(p.yaw, p.pitch);
     const targets = [];
     for (const q of this.#players.values()) if (q !== p && q.alive) targets.push({ id: q.id, p: q });
@@ -164,7 +164,7 @@ export class GameRoom {
   #throw(p) {
     if (!p.alive || p.grenades <= 0) return;
     p.grenades -= 1;
-    const g = launchGrenade(this.#nextGrenadeId++, p.id, [p.x, p.y + PLAYER.eye, p.z], aimDir(p.yaw, p.pitch));
+    const g = launchGrenade(this.#nextGrenadeId++, p.id, [p.x, p.y + eyeOf(p), p.z], aimDir(p.yaw, p.pitch));
     g.ownerName = p.name;
     this.#grenades.push(g);
   }
@@ -216,6 +216,9 @@ export class GameRoom {
     p.onGround = true;
     p.yaw = s.yaw;
     p.pitch = 0;
+    p.h = PLAYER.height; // SPEC 23: stand up on (re)spawn
+    p.slide = 0;
+    p.wallJumps = PLAYER.wallJumpsPerAir;
   }
 
   #broadcastSnapshot() {
@@ -225,6 +228,7 @@ export class GameRoom {
         id: p.id, name: p.name,
         x: round3(p.x), y: round3(p.y), z: round3(p.z), vy: round3(p.vy),
         g: p.onGround ? 1 : 0,
+        h: round3(heightOf(p)), // SPEC 23: current hitbox height (crouch, slide)
         yaw: round3(p.yaw), pitch: round3(p.pitch),
         hp: p.hp, alive: p.alive ? 1 : 0, k: p.kills, d: p.deaths,
       });

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useServer, waitFor, cmd, STEP, MAX_CMDS_PER_TICK, moveUntilMoved, damageViaRoom } from '../helpers/harness.js';
 
-const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z'].sort();
+const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z', 'h'].sort(); // SPEC 23 adds h
 const NAME_CHARSET = /^[\p{L}\p{N} _-]*$/u;
 
 describe('hostile join names', () => {

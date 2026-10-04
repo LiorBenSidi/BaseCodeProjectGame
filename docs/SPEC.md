@@ -684,3 +684,33 @@ Rendering only; no game rule changes. The numbers live in `arenaStyle.js` (pure,
 - Safe-area insets (`env(safe-area-inset-*)`) applied to touch controls and HUD.
 - HUD font sizes scale with `clamp()` on viewport width.
 - Landscape hint overlay (`#rotate`) shown in portrait touch mode.
+
+## 23. Movement set: sprint, crouch, slide, step-up, mantle, wall jump, air control (Batch 3d, D-022)
+
+All in `src/shared/movement.js` (`stepPlayer`, plus `heightOf(p)` and `eyeOf(p)`), deterministic and pure as in section 3. Numbers live in `PLAYER` (`src/shared/constants.js`). `cmd` gains two booleans, `sprint` and `crouch`, parsed with `!!` in `protocol.js` (absent means false). Player state gains `h` (current hitbox height), `slide` (seconds left), `slideDx` / `slideDz`, `wallJumps`, `jumpHeld`, `crouchHeld`; all created on first use so Milestone 1 callers and tests keep working.
+
+### 23.1 Stance
+- `crouch` sets the hitbox height to `crouchHeight` (1.2) at once and ground speed to `speed * crouchMul` (0.55). Standing up requires head room for the full `height`; under a low ceiling the player stays crouched.
+- `playerBox` (hitscan) uses `heightOf(p)`; `zoneAt` scales the point height by `height / heightOf(p)`, so a crouched head is still a head. `eyeOf(p)` scales `PLAYER.eye` the same way; the server fires and throws from that eye, the client camera follows it (smoothed on the client only).
+- Snapshot entries gain `h` (rounded to 3 decimals). Remote bodies are squashed to `h / height`; the name tag follows.
+
+### 23.2 Sprint and slide
+- `sprint` with `fwd > 0` (not crouched, not sliding) multiplies ground speed by `sprintMul` (1.35). Sideways or backward input never sprints.
+- Slide: on the ground, with `sprint` held and a horizontal input, a fresh `crouch` press starts a slide of `slideTime` (0.7 s): speed starts at `slideSpeed` (11) and decays linearly to crouch speed, the direction is locked to the input at the start, the hitbox is the crouch height. Holding crouch does not re-trigger; a crouch tap without sprint only crouches. A jump ends the slide (the momentum carries into the air).
+
+### 23.3 Step-up and mantle
+- Step-up: walking (on the ground) into a box whose top is at most `stepHeight` (0.55) above the feet moves the player onto it when the space above is free, no jump needed.
+- Mantle: airborne, moving into a box whose top is at most `mantleHeight` (1.5) above the feet, while `vy <= jump / 2` (past the first half of the rise), snaps the feet to the top with `vy = 0` and `onGround = true`. A taller box is a wall.
+
+### 23.4 Air control
+- In the air the horizontal velocity moves toward the wanted velocity (`input * speed`) by at most `airAccel * dt` (30 m/s^2) per step; with no input the momentum is kept. On the ground the Milestone 1 rule stands: velocity equals input times speed, no input stops at once.
+
+### 23.5 Wall jump
+- Airborne, pressed against a wall this step (a horizontal move was blocked), a fresh `jump` press (not held from the ground) and `wallJumps > 0`: `vy = jump * wallJumpMul` (0.9) and the velocity on the blocked axis becomes `wallJumpPush` (6) away from the wall. `wallJumpsPerAir` (1) resets on landing.
+
+### 23.6 Client
+- Keys: Shift sprint, C or left Ctrl crouch, Space jump (press again on a wall). Touch: RUN toggles sprint, a crouch button holds crouch. The menu hint lists them.
+
+### 23.7 Tests
+`tests/unit/movementParkour.test.js` (12 cases: sprint, crouch and head room, zone scaling, slide start / lock / decay / no re-trigger, step-up vs wall, mantle with and without a jump, wall jump and its reset, fresh-press rule, air control, determinism), the SPEC 23 cases in `tests/unit/protocol.test.js`, and the `h` key in the snapshot key lists.
+

@@ -215,3 +215,10 @@ The question-coverage table above is the original interview checklist, not an im
 
 ## Open questions raised during work
 _Anything the assistant discovered it needed to ask that is not in the bank yet. Add it to the bank too._
+
+### D-022 (W1, W8) Movement set: sprint, crouch, slide, step-up, mantle, wall jump, air control
+- Status: decided
+- Date: 2026-10-04
+- Decision: Extend the deterministic shared `stepPlayer` with a stance (crouch, scaled hitbox and eye), sprint, a timed slide, automatic step-up and ledge mantle, one wall jump per airtime and acceleration-based air control; two new command booleans, one new snapshot field (`h`). Ground rules from Milestone 1 stay bit-identical for the old command shape.
+- Source: owner approved V1 plan 2026-10-04 (parkour and fluid movement are a V1 requirement).
+- Affects: docs/SPEC.md section 23; `src/shared/movement.js`, `src/shared/constants.js`, `src/shared/hitscan.js`, `src/shared/combat.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/client/input.js`, `src/client/game.js`, `src/client/remote.js`, `src/client/touch.js`, `index.html`.

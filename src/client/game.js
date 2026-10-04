@@ -1,5 +1,5 @@
 import { INPUT_DT, PLAYER, WEAPON } from '../shared/constants.js';
-import { stepPlayer } from '../shared/movement.js';
+import { stepPlayer, eyeOf } from '../shared/movement.js';
 import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
@@ -42,6 +42,7 @@ export class Game {
   #tracers = [];
   #threats = [];
   #lastHp = null;
+  #eyeY = null; // SPEC 23 smoothed camera height
 
   constructor(canvas) {
     this.#gfx = createScene(canvas);
@@ -145,6 +146,7 @@ export class Game {
     Object.assign(this.#me, {
       x: mine.x, y: mine.y, z: mine.z, vy: mine.vy, vx: 0, vz: 0,
       onGround: mine.g === 1, alive: mine.alive === 1,
+      ...(typeof mine.h === 'number' ? { h: mine.h } : {}),
     });
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c);
     this.#onDamage(mine);
@@ -195,7 +197,7 @@ export class Game {
     while (this.#accumulator >= INPUT_DT) {
       this.#accumulator -= INPUT_DT;
       const s = this.#input.sample();
-      const cmd = { seq: ++this.#seq, fwd: s.fwd, right: s.right, jump: s.jump, yaw: this.#input.yaw, pitch: this.#input.pitch };
+      const cmd = { seq: ++this.#seq, fwd: s.fwd, right: s.right, jump: s.jump, sprint: s.sprint, crouch: s.crouch, yaw: this.#input.yaw, pitch: this.#input.pitch };
       if (this.#me.alive) stepPlayer(this.#me, cmd);
       this.#pending.push(cmd);
       outgoing.push(cmd);
@@ -242,7 +244,10 @@ export class Game {
     this.#updateTracers(now);
     this.#grenades.update(now);
     const { camera, renderer, scene } = this.#gfx;
-    camera.position.set(this.#me.x, this.#me.y + PLAYER.eye, this.#me.z);
+    // SPEC 23: the eye follows the crouch height; smoothed so a slide does not snap the camera
+    const eyeTarget = this.#me.y + eyeOf(this.#me);
+    this.#eyeY = this.#eyeY === null ? eyeTarget : this.#eyeY + (eyeTarget - this.#eyeY) * Math.min(1, dt * 14);
+    camera.position.set(this.#me.x, this.#eyeY, this.#me.z);
     camera.rotation.set(this.#input.pitch, this.#input.yaw, 0);
     renderer.render(scene, camera);
   }

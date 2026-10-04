@@ -96,6 +96,10 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 #touch button:active { background: rgba(255, 255, 255, 0.25); }
 #touch-fire { right: calc(24px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); width: 84px; height: 84px; background: rgba(218, 54, 51, 0.45); }
 #touch-jump { right: calc(124px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); width: 60px; height: 60px; font-size: 22px; }
+/* SPEC 23 stance buttons */
+#touch-crouch { right: calc(124px + env(safe-area-inset-right)); bottom: calc(94px + env(safe-area-inset-bottom)); width: 60px; height: 60px; font-size: 22px; }
+#touch-sprint { right: calc(194px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); width: 60px; height: 60px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
+#touch-sprint.on { background: rgba(56, 189, 248, 0.45); }
 #touch-nade { right: calc(40px + env(safe-area-inset-right)); bottom: calc(144px + env(safe-area-inset-bottom)); width: 54px; height: 54px; }
 #touch-score { right: calc(16px + env(safe-area-inset-right)); top: calc(56px + env(safe-area-inset-top)); width: 44px; height: 44px; }
 

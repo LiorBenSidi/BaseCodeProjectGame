@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useServer, waitFor, httpRequest, moveUntilMoved, cmd, STEP, MAX_CMDS_PER_TICK } from '../helpers/harness.js';
 
-const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'x', 'y', 'yaw', 'z', 'vy'].sort();
+const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'x', 'y', 'yaw', 'z', 'vy', 'h'].sort(); // SPEC 23 adds h
 
 describe('join / welcome / snapshot flow', () => {
   const ctx = useServer({});
