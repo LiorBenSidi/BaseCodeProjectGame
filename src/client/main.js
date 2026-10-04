@@ -32,6 +32,20 @@ if (new URLSearchParams(window.location.search).has('room')) showRoom(roomId);
 const lobby = new Lobby({ client: game.lobbyClient(), onRoom: showRoom });
 lobby.mount();
 
+// SPEC 29.1: Enter opens the chat line, Enter sends, Escape cancels; movement keys are ignored while typing.
+const chatInput = document.getElementById('chat-input');
+const closeChat = () => { chatInput.hidden = true; chatInput.value = ''; game.setChatOpen(false); canvas.focus?.(); };
+window.addEventListener('keydown', (e) => {
+  if (!game.joined) return;
+  if (chatInput.hidden) {
+    if (e.code === 'Enter' && document.activeElement !== nameInput) { e.preventDefault(); chatInput.hidden = false; game.setChatOpen(true); chatInput.focus(); }
+    return;
+  }
+  if (e.code === 'Enter') { e.preventDefault(); game.sendChat(chatInput.value); closeChat(); }
+  if (e.code === 'Escape') closeChat();
+  e.stopPropagation();
+}, true);
+
 menu.addEventListener('submit', (e) => {
   e.preventDefault();
   lobby.stop();

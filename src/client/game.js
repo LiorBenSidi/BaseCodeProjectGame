@@ -16,6 +16,8 @@ import { ActorNetwork, roomIdFromLocation } from './netActor.js';
 import { createClient } from '@base44/sdk';
 import { MAP } from '../shared/map.js';
 import { Audio, cueFor, falloff } from './audio.js';
+import { targetFov, sensitivityScale, stepFov, isScoped, DEFAULT_FOV } from './aim.js';
+import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
 import { TouchControls } from './touch.js';
@@ -58,6 +60,13 @@ export class Game {
   #roomId = null;
   #map = MAP; // SPEC 28: the current map's collision set, replaced on welcome / matchStart
   #audio = new Audio(); // SPEC 28.3
+  #baseFov = DEFAULT_FOV; // SPEC 29.3 setting
+  #fov = DEFAULT_FOV; // current, eased toward the target
+  #sensitivity = 0.0022;
+  #weaponView = null; // SPEC 29.4
+  #stepT = 0; // SPEC 29.5 footstep phase
+  #remoteSteps = new Map(); // id -> last step time
+  #reloadSeen = false;
   #threats = [];
   #lastHp = null;
   #eyeY = null; // SPEC 23 smoothed camera height
@@ -69,6 +78,8 @@ export class Game {
     this.#grenades = new Grenades(this.#gfx.scene);
     this.#pickups = new Pickups(this.#gfx.scene); // SPEC 21.1
     this.#effects = new Effects(this.#gfx.scene); // SPEC 24.5
+    this.#weaponView = new WeaponView(this.#gfx.camera); // SPEC 29.4
+    this.#gfx.scene.add(this.#gfx.camera); // the view model is a child of the camera
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Tab') { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
       if (e.code === 'KeyG' && !e.repeat && this.#input.locked) this.throwGrenade();
@@ -110,7 +121,23 @@ export class Game {
 
   /** SPEC 19.2: mouse sensitivity from the settings panel, applied to the next mouse move. */
   setSensitivity(value) {
-    this.#input.sensitivity = value;
+    this.#sensitivity = value;
+    this.#input.sensitivity = value * sensitivityScale(this.#fov, this.#baseFov);
+  }
+
+  setFov(value) {
+    this.#baseFov = value;
+  }
+
+  // SPEC 29.1: chat input; the caller (main.js) owns the DOM element and the Enter key.
+  sendChat(text) {
+    if (!this.joined || typeof text !== 'string' || text.trim().length === 0) return false;
+    this.#net.send({ t: 'chat', text: text.slice(0, 400) });
+    return true;
+  }
+
+  setChatOpen(open) {
+    this.#input.chatOpen = open;
   }
 
   /** SPEC 19.2: FPS readout, measured from frame deltas and refreshed twice a second. */
@@ -217,7 +244,13 @@ export class Game {
       shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
       verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
-      kill: (m) => { this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`); if (m.killer === this.#id) this.#cue('kill', { mine: true }); if (m.victim === this.#id) this.#cue('death'); },
+      kill: (m) => {
+        this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
+        if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
+        if (m.killer === this.#id) { this.#cue('kill', { mine: true }); const b = m.multiText ?? m.streakText; if (b) this.#hud.banner(b); } else if (m.streakText && m.streak >= 5) this.#hud.killFeed(`${m.killerName} is on a ${m.streak} kill streak: ${m.streakText}`);
+        if (m.victim === this.#id) this.#cue('death');
+      },
+      chat: (m) => this.#hud.chat({ name: m.name, team: m.team, text: m.text }),
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id); this.#cue('matchEnd'); }, // SPEC 22
       matchStart: (m) => { this.#hud.matchStart(); this.#cue('matchStart'); if (m.map) { this.#setMap(m.map); this.#pickups.setSpots(m.pickups); this.#hud.killFeed(`Map: ${m.map.name}`); } },
       // SPEC 24 / 25 feedback lines
@@ -260,6 +293,8 @@ export class Game {
     });
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c, this.#map.boxes, this.#map.half);
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
+    this.#weaponView?.setWeapon(this.#weapon.id);
+    if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
     this.#onDamage(mine);
     this.#hud.update(mine, snap.players, Date.now(), snap.match, snap.self);
   }
@@ -333,11 +368,27 @@ export class Game {
     if (Math.abs(this.#recoil.yaw) < 1e-4) this.#recoil.yaw = 0;
   }
 
+  // SPEC 29.5: footsteps from movement, own and remote, synthesized like every other cue.
+  #footsteps(dt, speed) {
+    if (this.#me.alive && this.#me.onGround && speed > 1) {
+      this.#stepT += dt * speed;
+      if (this.#stepT >= 2.4) { this.#stepT = 0; this.#audio.play('step', 0.35); }
+    } else this.#stepT = 0;
+    const now = performance.now();
+    for (const r of this.#remote.moving(now)) {
+      const last = this.#remoteSteps.get(r.id) ?? 0;
+      if (now - last < 2400 / Math.max(1, r.speed)) continue;
+      this.#remoteSteps.set(r.id, now);
+      this.#cue('step', {}, [r.x, 0, r.z]);
+    }
+  }
+
   #tryFire(now) {
     if (!this.joined || !this.#me.alive || now - this.#lastShot < this.#weapon.fireIntervalMs) return false;
     this.#lastShot = now;
     this.#net.send({ t: 'shoot' });
     this.#hud.onFire();
+    this.#weaponView?.fired();
     // SPEC 20: recoil is cosmetic. The kick moves the aim; the recovery below pulls most of it back.
     const w = this.#weapon;
     const yawKick = (Math.random() - 0.5) * 2 * w.recoilYaw;
@@ -380,6 +431,17 @@ export class Game {
     this.#eyeY = this.#eyeY === null ? eyeTarget : this.#eyeY + (eyeTarget - this.#eyeY) * Math.min(1, dt * 14);
     camera.position.set(this.#me.x, this.#eyeY, this.#me.z);
     camera.rotation.set(this.#input.pitch, this.#input.yaw, 0);
+    // SPEC 29.3: ADS eases the fov toward the weapon's zoom and scales the mouse to match
+    const ads = this.#input.ads && this.#me.alive;
+    const fovTarget = targetFov(this.#baseFov, this.#weapon.id, ads);
+    const nextFov = stepFov(this.#fov, fovTarget, dt);
+    if (Math.abs(nextFov - this.#fov) > 1e-3 || Math.abs(camera.fov - nextFov) > 1e-3) { this.#fov = nextFov; camera.fov = nextFov; camera.updateProjectionMatrix(); this.#input.sensitivity = this.#sensitivity * sensitivityScale(this.#fov, this.#baseFov); }
+    const scoped = isScoped(this.#weapon.id, ads) && this.#fov < this.#baseFov * 0.6;
+    this.#hud.setScoped(scoped);
+    const speed = Math.hypot(this.#me.vx ?? 0, this.#me.vz ?? 0);
+    this.#weaponView?.setVisible(this.#me.alive && !scoped);
+    this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
+    this.#footsteps(dt, speed);
     renderer.render(scene, camera);
   }
 }

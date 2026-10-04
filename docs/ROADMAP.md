@@ -37,6 +37,8 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - ~~Rooms and lobby (room ids with mode, registry, quick play, join by code).~~ Done 2026-10-04 (D-024).
 - ~~Sign-in binding, match results, lifetime stats and leaderboard.~~ Done 2026-10-04 (D-024).
 - ~~Content: map registry with rotation (Arena, Foundry, Crossfire), kit avatars, procedural sound.~~ Done 2026-10-04 (D-025).
+- ~~Genre parity pass: text chat, streaks, ADS and FOV, weapon view model, footsteps (docs/COMPETITIVE_AUDIT.md).~~ Done 2026-10-04 (D-026).
+- Post-V1 backlog from the audit: kill cam, CTF or King of the Hill, two more maps, bots for empty rooms, cosmetics tied to PlayerStats.
 
 ## Phase 3 - Rooms and lobby
 - Multiple `GameRoom` instances, lobby list, matchmaking by capacity.

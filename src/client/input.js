@@ -10,6 +10,8 @@ export class Input {
   pitch = 0;
   firing = false;
   touch = { active: false, fwd: 0, right: 0, jump: false, sprint: false, crouch: false };
+  ads = false; // SPEC 29.3 right mouse held
+  chatOpen = false; // SPEC 29.1: while typing, movement keys are ignored
   sensitivity = getSensitivity();
   #keys = new Set();
   #canvas;
@@ -18,12 +20,13 @@ export class Input {
     this.#canvas = canvas;
     window.addEventListener('keydown', (e) => { if (!e.repeat) this.#keys.add(e.code); });
     window.addEventListener('keyup', (e) => this.#keys.delete(e.code));
-    window.addEventListener('blur', () => { this.#keys.clear(); this.firing = false; });
+    window.addEventListener('blur', () => { this.#keys.clear(); this.firing = false; this.ads = false; });
     window.addEventListener('mousemove', (e) => {
       if (this.locked) this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity);
     });
-    window.addEventListener('mousedown', (e) => { if (e.button === 0 && this.locked) this.firing = true; });
-    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });
+    window.addEventListener('mousedown', (e) => { if (e.button === 0 && this.locked) this.firing = true; if (e.button === 2 && this.locked) this.ads = true; });
+    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; if (e.button === 2) this.ads = false; });
+    window.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); }); // SPEC 29.3: right mouse aims
   }
 
   get locked() {
@@ -46,7 +49,7 @@ export class Input {
 
   // Movement intent for one command. Zero while input is not active (menu, Esc).
   sample() {
-    if (!this.active) return { fwd: 0, right: 0, jump: false, sprint: false, crouch: false };
+    if (!this.active || this.chatOpen) return { fwd: 0, right: 0, jump: false, sprint: false, crouch: false };
     const k = (c) => (this.#keys.has(c) ? 1 : 0);
     return {
       fwd: clamp1(k('KeyW') - k('KeyS') + this.touch.fwd),

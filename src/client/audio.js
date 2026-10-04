@@ -18,6 +18,7 @@ export const CUES = Object.freeze({
   denied: { type: 'square', f0: 200, f1: 150, dur: 0.08, gain: 0.12 },
   level: { type: 'triangle', f0: 523, f1: 1046, dur: 0.35, gain: 0.25 },
   match: { type: 'sine', f0: 392, f1: 784, dur: 0.5, gain: 0.25 },
+  step: { type: 'triangle', f0: 140, f1: 60, dur: 0.05, gain: 0.12, noise: 0.6 }, // SPEC 29.5
 });
 
 // Game event -> cue id (null = silent). Pure.
@@ -31,6 +32,7 @@ export function cueFor(event, data = {}) {
     case 'pickup': return data.mine ? 'pickup' : null;
     case 'ability': return data.denied ? (data.mine ? 'denied' : null) : 'ability';
     case 'levelUp': return 'level';
+    case 'step': return 'step';
     case 'matchStart': case 'matchEnd': return 'match';
     default: return null;
   }

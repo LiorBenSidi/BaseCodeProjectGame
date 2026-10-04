@@ -7,6 +7,7 @@
 
 import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER } from '../shared/constants.js';
 import { MAPS, mapForMatch, describeMap } from '../shared/maps.js'; // SPEC 28: one map per match
+import { sanitizeChat, chatAllowed, recordKill, resetStreak, streakEndedText } from '../shared/social.js'; // SPEC 29
 import { stepPlayer, eyeOf, heightOf } from '../shared/movement.js';
 import { aimDir } from '../shared/hitscan.js';
 import { applyDamage, resolveShot } from '../shared/combat.js';
@@ -131,6 +132,18 @@ export class GameRoom {
     if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
     if (removed) this.#roster();
     return removed;
+  }
+
+  // SPEC 29.1: chat is relayed, never stored; one line per second per player, sanitized and capped.
+  handleChat(id, text) {
+    const p = this.#players.get(id);
+    if (!p) return false;
+    const now = this.#now();
+    const clean = sanitizeChat(text);
+    if (!clean || !chatAllowed(p.lastChatAt ?? -Infinity, now)) return false;
+    p.lastChatAt = now;
+    this.#broadcast({ t: 'chat', id, name: p.name, team: p.team, text: clean });
+    return true;
   }
 
   handleInput(id, cmds) {
@@ -447,7 +460,15 @@ export class GameRoom {
     victim.grapple = null;
     victim.dash = 0;
     this.#log?.info('kill', { killer: killerId, victim: victim.id });
-    this.#broadcast({ t: 'kill', killer: killerId, victim: victim.id, killerName, victimName: victim.name });
+    // SPEC 29.2: streaks and multi-kills ride on the kill message; the victim's streak ends here
+    const ended = resetStreak(victim);
+    const ann = killer && killer !== victim ? recordKill(killer, now) : null;
+    this.#broadcast({
+      t: 'kill', killer: killerId, victim: victim.id, killerName, victimName: victim.name,
+      ...(ann?.streakText ? { streak: ann.streak, streakText: ann.streakText } : {}), // only milestones ride along
+      ...(ann?.multiText ? { multi: ann.multi, multiText: ann.multiText } : {}),
+      ...(streakEndedText(killerName, victim.name, ended) ? { ended } : {}),
+    });
   }
 
   #protected(p, now) {

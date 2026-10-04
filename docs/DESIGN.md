@@ -267,3 +267,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's V1 plan 2026-10-04 ("maps, objects, players, avatars"); the approved batch order's Phase 4 content.
 - Affects: docs/SPEC.md section 28; `src/shared/maps.js`, `src/server/GameRoom.js` (map per match), `src/client/{scene,game,remote,avatars,audio,settings,settingsPanel}.js`, `index.html`.
 
+### D-026 (W1) Genre parity pass from the competitive audit
+- Status: decided
+- Date: 2026-10-04
+- Decision: Close the gaps the audit (docs/COMPETITIVE_AUDIT.md) found against Krunker, Shell Shockers and mainstream FPS conventions without touching the simulation: text chat (relayed, rate limited, never stored), streak and multi-kill announcements as optional fields on the kill message, right-mouse ADS with a sniper scope and an FOV setting, a first-person view model with kick / reload / sway, and footsteps. Kill cam, CTF, bots and cosmetics are recorded as post-V1 backlog rather than squeezed into V1.
+- Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
+- Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
+

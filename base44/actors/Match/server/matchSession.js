@@ -144,6 +144,8 @@ export class MatchSession {
       this.#room.handlePerk(s.player.id, msg.id);
     } else if (s.player && msg.t === 'switch') {
       this.#room.handleSwitch(s.player.id, msg.slot);
+    } else if (s.player && msg.t === 'chat') {
+      this.#room.handleChat(s.player.id, msg.text);
     }
   }
 

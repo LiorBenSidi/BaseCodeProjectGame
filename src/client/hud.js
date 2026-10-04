@@ -3,6 +3,7 @@
 // player named "<img src=x onerror=...>" from becoming stored XSS in everyone else's browser.
 // All state derivation lives in hudModel.js (pure, unit tested); this file only moves it into the DOM.
 
+import { CHAT_KEEP } from '../shared/social.js';
 import { deriveAbilityChips, deriveXpBar, perkCards } from './kitUi.js';
 import {
   KillFeedQueue,
@@ -32,6 +33,10 @@ export class Hud {
   #matchTimer = $('match-timer');
   #matchTeams = $('match-teams');
   #matchRoom = $('match-room'); // SPEC 26.4: the room id, so a friend can be told where to join
+  #banner = $('banner'); // SPEC 29.2 streak / multi-kill announcements
+  #bannerUntil = 0;
+  #chatLines = $('chat-lines'); // SPEC 29.1
+  #chat = []; // [{ text, at }]
   #endScreen = $('match-end');
   #endTitle = $('match-end-title');
   #endSub = $('match-end-sub');
@@ -151,6 +156,42 @@ export class Hud {
     chip.title = reason === 'no_anchor' ? 'No surface in range' : reason;
   }
 
+  // SPEC 29.2: a short centred announcement; a later one replaces it.
+  banner(text, now = Date.now(), ms = 2200) {
+    if (!this.#banner || !text) return;
+    this.#banner.textContent = text;
+    this.#banner.hidden = false;
+    this.#banner.classList.remove('pop');
+    void this.#banner.offsetWidth; // restart the animation
+    this.#banner.classList.add('pop');
+    this.#bannerUntil = now + ms;
+  }
+
+  // SPEC 29.1: chat lines fade after 12 s; the newest CHAT_KEEP stay.
+  chat(line, now = Date.now()) {
+    if (!this.#chatLines) return;
+    this.#chat.push({ ...line, at: now });
+    if (this.#chat.length > CHAT_KEEP) this.#chat.shift();
+    this.#renderChat(now);
+  }
+
+  #renderChat(now) {
+    this.#chatLines.replaceChildren(...this.#chat.filter((l) => now - l.at < 12_000).map((l) => {
+      const li = document.createElement('li');
+      const who = document.createElement('span');
+      who.className = l.team === 0 ? 'who blue' : l.team === 1 ? 'who red' : 'who';
+      who.textContent = `${l.name}: `;
+      li.append(who, document.createTextNode(l.text));
+      return li;
+    }));
+  }
+
+  // SPEC 29.3: the sniper scope overlay replaces the crosshair while zoomed in.
+  setScoped(on) {
+    const scope = document.getElementById('scope');
+    if (scope && scope.hidden === !!on) { scope.hidden = !on; document.getElementById('crosshair')?.classList.toggle('scoped', !!on); }
+  }
+
   setRoom(id) {
     if (!this.#matchRoom) return;
     this.#matchRoom.hidden = !id || id === 'arena-1';
@@ -164,6 +205,8 @@ export class Hud {
 
   // Called once per snapshot with the local player's row and the full player list.
   update(me, players, now = Date.now(), match = null, self = null) {
+    if (this.#banner && !this.#banner.hidden && now >= this.#bannerUntil) this.#banner.hidden = true;
+    if (this.#chat.length && this.#chat[0].at + 12_000 < now) { this.#chat = this.#chat.filter((l) => now - l.at < 12_000); this.#renderChat(now); }
     this.#renderHealth(me.hp);
     this.#renderAmmo(me);
     this.#renderMatch(match);

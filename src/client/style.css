@@ -190,3 +190,19 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 #match-room { margin-left: 12px; font-size: 11px; letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.6); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 #menu { max-height: calc(100vh - 32px); overflow: auto; }
 
+/* SPEC 29 parity: banner, scope, chat */
+#banner { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); padding: 8px 22px; border-radius: 10px; background: rgba(10, 14, 22, 0.72); border: 1px solid rgba(56, 189, 248, 0.5); color: #e6edf3; font-size: 26px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; }
+#banner.pop { animation: banner-pop 0.35s ease-out; }
+@keyframes banner-pop { from { transform: translateX(-50%) scale(0.7); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+#scope { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at center, transparent 0, transparent 30vmin, rgba(0, 0, 0, 0.96) 31vmin); }
+#scope::before, #scope::after { content: ''; position: absolute; left: 50%; top: 50%; background: rgba(255, 255, 255, 0.55); }
+#scope::before { width: 60vmin; height: 1px; transform: translate(-50%, -50%); }
+#scope::after { width: 1px; height: 60vmin; transform: translate(-50%, -50%); }
+#crosshair.scoped { opacity: 0; }
+#chat { position: fixed; left: 16px; bottom: 120px; width: min(420px, 60vw); display: grid; gap: 6px; pointer-events: none; }
+#chat-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+#chat-lines .who { color: #9aa4b2; font-weight: 600; }
+#chat-lines .who.blue { color: #60a5fa; }
+#chat-lines .who.red { color: #f87171; }
+#chat-input { pointer-events: auto; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(10, 14, 22, 0.8); color: #e6edf3; font-size: 13px; }
+

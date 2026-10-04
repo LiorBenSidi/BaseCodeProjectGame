@@ -59,6 +59,10 @@ function validateObject(data) {
     case 'perk':
       if (typeof data.id !== 'string' || data.id.length > 32) return fail('bad_perk');
       return { ok: true, msg: { t: 'perk', id: data.id } };
+    case 'chat':
+      // SPEC 29.1: text only, length capped here so a 4 KB frame cannot carry a 4 KB line
+      if (typeof data.text !== 'string' || data.text.length === 0 || data.text.length > 400) return fail('bad_chat');
+      return { ok: true, msg: { t: 'chat', text: data.text } };
     case 'ping':
       // SPEC 18.2: clock sync probe; the session echoes id and ts back with its own clock.
       if (!Number.isSafeInteger(data.id) || data.id < 0 || !isNum(data.ts) || data.ts < 0) return fail('bad_ping');

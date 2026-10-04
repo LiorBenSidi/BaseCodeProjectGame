@@ -904,3 +904,25 @@ Account line from `auth.me()` with Sign in (`auth.redirectToLogin(href)`) / Sign
 ### 28.3 Procedural sound
 `src/client/audio.js`: no audio assets; every cue is a WebAudio oscillator sweep with an optional noise burst (`CUES`: per-weapon shots, hit, kill, death, boom, pickup, ability, denied, level, match). `cueFor(event, data)` is pure and keeps private cues private (another player's kill, pickup or denied ability is silent). `falloff(d)` attenuates world-positioned cues (full inside 4 m, silent at 60 m). The context is created inside the Play click (`Game.join` calls `unlock()`), and the module is inert without an `AudioContext`. Settings panel: "Sound" checkbox (`bca.sound`, default on).
 
+## 29. Genre parity: chat, streaks, ADS, view model, footsteps (D-026)
+
+Source: docs/COMPETITIVE_AUDIT.md. Everything here is client feel or relayed text; the simulation (movement, hitscan, damage) is untouched, so no balance changes ride along.
+
+### 29.1 Text chat
+Client `{ t: 'chat', text }` (protocol: string, 1 to 400 chars, inside the 4 KB frame rule). `GameRoom.handleChat` relays `{ t: 'chat', id, name, team, text }` to everyone after `sanitizeChat` (control characters to spaces, trimmed, cut at `CHAT_MAX_CHARS` = 120 code points) and `chatAllowed` (one line per `CHAT_MIN_INTERVAL_MS` = 1000 per player; faster lines are dropped silently, not counted as strikes). Nothing is stored. Client: Enter opens the chat line, Enter sends, Escape cancels; `Input.chatOpen` zeroes movement while typing; the HUD keeps the newest `CHAT_KEEP` = 6 lines for 12 s, names tinted by team.
+
+### 29.2 Streaks and multi-kills
+`src/shared/social.js`: `recordKill(p, now)` bumps `p.streak` and `p.multi` (kills within `MULTI_WINDOW_MS` = 4000); `resetStreak(victim)` on death. The kill message carries `streak` + `streakText` only at a milestone (3 Killing Spree, 5 Rampage, 7 Unstoppable, 10 Godlike, 15 Legendary) and `multi` + `multiText` only for a multi-kill (Double, Triple, Multi), plus `ended` when a streak of 5 or more was ended, so the plain kill message shape of SPEC 20 is unchanged. Client: the killer sees a centred banner (multi-kill wins over streak); everyone else gets a feed line for streaks of 5 or more and for ended streaks.
+
+### 29.3 ADS and field of view
+`src/client/aim.js`. Right mouse held (`Input.ads`) eases the camera fov toward `ADS_FOV[weapon]` (sniper 28, rifle 58, SMG 62, shotgun 68, pistol 64), never above the player's setting, at `ADS_LERP` 18 / s; mouse sensitivity is scaled by `tan(fov / 2) / tan(base / 2)` so screen-space aim speed is constant. The sniper below 60% of the base fov shows the scope overlay (`#scope`) and hides the crosshair and the view model. Settings: Field of view slider 60 to 110 (`bca.fov`, default 80). Spread and damage are unchanged by ADS in V1.
+
+### 29.4 Weapon view model
+`src/client/weaponView.js`: a box gun per weapon (`WEAPON_VIEW`) parented to the camera, pose from `pose({ ads, kick, reload, swayX, swayY })`: hip rest at `REST`, centred at `ADS_POS` while aiming, `KICK` 6 cm back per shot decaying at 9 / s, a sine dip of `RELOAD_DIP` across the weapon's reload time (started when the snapshot first reports `rel: 1`), walk sway scaled by ground speed and suppressed while aiming. Hidden while dead or scoped.
+
+### 29.5 Footsteps
+Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: `RemotePlayers.moving(now)` reports grounded players moving above 1 m/s from the last two snapshots; each gets a positional `step` cue (falloff of SPEC 28.3) no more often than once per 2.4 m.
+
+### 29.6 Tests
+`tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
+

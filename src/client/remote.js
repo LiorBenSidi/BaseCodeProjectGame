@@ -124,6 +124,23 @@ export class RemotePlayers {
     return group;
   }
 
+  // SPEC 29.5: visible remote players moving faster than 1 m/s, with their interpolated position.
+  moving(now) {
+    const buf = this.#buffer;
+    if (buf.length < 2) return [];
+    const a = buf[buf.length - 2];
+    const b = buf[buf.length - 1];
+    const dtS = Math.max(0.001, (b.t - a.t) / 1000);
+    const out = [];
+    for (const [id, pb] of b.players) {
+      const pa = a.players.get(id);
+      if (!pa || pb.alive !== 1) continue;
+      const speed = Math.hypot(pb.x - pa.x, pb.z - pa.z) / dtS;
+      if (speed > 1 && (typeof pb.y !== 'number' || pb.y < 0.05 || pb.y === pa.y)) out.push({ id, speed, x: pb.x, z: pb.z, now });
+    }
+    return out;
+  }
+
   #setTag(group, name) {
     group.userData.name = name;
     const old = group.getObjectByName('tag');
