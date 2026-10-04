@@ -1125,3 +1125,6 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 
 ### 36.8 Browser smoke run (D-035)
 `scripts/smoke-browser.mjs <steps.json> [baseUrl]` drives the built client in headless Chrome over the DevTools protocol (no new dependency) and prints what each step read from the DOM. Step files live in docs/smoke: `settings.json` (every tab, keybinds, video fields, the search bar), `deathmatch.json` (join, HUD, telemetry row, scoreboard with a bot, bots fighting back, minimap), `range-tutorial.json` (range room, tutorial steps, dummies). The Node dev server hosts one deathmatch room, so the range and tutorial files only mean something against the live actor. The first run found and fixed a crash in the Play handler (the settings dialog had moved out of the menu form in P4; `tests/unit/researchPolish.test.js` now guards it).
+
+### 36.9 Live check for the Pro program
+`ACTOR_BUILD = "4.0"`. `npm run actor-probe -- <app-id> diag-live-7 12 --inputs --diag` must report build 4.0 and a diag frame; a lone human in a `dm-` room must see a `[BOT]` row on the scoreboard; a `range-` room must show the tutorial and never shoot back.
