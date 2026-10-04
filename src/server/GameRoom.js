@@ -15,6 +15,10 @@ import { GRENADE } from '../shared/combatData.js';
 import { newLoadout, activeWeapon, weaponDef, fireBlock, recordShot, decaySpread, startReload, finishReloadIfDue, switchSlot, spreadDir, isReloading } from '../shared/weapons.js';
 import { blastDamage, launchGrenade, stepGrenade } from '../shared/projectile.js';
 import { sanitizeName } from './security.js';
+// SPEC 21: pickups, safest spawn, spawn protection.
+import { buildPickups, stepPickups, availableIndices, describePickups } from '../shared/pickups.js';
+import { pickSpawn } from '../shared/spawning.js';
+import { SPAWN } from '../shared/rules.js';
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
 export const MAX_QUEUE = 12; // beyond this a client is flooding or speed-hacking: oldest cmds are dropped
@@ -28,6 +32,7 @@ export class GameRoom {
   #tick = 0;
   #grenades = [];
   #nextGrenadeId = 1;
+  #pickups = buildPickups(MAP.pickups);
   #now;
   #random;
   #log;
@@ -73,10 +78,11 @@ export class GameRoom {
       loadout: newLoadout(),
       wantsReload: false,
       wantsSwitch: null,
+      protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
     };
     this.#place(p);
     this.#players.set(id, p);
-    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE });
+    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups) });
     this.#log?.info('player joined', { id, players: this.#players.size });
     return p;
   }
@@ -138,7 +144,11 @@ export class GameRoom {
     }
     this.#stepGrenades(now);
     for (const p of this.#players.values()) {
-      if (!p.alive && now >= p.respawnAt) this.#respawn(p);
+      if (!p.alive && now >= p.respawnAt) this.#respawn(p, now);
+    }
+    for (const got of stepPickups(this.#pickups, this.#players.values(), now)) {
+      const taker = this.#players.get(got.playerId);
+      this.#sendTo(taker, { t: 'pickup', i: got.i, kind: got.kind, amount: got.amount, ...(got.weapon ? { weapon: got.weapon } : {}) });
     }
     this.#broadcastSnapshot(now);
   }
@@ -180,6 +190,7 @@ export class GameRoom {
     const weapon = weaponDef(ws.id);
     const spread = ws.spread;
     recordShot(ws, now);
+    p.protectedUntil = -Infinity; // SPEC 21.2: shooting ends spawn protection
 
     const origin = [p.x, p.y + PLAYER.eye, p.z];
     const aim = aimDir(p.yaw, p.pitch);
@@ -209,7 +220,7 @@ export class GameRoom {
     const killed = [];
     for (const [id, acc] of perVictim) {
       const victim = this.#players.get(id);
-      const r = applyDamage(victim, acc.damage);
+      const r = this.#protected(victim, now) ? { applied: 0, killed: false } : applyDamage(victim, acc.damage);
       this.#sendTo(p, { t: 'hit', id: victim.id });
       if (r.killed) killed.push(victim);
       if (best === null || r.applied > best.applied) best = { victim, zone: acc.zone, dist: acc.dist, applied: r.applied, kill: r.killed };
@@ -236,7 +247,7 @@ export class GameRoom {
       const hits = [];
       const victims = [];
       for (const q of this.#players.values()) {
-        if (!q.alive) continue;
+        if (!q.alive || this.#protected(q, now)) continue;
         const { applied, killed } = applyDamage(q, blastDamage(at, q, MAP.boxes));
         if (applied <= 0) continue;
         hits.push({ id: q.id, dmg: applied, kill: killed });
@@ -258,8 +269,13 @@ export class GameRoom {
     this.#broadcast({ t: 'kill', killer: killerId, victim: victim.id, killerName, victimName: victim.name });
   }
 
-  #respawn(p) {
+  #protected(p, now) {
+    return now < p.protectedUntil;
+  }
+
+  #respawn(p, now) {
     this.#place(p);
+    p.protectedUntil = now + SPAWN.protectMs;
     p.hp = MAX_HP;
     p.alive = true;
     p.grenades = GRENADE.perLife;
@@ -269,8 +285,9 @@ export class GameRoom {
   }
 
   #place(p) {
-    const n = MAP.spawns.length;
-    const s = MAP.spawns[Math.min(n - 1, Math.floor(this.#random() * n))];
+    const enemies = [];
+    for (const q of this.#players.values()) if (q !== p) enemies.push(q);
+    const s = pickSpawn(MAP.spawns, enemies, this.#random);
     p.x = s.x; p.y = 0; p.z = s.z;
     p.vx = 0; p.vy = 0; p.vz = 0;
     p.onGround = true;
@@ -290,11 +307,13 @@ export class GameRoom {
         hp: p.hp, alive: p.alive ? 1 : 0, k: p.kills, d: p.deaths,
         // SPEC 20.4: weapon in hand, magazine, reserve, reloading flag (public: a scoreboard-sized leak at most)
         w: ws.id, m: ws.mag, r: ws.reserve, rel: isReloading(ws, now) ? 1 : 0,
+        sp: this.#protected(p, now) ? 1 : 0, // SPEC 21.2 spawn protection
       });
     }
     const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));
+    const items = availableIndices(this.#pickups, now);
     for (const p of this.#players.values()) {
-      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades });
+      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items });
     }
   }
 

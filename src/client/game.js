@@ -4,6 +4,7 @@ import { stepPlayer } from '../shared/movement.js';
 import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
+import { Pickups, pickupText } from './pickups.js';
 import { Hud } from './hud.js';
 import { attributeDamage, calculateDamageAngle, pruneThreats } from './hudModel.js';
 import { Input } from './input.js';
@@ -43,6 +44,7 @@ export class Game {
   #weapon = WEAPONS.rifle; // SPEC 20: the weapon the server says is in hand; paces our shoot intents and recoil
   #recoil = { pitch: 0, yaw: 0 }; // SPEC 20: client-only camera kick, recovers over a few frames
   #tracers = [];
+  #pickups;
   #threats = [];
   #lastHp = null;
 
@@ -51,6 +53,7 @@ export class Game {
     this.#input = new Input(canvas);
     this.#remote = new RemotePlayers(this.#gfx.scene);
     this.#grenades = new Grenades(this.#gfx.scene);
+    this.#pickups = new Pickups(this.#gfx.scene); // SPEC 21.1
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Tab') { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
       if (e.code === 'KeyG' && !e.repeat && this.#input.locked) this.throwGrenade();
@@ -135,7 +138,8 @@ export class Game {
   join(name) {
     this.#name = name;
     const handlers = {
-      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); },
+      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#pickups.setSpots(m.pickups); },
+      pickup: (m) => this.#hud.killFeed(pickupText(m)),
       snap: (m) => this.#onSnapshot(m),
       shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); },
       verdict: (m) => this.#combat.verdict(m),
@@ -160,6 +164,7 @@ export class Game {
   #onSnapshot(snap) {
     this.#remote.push(snap.players, this.#id);
     this.#grenades.sync(snap.nades ?? []);
+    this.#pickups.sync(snap.items);
     this.#combat.setPlayers(snap.players);
     const mine = snap.players.find((p) => p.id === this.#id);
     if (!mine) return;
@@ -284,6 +289,7 @@ export class Game {
     this.#remote.update(now);
     this.#updateTracers(now);
     this.#grenades.update(now);
+    this.#pickups.update(now);
     const { camera, renderer, scene } = this.#gfx;
     camera.position.set(this.#me.x, this.#me.y + PLAYER.eye, this.#me.z);
     camera.rotation.set(this.#input.pitch, this.#input.yaw, 0);

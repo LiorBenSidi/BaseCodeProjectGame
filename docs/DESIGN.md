@@ -55,6 +55,13 @@ decision cite its ID.
 - Affects: docs/SPEC.md §20; `src/shared/weapons.js`, `src/shared/combat.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/client/game.js`, `src/client/hudModel.js`, `src/client/hud.js`.
 - Supersedes: (none)
 
+### D-020 (W1, W8) Pickups, safest spawn, spawn protection
+- Status: decided
+- Date: 2026-10-04
+- Decision: Pickups are map data (health, ammo, SMG, shotgun, sniper spots with per-type respawn timers) resolved server-side once per tick; respawns go to the spawn farthest from living enemies and carry 2 s of damage immunity that ends on the first shot.
+- Source: owner approved V1 plan 2026-10-04.
+- Affects: docs/SPEC.md section 21; `src/shared/rules.js`, `src/shared/pickups.js`, `src/shared/spawning.js`, `src/shared/map.js`, `src/server/GameRoom.js`, `src/client/pickups.js`, `src/client/game.js`.
+
 ### D-018 (T, N) Event-driven clock in the Match actor
 - Status: decided
 - Date: 2026-10-03

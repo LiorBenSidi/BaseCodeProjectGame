@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useServer, waitFor, cmd, STEP, MAX_CMDS_PER_TICK, moveUntilMoved, damageViaRoom } from '../helpers/harness.js';
 
-const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z', 'w', 'm', 'r', 'rel'].sort(); // SPEC 20.4 weapon fields
+const SNAP_ENTRY_KEYS = ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z', 'w', 'm', 'r', 'rel', 'sp'].sort(); // SPEC 20.4 weapon fields, 21.2 spawn protection
 const NAME_CHARSET = /^[\p{L}\p{N} _-]*$/u;
 
 describe('hostile join names', () => {

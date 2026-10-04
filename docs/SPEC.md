@@ -727,3 +727,23 @@ Every player entry gains `w` (weapon id in hand), `m` (magazine), `r` (reserve),
 
 ### 20.6 Tests
 `tests/unit/weapons.test.js` (table and state machine), `tests/unit/gameRoomWeapons.test.js` (room: magazines, reload, switch, pellets, snapshot, respawn), `tests/unit/protocol.test.js` (intent whitelist), `tests/unit/hudModel.test.js` (readout).
+
+## 21. Pickups, spawn selection and spawn protection (Batch 3b, D-020)
+
+Numbers live in `src/shared/rules.js` (`SPAWN`, `PICKUP`, `PICKUP_TYPES`), shared so the client shows the same values.
+
+### 21.1 Pickups (`src/shared/pickups.js`)
+- Spots are map data: `MAP.pickups = [{ type, x, z, y? }]`; `buildPickups` validates the list once (unknown type or non-finite coordinates are dropped) and gives each spot an index `i`. The arena has 9 spots: sniper on the centre platform (y 2), health at the mid lanes and one corner, ammo beside the cover and one corner, SMG and shotgun in opposite corners.
+- Types: `health` (+50 hp up to `MAX_HP`, back after 20 s), `ammo` (one magazine of the weapon in hand added to its reserve, capped by `addReserve`, back after 15 s), `smg` / `shotgun` (replace the primary with a full one, 30 s), `sniper` (45 s).
+- Reach: horizontal distance from the player's feet to the spot at most `PICKUP.radius` (1.2) and a vertical difference at most `PICKUP.heightTolerance` (1.5).
+- Each tick (`stepPickups`), after respawns: for every available spot, the first living player in reach who would gain something takes it; a player who gains nothing (full hp, full reserve, identical full weapon) leaves it. The spot becomes available again at `now + respawnMs`.
+- Messages: `welcome` gains `pickups: [{ i, type, x, y, z }]`; `snap` gains `items: [i, ...]` (indices available now); the taker receives `{ t: 'pickup', i, kind: 'health' | 'ammo' | 'weapon', amount, weapon? }`.
+- Client (`src/client/pickups.js`): spinning, bobbing marker per spot (cross for health, box for ammo, gun silhouette for weapons) over a ground ring; hidden while taken; the kill feed shows `+30 health`, `+12 ammo`, `Picked up Shotgun`.
+
+### 21.2 Spawn selection and protection (`src/shared/spawning.js`, `SPAWN`)
+- `pickSpawn(spawns, enemies, random)`: with no living enemy the Milestone 1 rule stands (`spawns[floor(random() * n)]`, every index reachable); otherwise the spawn whose nearest living enemy is farthest wins, ties broken by `random` among the tied. Used for the first placement and every respawn.
+- A respawned player is protected for `SPAWN.protectMs` (2000 ms): bullets and blasts apply 0 damage (the shooter's verdict says `dmg: 0`), and the protection ends early the moment the protected player fires. The first spawn after joining is not protected (it is already the safest spot and the player has not been in a fight). Snapshot entries gain `sp` (1 while protected).
+
+### 21.3 Tests
+`tests/unit/pickups.test.js` (spots, heal cap, ammo and weapon swaps, reach, one taker per tick, spawn choice), `tests/unit/pickupsClient.test.js`, and the respawn and protection cases in `tests/unit/gameRoom.test.js`.
+
