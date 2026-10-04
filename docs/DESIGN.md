@@ -303,3 +303,9 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: A tabbed settings modal with a schema driven preference store (`prefs.js`, 38 fields across Controls, Video, Audio, HUD), a keybind editor with keyboard and mouse maps and click to rebind, mouse buttons and wheel as bindable codes, and live application of every value. Fonts that are not CC0 are not shipped.
 - Source: owner 2026-10-05 00:22: "see a mapping of the keybinds, on both mouse and keyboard, and be able to change them, and have a lot of customization overall, just like modern FPS games like CSGO and COD".
 - Affects: docs/SPEC.md section 33; `src/client/{prefs,bindings,input,settingsPanel,hud,audio,game}.js`, `index.html`, `style.css`.
+### D-031 (P5) Ceremony, medals, vote, kill cam, minimap
+- Status: decided
+- Date: 2026-10-05
+- Decision: Intro countdown only on restarts (the first match of a room starts at once, which also keeps every existing room test valid), server judged medals broadcast with the kill, a two-candidate next-map vote with rotation as the fallback, a client side kill cam from 6 s of remote history (no server replay state), and a north-up minimap with ally-always / enemy-on-reveal rules so the map does not become a radar.
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 34; `src/shared/{modes,medals}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{ceremony,hud,remote,game}.js`, `index.html`, `style.css`, actor mirror.

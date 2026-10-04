@@ -61,6 +61,10 @@ function validateObject(data) {
     case 'perk':
       if (typeof data.id !== 'string' || data.id.length > 32) return fail('bad_perk');
       return { ok: true, msg: { t: 'perk', id: data.id } };
+    case 'vote':
+      // SPEC 34.4: next-map vote; the room checks the id against the open candidates
+      if (typeof data.mapId !== 'string' || data.mapId.length === 0 || data.mapId.length > 32) return fail('bad_vote');
+      return { ok: true, msg: { t: 'vote', mapId: data.mapId } };
     case 'chat':
       // SPEC 29.1: text only, length capped here so a 4 KB frame cannot carry a 4 KB line
       if (typeof data.text !== 'string' || data.text.length === 0 || data.text.length > 400) return fail('bad_chat');

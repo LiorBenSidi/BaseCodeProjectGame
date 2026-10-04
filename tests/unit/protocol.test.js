@@ -472,3 +472,11 @@ test('SPEC 32.2: dive and tac are coerced to booleans like the other stance flag
   assert.equal(z.msg.cmds[0].tac, false);
   assert.equal(typeof z.msg.cmds[0].dive, 'boolean');
 });
+
+// SPEC 34: ceremony protocol messages
+test('vote: mapId string <= 32 chars is whitelisted', () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'vote', mapId: 'foundry', extra: 'drop' })), { ok: true, msg: { t: 'vote', mapId: 'foundry' } });
+  for (const badMap of ['', 123, null, 'a'.repeat(33), {}, []]) {
+    assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'vote', mapId: badMap })), { ok: false, reason: 'bad_vote' }, String(badMap));
+  }
+});

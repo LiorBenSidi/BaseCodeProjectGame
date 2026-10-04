@@ -4,6 +4,7 @@ import { applyKitAccent } from './avatars.js';
 import { PLAYER } from '../shared/constants.js';
 import { RIG, walkCycle, advancePhase, hitFlash, deathPose } from './characterRig.js';
 import { weaponModel, MATERIALS } from './weaponModels.js';
+import { trimHistory } from './ceremony.js'; // PRO-ceremony
 
 const INTERP_DELAY_MS = 100; // render remote players ~3 ticks in the past so there is always a pair to blend
 
@@ -53,10 +54,42 @@ export class RemotePlayers {
 
   push(players, selfId) {
     const others = new Map();
+    const now = performance.now();
     for (const p of players) if (p.id !== selfId) others.set(p.id, p);
-    this.#buffer.push({ t: performance.now(), players: others });
+    this.#buffer.push({ t: now, players: others });
     if (this.#buffer.length > 30) this.#buffer.shift();
+    // PRO-ceremony (SPEC 34.5): 6 s of history per player for the kill cam
+    for (const [id, p] of others) {
+      let h = this.#history.get(id);
+      if (!h) { h = []; this.#history.set(id, h); }
+      h.push({ t: now, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch ?? 0, h: p.h });
+      trimHistory(h, now);
+    }
+    for (const id of this.#history.keys()) if (!others.has(id)) this.#history.delete(id);
+    this.#last = others;
   }
+
+  // PRO-ceremony begin (SPEC 34.5 / 34.6)
+  #history = new Map();
+  #last = new Map();
+  #hidden = new Set();
+
+  historyOf(id) {
+    return this.#history.get(id) ?? [];
+  }
+
+  // The last snapshot's other players, for the minimap.
+  lastPlayers() {
+    return [...this.#last.values()];
+  }
+
+  // Hides a player's mesh while the kill cam looks out of their eyes.
+  setHidden(id, hidden) {
+    if (hidden) this.#hidden.add(id); else this.#hidden.delete(id);
+    const mesh = this.#meshes.get(id);
+    if (mesh && hidden) mesh.visible = false;
+  }
+  // PRO-ceremony end
 
   update(now) {
     const buf = this.#buffer;
@@ -92,11 +125,12 @@ export class RemotePlayers {
       // SPEC 31.3: hit flash and death pose
       const flash = hitFlash(now - mesh.userData.hitAt);
       mesh.userData.bodyMaterial.emissive.setScalar(flash * 0.9);
-      if (pb.alive === 1) { mesh.userData.deadAt = null; mesh.visible = true; mesh.rotation.z = 0; mesh.position.y = y + cyc.bob; }
+      if (pb.alive === 1) { mesh.userData.deadAt = null; mesh.visible = !this.#hidden.has(id); // PRO-ceremony: hidden while the kill cam uses their eyes
+        mesh.rotation.z = 0; mesh.position.y = y + cyc.bob; }
       else {
         if (mesh.userData.deadAt === null) mesh.userData.deadAt = now;
         const dp = deathPose(now - mesh.userData.deadAt);
-        mesh.visible = dp.fade < 1;
+        mesh.visible = dp.fade < 1 && !this.#hidden.has(id);
         mesh.rotation.z = dp.roll;
         mesh.position.y = y - dp.sink;
       }
