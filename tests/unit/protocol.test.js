@@ -442,3 +442,13 @@ test('ping: a bad id or ts is bad_ping', () => {
     assert.deepEqual(validateClientMessage(bad), { ok: false, reason: 'bad_ping' }, JSON.stringify(bad));
   }
 });
+
+// SPEC 20.3: weapon intents
+test('reload and switch intents are whitelisted; switch needs a known slot', () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'reload', hp: 999 })), { ok: true, msg: { t: 'reload' } });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot: 'sidearm' })), { ok: true, msg: { t: 'switch', slot: 'sidearm' } });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot: 'primary', mag: 99 })), { ok: true, msg: { t: 'switch', slot: 'primary' } });
+  for (const slot of ['knife', '', 0, null, undefined, {}, '__proto__']) {
+    assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot })), { ok: false, reason: 'bad_switch' }, String(slot));
+  }
+});

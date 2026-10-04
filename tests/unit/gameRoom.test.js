@@ -321,7 +321,8 @@ test('snapshot entry has exactly the documented keys', () => {
   const a = join(room, 'a');
   room.tick();
   const e = entry(lastSnap(a), a.p.id);
-  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'hp', 'id', 'k', 'name', 'pitch', 'vy', 'x', 'y', 'yaw', 'z']);
+  // SPEC 20.4 added w, m, r, rel (weapon in hand, magazine, reserve, reloading flag).
+  assert.deepEqual(Object.keys(e).sort(), ['alive', 'd', 'g', 'hp', 'id', 'k', 'm', 'name', 'pitch', 'r', 'rel', 'vy', 'w', 'x', 'y', 'yaw', 'z']);
 });
 
 test('snapshot numbers are rounded to 3 decimals', () => {

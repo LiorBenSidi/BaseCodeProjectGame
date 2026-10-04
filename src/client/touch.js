@@ -35,6 +35,9 @@ export class TouchControls {
     this.#hold('touch-jump', (down) => { input.touch.jump = down; });
     this.#hold('touch-score', (down) => actions.scoreboard(down));
     zone('touch-nade')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.grenade(); });
+    // SPEC 20: reload and weapon swap as taps
+    zone('touch-reload')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.reload?.(); });
+    zone('touch-swap')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.swap?.(); });
 
     window.addEventListener('resize', () => this.updateRotate());
     this.updateRotate();

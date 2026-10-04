@@ -47,6 +47,14 @@ decision cite its ID.
 - Supersedes: (none)
 -->
 
+### D-019 (W1, W7, W8) Weapons table and state machine
+- Status: decided
+- Date: 2026-10-04
+- Decision: Add full weapons table (rifle, smg, shotgun, sniper, pistol) with primary and sidearm slots, mag/reserve ammo, reload and switch timings, spread expansion/decay, camera recoil, and pellet hitscan resolution.
+- Source: owner approved V1 plan 2026-10-04.
+- Affects: docs/SPEC.md §20; `src/shared/weapons.js`, `src/shared/combat.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/client/game.js`, `src/client/hudModel.js`, `src/client/hud.js`.
+- Supersedes: (none)
+
 ### D-018 (T, N) Event-driven clock in the Match actor
 - Status: decided
 - Date: 2026-10-03

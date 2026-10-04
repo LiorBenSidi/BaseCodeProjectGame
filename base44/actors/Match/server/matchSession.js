@@ -134,6 +134,10 @@ export class MatchSession {
       this.#room.handleShoot(s.player.id);
     } else if (s.player && msg.t === 'throw') {
       this.#room.handleThrow(s.player.id);
+    } else if (s.player && msg.t === 'reload') {
+      this.#room.handleReload(s.player.id);
+    } else if (s.player && msg.t === 'switch') {
+      this.#room.handleSwitch(s.player.id, msg.slot);
     }
   }
 

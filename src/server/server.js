@@ -219,6 +219,10 @@ export async function startServer(options = {}) {
         room.handleShoot(player.id);
       } else if (player && msg.t === 'throw') {
         room.handleThrow(player.id);
+      } else if (player && msg.t === 'reload') {
+        room.handleReload(player.id);
+      } else if (player && msg.t === 'switch') {
+        room.handleSwitch(player.id, msg.slot);
       }
       return undefined;
     });

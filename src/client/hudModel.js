@@ -1,3 +1,4 @@
+import { WEAPONS } from '../shared/weapons.js';
 import { RESPAWN_MS } from '../shared/constants.js';
 
 // Screen angle of the attacker, clockwise from the top of the screen (0 = straight ahead,
@@ -66,11 +67,16 @@ export function deriveRespawnText(alive, now, deathTime, respawnMs = RESPAWN_MS)
   };
 }
 
-export function deriveAmmoStatus() {
-  return {
-    text: 'INF',
-    status: 'READY',
-  };
+// SPEC 20.4: the ammo readout from the own snapshot entry (w, m, r, rel). Without weapon fields (an
+// older server) it falls back to the infinite readout the slice shipped with.
+export function deriveAmmoStatus(me) {
+  if (!me || typeof me.m !== 'number') return { weapon: 'Rifle', text: 'INF', status: 'READY' };
+  const name = typeof me.w === 'string' && me.w ? me.w[0].toUpperCase() + me.w.slice(1) : 'Rifle';
+  let status = 'READY';
+  if (me.rel === 1) status = 'RELOADING';
+  else if (me.m === 0) status = me.r > 0 ? 'EMPTY' : 'DRY';
+  else if (WEAPONS[me.w] && me.m <= Math.ceil(WEAPONS[me.w].magSize * 0.2)) status = 'LOW';
+  return { weapon: WEAPONS[me.w]?.name ?? name, text: `${me.m} / ${me.r}`, status };
 }
 
 export function deriveTeamColor(playerId) {

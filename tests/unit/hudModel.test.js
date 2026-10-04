@@ -92,10 +92,21 @@ test('deriveRespawnText: displays countdown when dead, null when alive', () => {
   assert.equal(aliveState, null);
 });
 
-test('deriveAmmoStatus: returns standard infinite weapon readout', () => {
+test('deriveAmmoStatus: infinite readout without weapon fields (older server)', () => {
   const ammo = deriveAmmoStatus();
   assert.equal(ammo.text, 'INF');
   assert.equal(ammo.status, 'READY');
+  assert.equal(ammo.weapon, 'Rifle');
+});
+
+test('deriveAmmoStatus: SPEC 20.4 fields drive weapon name, counts and status', () => {
+  assert.deepEqual(deriveAmmoStatus({ w: 'rifle', m: 30, r: 90, rel: 0 }), { weapon: 'Rifle', text: '30 / 90', status: 'READY' });
+  assert.equal(deriveAmmoStatus({ w: 'rifle', m: 6, r: 90, rel: 0 }).status, 'LOW');
+  assert.equal(deriveAmmoStatus({ w: 'rifle', m: 7, r: 90, rel: 0 }).status, 'READY');
+  assert.equal(deriveAmmoStatus({ w: 'pistol', m: 0, r: 12, rel: 0 }).status, 'EMPTY');
+  assert.equal(deriveAmmoStatus({ w: 'pistol', m: 0, r: 0, rel: 0 }).status, 'DRY');
+  assert.equal(deriveAmmoStatus({ w: 'shotgun', m: 3, r: 8, rel: 1 }).status, 'RELOADING');
+  assert.equal(deriveAmmoStatus({ w: 'smg', m: 35, r: 105, rel: 0 }).weapon, 'SMG');
 });
 
 test('deriveTeamColor: identifies team parity (even = blue, odd = red)', () => {

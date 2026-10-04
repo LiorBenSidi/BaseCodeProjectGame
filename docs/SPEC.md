@@ -684,3 +684,46 @@ Rendering only; no game rule changes. The numbers live in `arenaStyle.js` (pure,
 - Safe-area insets (`env(safe-area-inset-*)`) applied to touch controls and HUD.
 - HUD font sizes scale with `clamp()` on viewport width.
 - Landscape hint overlay (`#rotate`) shown in portrait touch mode.
+
+
+## 20. Weapons (Batch 3a, D-019)
+
+`src/shared/weapons.js` is the table and the per-player state machine, pure and deterministic (time arrives as `nowMs`, randomness as the injected `random`). The server alone decides whether a shot happens; the client reads the table for the interval it uses to pace its `shoot` intents and for cosmetic recoil.
+
+### 20.1 Table (`WEAPONS`)
+Bands use the `combat.js` shape `{ below, damage }` so `bandDamage` and `shotDamage` apply unchanged; `range` equals the last band's `below`. The rifle is the Milestone 1 weapon (`RIFLE` in `combatData.js`): same interval, same bands.
+
+| id | slot | fireIntervalMs | magSize | reserve | reloadMs | switchMs | pellets | spreadBase | spreadPerShot | spreadDecayPerMs | spreadMax | recoilPitch | recoilYaw | bands (below: damage) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rifle | primary | 150 | 30 | 90 | 2000 | 400 | 1 | 0 | 0.006 | 0.00005 | 0.06 | 0.02 | 0.005 | 20: 25, 40: 22, 120: 18 |
+| smg | primary | 90 | 35 | 105 | 1600 | 300 | 1 | 0.012 | 0.006 | 0.00006 | 0.08 | 0.012 | 0.008 | 12: 18, 25: 14, 60: 9 |
+| shotgun | primary | 800 | 8 | 32 | 2500 | 500 | 8 | 0.08 | 0.02 | 0.00004 | 0.12 | 0.06 | 0.015 | 10: 12, 20: 7, 35: 3 |
+| sniper | primary | 1200 | 5 | 20 | 3000 | 600 | 1 | 0.001 | 0.05 | 0.00003 | 0.10 | 0.08 | 0.002 | 50: 85, 100: 75, 200: 65 |
+| pistol | sidearm | 220 | 12 | 48 | 1400 | 250 | 1 | 0.006 | 0.012 | 0.00007 | 0.05 | 0.025 | 0.004 | 15: 22, 30: 16, 70: 10 |
+
+Spread is a cone half-angle in radians. A rifle spread of 0 on the first shot keeps the Milestone 1 tests exact: one shot per interval decays fully (0.006 grows, 0.0075 decays per 150 ms).
+
+### 20.2 State machine
+- Weapon state: `{ id, mag, reserve, spread, reloadingUntil, lastShotAt }`. Loadout: `{ active: 'primary' | 'sidearm', primary, sidearm, switchingUntil }`; `newLoadout()` is a full rifle in hand and a pistol holstered (`DEFAULT_LOADOUT`).
+- `fireBlock(loadout, nowMs)` returns `null` or the reason, checked in this order: `switching`, `reloading`, `empty`, `interval`. `canFire` is `fireBlock === null`.
+- `recordShot(ws, nowMs)`: `lastShotAt = nowMs`, `mag -= 1`, `spread = min(spreadMax, spread + spreadPerShot)`. `decaySpread(ws, dtMs)` moves spread back toward `spreadBase`.
+- `startReload(loadout, nowMs)`: only when not switching, not reloading, mag below magSize and reserve above 0; sets `reloadingUntil = nowMs + reloadMs`. `finishReloadIfDue(ws, nowMs)` moves `min(magSize - mag, reserve)` rounds on the first tick at or after `reloadingUntil`.
+- `switchSlot(loadout, slot, nowMs)`: refused for an unknown slot, the slot already in hand, or while switching; cancels a reload in progress (rounds stay in the reserve) and sets `switchingUntil = nowMs + switchMs` of the weapon now in hand.
+- `spreadDir(dir, spread, random)`: a unit direction inside the cone; spread 0 returns `dir` untouched and consumes no randomness.
+- `addReserve(ws, rounds)` caps the reserve at twice the table value (pickups, Batch 3b).
+
+### 20.3 Messages (extends section 7)
+- `{ t: 'reload' }` and `{ t: 'switch', slot: 'primary' | 'sidearm' }`; any other slot fails with `bad_switch`. Both are intents: the room applies them on its next tick through the state machine, dead players are ignored, and the respawn hands out a fresh `newLoadout()`.
+- `shot` gains `w` (weapon id). A shotgun broadcasts one `shot` per pellet.
+- Per trigger pull: one ray per pellet, each with its own spread sample from the room's `random`; damage is summed per victim and applied once; one `hit` per victim; one `verdict` naming the victim who took the most damage (zone and distance of the first pellet that reached them).
+
+### 20.4 Snapshot fields (extends section 7)
+Every player entry gains `w` (weapon id in hand), `m` (magazine), `r` (reserve), `rel` (1 while reloading). They are public: the information is scoreboard-sized.
+
+### 20.5 Client
+- Keys: `R` reload, `1` primary, `2` sidearm, mouse wheel toggles the slot; touch buttons `touch-reload` and `touch-swap`.
+- `#tryFire` paces `shoot` intents with the in-hand weapon's `fireIntervalMs` (from the snapshot `w`), kicks the aim by `recoilPitch` and a random yaw within `recoilYaw`, and recovers 70 percent of the kick over the next frames.
+- HUD: `deriveAmmoStatus(me)` gives `{ weapon, text: 'mag / reserve', status }` with status `READY`, `LOW` (mag at or below 20 percent), `EMPTY`, `DRY` (no reserve), `RELOADING`; without weapon fields it falls back to `INF / READY`.
+
+### 20.6 Tests
+`tests/unit/weapons.test.js` (table and state machine), `tests/unit/gameRoomWeapons.test.js` (room: magazines, reload, switch, pellets, snapshot, respawn), `tests/unit/protocol.test.js` (intent whitelist), `tests/unit/hudModel.test.js` (readout).

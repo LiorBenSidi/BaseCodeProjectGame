@@ -28,7 +28,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - Clock sync / RTT estimate for HUD and lag compensation.
 
 ## Phase 2 - Gameplay
-- Weapons table (rifle, shotgun, sniper) with ammo, reload, spread, recoil.
+- ~~Weapons table (rifle, smg, shotgun, sniper, pistol) with ammo, reload, spread, recoil.~~ Done 2026-10-04 (D-019).
 - ~~Headshot hitbox (split the AABB), damage falloff.~~ Done in the milestone 1 combat slice.
 - Pickups, respawn logic by safest spawn, spawn protection.
 - Game modes: deathmatch with match timer, then team deathmatch.

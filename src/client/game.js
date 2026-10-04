@@ -1,4 +1,5 @@
-import { INPUT_DT, PLAYER, WEAPON } from '../shared/constants.js';
+import { INPUT_DT, PLAYER } from '../shared/constants.js';
+import { WEAPONS } from '../shared/weapons.js';
 import { stepPlayer } from '../shared/movement.js';
 import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
@@ -39,6 +40,8 @@ export class Game {
   #fps = { on: false, frames: 0, since: performance.now() };
   #clock = new ClockSync(); // SPEC 18.2: room clock estimate and RTT from ping/pong
   #lastShot = 0;
+  #weapon = WEAPONS.rifle; // SPEC 20: the weapon the server says is in hand; paces our shoot intents and recoil
+  #recoil = { pitch: 0, yaw: 0 }; // SPEC 20: client-only camera kick, recovers over a few frames
   #tracers = [];
   #threats = [];
   #lastHp = null;
@@ -51,12 +54,22 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Tab') { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
       if (e.code === 'KeyG' && !e.repeat && this.#input.locked) this.throwGrenade();
+      // SPEC 20.3: weapon intents; the server's state machine decides whether they take effect.
+      if (e.code === 'KeyR' && !e.repeat && this.#input.locked) this.reload();
+      if (e.code === 'Digit1' && this.#input.locked) this.switchWeapon('primary');
+      if (e.code === 'Digit2' && this.#input.locked) this.switchWeapon('sidearm');
     });
+    window.addEventListener('wheel', (e) => {
+      if (!this.#input.locked || e.deltaY === 0) return;
+      this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary');
+    }, { passive: true });
     window.addEventListener('keyup', (e) => {
       if (e.code === 'Tab') this.#hud.setScoreboardVisible(false);
     });
     this.#touch = new TouchControls(this.#input, {
       grenade: () => this.throwGrenade(),
+      reload: () => this.reload(),
+      swap: () => this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary'),
       scoreboard: (show) => this.#hud.setScoreboardVisible(show),
     });
     requestAnimationFrame((t) => this.#frame(t));
@@ -96,6 +109,16 @@ export class Game {
 
   fire() {
     return this.#tryFire(performance.now());
+  }
+
+  reload() {
+    if (!this.joined || !this.#me.alive) return;
+    this.#net.send({ t: 'reload' });
+  }
+
+  switchWeapon(slot) {
+    if (!this.joined || !this.#me.alive || slot === this.#weapon.slot) return;
+    this.#net.send({ t: 'switch', slot });
   }
 
   throwGrenade() {
@@ -147,6 +170,7 @@ export class Game {
       onGround: mine.g === 1, alive: mine.alive === 1,
     });
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c);
+    if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
     this.#onDamage(mine);
     this.#hud.update(mine, snap.players);
   }
@@ -205,13 +229,32 @@ export class Game {
     if (outgoing.length) this.#net.send({ t: 'input', cmds: outgoing, ts: Date.now() });
 
     if (this.#input.firing && this.#input.locked) this.#tryFire(now);
+    this.#recoverRecoil(dt);
+  }
+
+  #recoverRecoil(dt) {
+    const k = Math.min(1, dt * 12);
+    const dp = this.#recoil.pitch * k;
+    const dy = this.#recoil.yaw * k;
+    if (dp === 0 && dy === 0) return;
+    this.#input.turn(-dy, -dp);
+    this.#recoil.pitch -= dp;
+    this.#recoil.yaw -= dy;
+    if (Math.abs(this.#recoil.pitch) < 1e-4) this.#recoil.pitch = 0;
+    if (Math.abs(this.#recoil.yaw) < 1e-4) this.#recoil.yaw = 0;
   }
 
   #tryFire(now) {
-    if (!this.joined || !this.#me.alive || now - this.#lastShot < WEAPON.cooldownMs) return false;
+    if (!this.joined || !this.#me.alive || now - this.#lastShot < this.#weapon.fireIntervalMs) return false;
     this.#lastShot = now;
     this.#net.send({ t: 'shoot' });
     this.#hud.onFire();
+    // SPEC 20: recoil is cosmetic. The kick moves the aim; the recovery below pulls most of it back.
+    const w = this.#weapon;
+    const yawKick = (Math.random() - 0.5) * 2 * w.recoilYaw;
+    this.#input.turn(yawKick, w.recoilPitch);
+    this.#recoil.pitch += w.recoilPitch * 0.7;
+    this.#recoil.yaw += yawKick * 0.7;
     return true;
   }
 

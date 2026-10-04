@@ -26,6 +26,9 @@ export class Hud {
   #hpValue = $('hp-value');
   #segments = [...$('hp-bar').querySelectorAll('.hp-segment-fill')];
   #ammoValue = $('ammo-value');
+  #ammoLabel = document.querySelector('#ammo .label');
+  #lastAmmo = null;
+  #lastWeapon = null;
   #feed = $('feed');
   #board = $('scoreboard');
   #cross = $('crosshair');
@@ -42,8 +45,22 @@ export class Hud {
 
   show() {
     this.#root.hidden = false;
-    const ammo = deriveAmmoStatus();
-    this.#ammoValue.textContent = `${ammo.text} / ${ammo.status}`;
+    this.#renderAmmo(null);
+  }
+
+  // SPEC 20.4: weapon name, magazine / reserve and the state word; re-rendered only when the text changes.
+  #renderAmmo(me) {
+    const ammo = deriveAmmoStatus(me);
+    const text = `${ammo.text} / ${ammo.status}`;
+    if (text !== this.#lastAmmo) {
+      this.#lastAmmo = text;
+      this.#ammoValue.textContent = text;
+      this.#ammoValue.classList.toggle('warn', ammo.status !== 'READY');
+    }
+    if (ammo.weapon !== this.#lastWeapon) {
+      this.#lastWeapon = ammo.weapon;
+      if (this.#ammoLabel) this.#ammoLabel.textContent = ammo.weapon;
+    }
   }
 
   setScoreboardVisible(visible) {
@@ -72,6 +89,7 @@ export class Hud {
   // Called once per snapshot with the local player's row and the full player list.
   update(me, players, now = Date.now()) {
     this.#renderHealth(me.hp);
+    this.#renderAmmo(me);
     this.#renderRespawn(me, now);
     this.#renderFeed(now);
     if (!this.#board.hidden) this.#renderScoreboard(me, players);

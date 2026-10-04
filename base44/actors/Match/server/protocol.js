@@ -39,6 +39,12 @@ function validateObject(data) {
       return { ok: true, msg: { t: 'shoot' } };
     case 'throw':
       return { ok: true, msg: { t: 'throw' } };
+    // SPEC 20.3: weapon intents. The room's state machine decides whether they take effect.
+    case 'reload':
+      return { ok: true, msg: { t: 'reload' } };
+    case 'switch':
+      if (data.slot !== 'primary' && data.slot !== 'sidearm') return fail('bad_switch');
+      return { ok: true, msg: { t: 'switch', slot: data.slot } };
     case 'ping':
       // SPEC 18.2: clock sync probe; the session echoes id and ts back with its own clock.
       if (!Number.isSafeInteger(data.id) || data.id < 0 || !isNum(data.ts) || data.ts < 0) return fail('bad_ping');
