@@ -206,3 +206,43 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 #chat-lines .who.red { color: #f87171; }
 #chat-input { pointer-events: auto; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(10, 14, 22, 0.8); color: #e6edf3; font-size: 13px; }
 
+
+/* PRO-ceremony (SPEC 34): intro, kill cam, medals, podium and vote, minimap */
+#intro { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; background: radial-gradient(circle at 50% 50%, rgba(5,8,14,0.0), rgba(5,8,14,0.55)); }
+#intro[hidden] { display: none; }
+#intro-count { font-size: 120px; font-weight: 800; letter-spacing: 0.06em; color: #fff; text-shadow: 0 6px 30px rgba(0,0,0,0.6); animation: intro-pop 0.5s ease-out; }
+#intro-count.go { color: var(--accent-hover, #2ea043); }
+#intro-sub { margin-top: -10px; font-size: 14px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--text-muted, #9da7b3); text-align: center; }
+@keyframes intro-pop { from { transform: scale(1.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+#killcam { position: fixed; top: 14%; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: baseline; padding: 8px 18px; border: 1px solid var(--danger, #da3633); border-radius: 8px; background: rgba(8,12,20,0.75); pointer-events: none; }
+#killcam[hidden] { display: none; }
+#killcam .kc-label { font-size: 12px; font-weight: 800; letter-spacing: 0.3em; color: var(--danger, #ff6b6b); }
+#killcam-who { font-size: 15px; font-weight: 700; }
+#medals { position: fixed; right: calc(16px + env(safe-area-inset-right)); top: 200px; display: grid; gap: 6px; justify-items: end; pointer-events: none; }
+.medal { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border: 1px solid rgba(240,180,41,0.6); border-radius: 999px; background: rgba(8,12,20,0.8); animation: medal-in 0.35s ease-out, medal-out 0.4s ease-in 2.6s forwards; }
+.medal b { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--warn, #f0b429); color: #1b1300; font-size: 11px; font-weight: 800; }
+.medal span { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+@keyframes medal-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes medal-out { to { opacity: 0; transform: translateX(20px); } }
+#match-end { width: min(520px, calc(100vw - 32px)); top: 12%; }
+#podium { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 6px; text-align: left; }
+#podium li { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.05); }
+#podium li.first { background: linear-gradient(90deg, rgba(240,180,41,0.25), rgba(255,255,255,0.05)); border: 1px solid rgba(240,180,41,0.5); }
+#podium li.me { outline: 1px solid var(--accent-hover, #2ea043); }
+#podium .rank { font-size: 18px; font-weight: 800; color: var(--warn, #f0b429); }
+#podium .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#podium .kd, #podium .pm { font-variant-numeric: tabular-nums; color: var(--text-muted, #9da7b3); font-size: 13px; }
+#my-medals { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+#my-medals span { padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(240,180,41,0.5); font-size: 12px; }
+#vote { margin-top: 14px; }
+#vote[hidden] { display: none; }
+#vote .vote-title { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-muted, #9da7b3); }
+#vote-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#vote-options button { position: relative; overflow: hidden; padding: 12px; border: 1px solid var(--surface-border, #30363d); border-radius: 8px; background: rgba(0,0,0,0.3); color: var(--text, #e6edf3); font: inherit; font-weight: 700; cursor: pointer; pointer-events: auto; }
+#vote-options button i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--share, 0%); background: rgba(46,160,67,0.25); transition: width 0.3s; }
+#vote-options button span { position: relative; }
+#vote-options button small { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted, #9da7b3); font-weight: 400; }
+#vote-options button.mine { border-color: var(--accent-hover, #2ea043); }
+#minimap { position: fixed; right: calc(16px + env(safe-area-inset-right)); top: calc(16px + env(safe-area-inset-top)); width: 160px; height: 160px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(8,12,20,0.6); pointer-events: none; }
+#minimap[hidden] { display: none; }
+@media (max-width: 720px) { #minimap { width: 110px; height: 110px; } #intro-count { font-size: 72px; } #medals { top: 140px; } }

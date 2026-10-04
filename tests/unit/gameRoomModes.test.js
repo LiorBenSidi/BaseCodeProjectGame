@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameRoom } from '../../src/server/GameRoom.js';
-import { MODES, ENDING_MS } from '../../src/shared/modes.js';
+import { MODES, ENDING_MS, INTRO_MS } from '../../src/shared/modes.js';
 import { RESPAWN_MS } from '../../src/shared/constants.js';
 
 function newRoom(opts = {}) {
@@ -64,7 +64,12 @@ test('DM: time runs out, matchEnd names the leader, nobody can shoot, then the m
   assert.equal(a.p.kills, 0);
   assert.equal(b.p.deaths, 0);
   assert.equal(b.p.alive, true);
+  // SPEC 34.1: a restart runs the intro countdown; the first match of a room started at once
+  assert.equal(a.lastSnap().match.phase, 'intro');
+  assert.ok(a.lastSnap().match.left >= 1 && a.lastSnap().match.left <= 5, 'countdown seconds in the snapshot');
+  advance(INTRO_MS); room.tick();
   assert.equal(a.lastSnap().match.phase, 'playing');
+  assert.equal(a.of('matchLive').length, 1, 'one go signal');
   assert.equal(a.of('matchEnd').length, 1, 'ended once');
 });
 

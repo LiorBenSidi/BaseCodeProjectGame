@@ -462,3 +462,11 @@ test('reload and switch intents are whitelisted; switch needs a known slot', () 
     assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'switch', slot })), { ok: false, reason: 'bad_switch' }, String(slot));
   }
 });
+
+// SPEC 34: ceremony protocol messages
+test('vote: mapId string <= 32 chars is whitelisted', () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'vote', mapId: 'foundry', extra: 'drop' })), { ok: true, msg: { t: 'vote', mapId: 'foundry' } });
+  for (const badMap of ['', 123, null, 'a'.repeat(33), {}, []]) {
+    assert.deepEqual(parseClientMessage(JSON.stringify({ t: 'vote', mapId: badMap })), { ok: false, reason: 'bad_vote' }, String(badMap));
+  }
+});

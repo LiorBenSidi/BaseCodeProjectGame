@@ -926,3 +926,26 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 ### 29.6 Tests
 `tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
 
+
+## 34. Pro ceremony: intro, podium, medals, vote, kill cam, minimap (Pro batch P5, D-031)
+
+### 34.1 Match intro (`src/shared/modes.js`, `GameRoom.js`)
+The first match of a room still starts the moment someone joins (nobody is waiting). A restart after the end screen runs an `intro` phase of `INTRO_MS` = 5000: players are respawned on the next map but `stepPlayer` is skipped, so nobody moves, and firing is blocked as in any non-playing phase. The snapshot's `match.left` counts the seconds down; when it reaches zero the room broadcasts `{ t: 'matchLive' }` and the clock of the match starts. `ENDING_MS` is 15000 so there is time to read the podium and vote. Client: a full screen countdown (`#intro`), then GO.
+
+### 34.2 End screen (`#match-end`, `hud.matchEnd`)
+Headline (win / loss / draw as before), MVP line (the top of the ranking), a podium of the top three with K / D, K/D ratio and medal count (`podium()` in `src/client/ceremony.js`), my medal lines, the vote block and a live "Next match in Ns" hint. The raw scoreboard no longer opens automatically at the end; Tab still shows it.
+
+### 34.3 Medals (`src/shared/medals.js`)
+Judged on the server in `#kill` where the kill is authoritative, broadcast as `{ t: 'medal', id, name, medals: [ids] }`, and rendered only for the earning player as toasts (`#medals`). Kill medals: First Blood, Double / Triple / Quad (kills within `MULTI_KILL_MS` = 4000), Headshot, Longshot (30 m or more), Point Blank (under 2 m), Revenge, Comeback (after three deaths in a row), Buzzkill (ended a streak of 5 or more). End medal: Flawless (3 or more kills, no deaths). `matchEndMedals` returns `{ playerId: { medalId: n } }` on `matchEnd` as `medals`. The tracker resets per match. Medals carry no XP of their own (XP stays SPEC 25).
+
+### 34.4 Next-map vote
+`matchEnd` carries `voteCandidates`: the two maps after the current one in rotation order (`voteCandidatesFor`). Clients send `{ t: 'vote', mapId }` (protocol: string, 1 to 32 chars; the room accepts only an offered id, during `ending`, one vote per player, changeable). The room broadcasts `{ t: 'vote', counts }`. At restart `tallyVotes` picks the most voted map; ties go to the first offered candidate; no votes at all keeps the rotation. The vote is consumed once for that match number (`#mapForNumber`). Client: two buttons with share bars, keys 1 and 2 while the end screen is up.
+
+### 34.5 Kill cam (client only, `ceremony.js`, `remote.js`, `game.js`)
+`RemotePlayers` keeps 6 s of history per player (position, yaw, pitch, height). On my death with a killer other than me, the camera replays the killer's last `KILLCAM_LOOKBACK_MS` = 2500 (capped to `RESPAWN_MS` - 500) from their eyes, interpolating samples (`killcamSample`, yaw wraps the short way), the killer's mesh is hidden while the camera sits in it, and the `KILLCAM  name  ·  weapon` tag shows. It ends on respawn or when the window runs out; `matchEnd` ends it too.
+
+### 34.6 Minimap (`#minimap`, `minimapLayout`)
+A 160 px north-up canvas (110 px on phones): collision boxes of 0.8 m or taller (tall cover drawn darker), me as a green arrow rotated by yaw (yaw 0 looks toward -Z, up on the map), allies always as cyan dots, enemies as red dots only when within `MINIMAP_NEAR_M` = 12 or when they fired within `MINIMAP_REVEAL_MS` = 2000 (from `shot` messages). Hidden when `hud.prefs.minimap` is false (SPEC 33).
+
+### 34.7 Tests
+`tests/unit/proCeremony.test.js` (7: medals; match flow and intro; vote rules and protocol; room end to end with vote, voted map, frozen intro and matchLive; ceremony views; kill cam math; minimap). `gameRoomModes.test.js` restart test extended for the intro.

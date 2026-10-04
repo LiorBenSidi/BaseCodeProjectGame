@@ -274,3 +274,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
 - Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
 
+
+### D-031 (P5) Ceremony, medals, vote, kill cam, minimap
+- Status: decided
+- Date: 2026-10-05
+- Decision: Intro countdown only on restarts (the first match of a room starts at once, which also keeps every existing room test valid), server judged medals broadcast with the kill, a two-candidate next-map vote with rotation as the fallback, a client side kill cam from 6 s of remote history (no server replay state), and a north-up minimap with ally-always / enemy-on-reveal rules so the map does not become a radar.
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 34; `src/shared/{modes,medals}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{ceremony,hud,remote,game}.js`, `index.html`, `style.css`, actor mirror.

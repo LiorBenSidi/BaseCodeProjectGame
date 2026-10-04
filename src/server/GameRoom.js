@@ -24,7 +24,9 @@ import { SPAWN } from '../shared/rules.js';
 import { DEFAULT_KIT, KIT_IDS, isKit, newKitState, useAbility, stepEffects, applyGrapple, slowFactor, shieldBoxes, decoyTargets, describeEffects, cooldownLeft } from '../shared/abilities.js';
 import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnapshot, XP } from '../shared/progression.js';
 // SPEC 22: match modes (DM / TDM), timer, end screen, restart.
-import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot } from '../shared/modes.js';
+import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot, updateIntroPhase, recordVote, tallyVotes, voteCandidatesFor, voteCounts } from '../shared/modes.js';
+import { MAP_IDS } from '../shared/maps.js'; // PRO-ceremony: SPEC 34.4 vote candidates
+import { newMedalTracker, recordKillMedals, matchEndMedals } from '../shared/medals.js'; // PRO-ceremony: SPEC 34.3
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
 export const MAX_QUEUE = 12; // beyond this a client is flooding or speed-hacking: oldest cmds are dropped
@@ -47,6 +49,8 @@ export class GameRoom {
   #log;
   #maxPlayers;
   #match;
+  #medals = newMedalTracker(); // PRO-ceremony: SPEC 34.3
+  #nextMapId = null; // PRO-ceremony: SPEC 34.4 the voted map for the next match
 
   // SPEC 26 / 27: `hooks.roster({ players, maxPlayers, phase, matchNumber })` fires on join, leave and
   // match start / end; `hooks.matchEnd({ result, players })` fires after the matchEnd broadcast. Both are
@@ -235,7 +239,7 @@ export class GameRoom {
       const raw = p.queue.shift();
       const cmd = slow < 1 ? { ...raw, fwd: raw.fwd * slow, right: raw.right * slow, sprint: false } : raw;
       if (p.alive && p.grapple) applyGrapple(p, cmd.jump, this.#now());
-      if (p.alive) stepPlayer(p, cmd, this.#map.boxes, this.#map.half);
+      if (p.alive && this.#match.phase !== 'intro') stepPlayer(p, cmd, this.#map.boxes, this.#map.half); // PRO-ceremony: frozen during the intro countdown
       p.yaw = cmd.yaw;
       p.pitch = cmd.pitch;
       p.lastSeq = cmd.seq;
@@ -296,17 +300,27 @@ export class GameRoom {
 
   // SPEC 22: the match ends on time or score, shows the end screen for ENDING_MS, then restarts.
   #stepMatch(now) {
+    // PRO-ceremony: the intro countdown ends, the match goes live
+    if (updateIntroPhase(this.#match, now)) {
+      this.#broadcast({ t: 'matchLive', ...matchSnapshot(this.#match, now) });
+      this.#roster();
+    }
+    if (this.#match.phase !== 'playing') { this.#stepRestart(now); return; }
     const reason = endReason(this.#match, this.#players.values(), now);
     if (reason !== null) {
-      const result = endMatch(this.#match, this.#players.values(), now, reason);
+      const medals = matchEndMedals(this.#medals, this.#players.values()); // PRO-ceremony: flawless and the medal totals
+      const result = { ...endMatch(this.#match, this.#players.values(), now, reason, voteCandidatesFor(MAP_IDS, this.#map.id)), medals };
       const roster = [...this.#players.values()];
       this.#log?.info('match end', { reason, number: result.number });
       this.#broadcast({ t: 'matchEnd', ...result });
       this.#hook('matchEnd', { result, players: roster, mode: this.#match.mode, nowMs: now });
       this.#roster();
-      return;
     }
+  }
+
+  #stepRestart(now) {
     if (shouldRestart(this.#match, now)) {
+      this.#nextMapId = tallyVotes(this.#match); // PRO-ceremony: SPEC 34.4, null when nobody could vote
       this.#switchMap(this.#match.number + 1); // SPEC 28: before respawns, so they land on the new map
       for (const p of this.#players.values()) {
         p.kills = 0;
@@ -318,13 +332,26 @@ export class GameRoom {
         this.#respawn(p, now);
         p.protectedUntil = -Infinity;
       }
-      this.#startMatch(now);
+      this.#medals = newMedalTracker(); // PRO-ceremony: medals are per match
+      this.#startMatch(now, true); // PRO-ceremony: a restart runs the intro countdown
     }
   }
 
+  // PRO-ceremony begin (SPEC 34.4): one vote per player, only during the end screen, only for an offered map
+  handleVote(id, mapId) {
+    const p = this.#players.get(id);
+    if (!p || !recordVote(this.#match, id, mapId)) return;
+    this.#broadcast({ t: 'vote', counts: voteCounts(this.#match) });
+  }
+  // PRO-ceremony end
+
   // SPEC 28: the map rotates with the match number; pickups and grenades are rebuilt for it.
+  #mapForNumber = 1; // PRO-ceremony: the match number the current map was chosen for (the vote decides once)
   #switchMap(matchNumber) {
-    const next = MAPS[mapForMatch(matchNumber)];
+    if (this.#mapForNumber === matchNumber && this.#nextMapId === null) return; // already chosen for this match
+    const next = MAPS[this.#nextMapId ?? mapForMatch(matchNumber)]; // PRO-ceremony: the vote wins over the rotation
+    this.#nextMapId = null;
+    this.#mapForNumber = matchNumber;
     if (next === this.#map) return;
     this.#map = next;
     this.#pickups = buildPickups(this.#map.pickups);
@@ -345,9 +372,9 @@ export class GameRoom {
     }
   }
 
-  #startMatch(now) {
+  #startMatch(now, intro = false) {
     this.#fx = []; // SPEC 24: no effects carry over
-    startMatch(this.#match, now);
+    startMatch(this.#match, now, { intro });
     this.#switchMap(this.#match.number);
     this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
     this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number, map: describeMap(this.#map), pickups: describePickups(this.#pickups) });
@@ -407,7 +434,7 @@ export class GameRoom {
       if (best === null || r.applied > best.applied) best = { victim, zone: acc.zone, dist: acc.dist, applied: r.applied, kill: r.killed };
     }
     this.#sendTo(p, { t: 'verdict', target: best.victim.id, zone: best.zone, dmg: best.applied, dist: best.dist, kill: best.kill });
-    for (const v of killed) this.#kill(p.id, p.name, v, now);
+    for (const v of killed) this.#kill(p.id, p.name, v, now, { zone: best.victim === v ? best.zone : null, dist: best.dist }); // PRO-ceremony: medal inputs
   }
 
   #throw(p) {
@@ -444,13 +471,16 @@ export class GameRoom {
   }
 
   // A self-kill (own grenade) counts a death and no kill. The killer may have left the room.
-  #kill(killerId, killerName, victim, now) {
+  #kill(killerId, killerName, victim, now, { zone = null, dist = NaN } = {}) {
     victim.alive = false;
     victim.deaths += 1;
     victim.respawnAt = now + RESPAWN_MS;
     const killer = this.#players.get(killerId);
     if (killer && killer !== victim) killer.kills += 1;
     scoreKill(this.#match, killer, victim);
+    // PRO-ceremony (SPEC 34.3): medals are judged here, where the kill is authoritative, and broadcast with the kill
+    const awarded = recordKillMedals(this.#medals, { killerId, victimId: victim.id, isHeadshot: zone === 'head', nowMs: now, dist });
+    if (awarded.length) this.#broadcast({ t: 'medal', id: killerId, name: killerName, medals: awarded });
     // SPEC 25.1: kill and assist XP
     if (killer && killer !== victim) this.#award(killer, XP.kill);
     for (const aid of assistsFor(victim.progress, killerId, now)) {

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { NAME_TAG, nameTagLayout, teamColorHex } from './arenaStyle.js';
 import { applyKitAccent } from './avatars.js';
 import { PLAYER } from '../shared/constants.js';
+import { trimHistory } from './ceremony.js'; // PRO-ceremony
 
 const INTERP_DELAY_MS = 100; // render remote players ~3 ticks in the past so there is always a pair to blend
 
@@ -51,10 +52,42 @@ export class RemotePlayers {
 
   push(players, selfId) {
     const others = new Map();
+    const now = performance.now();
     for (const p of players) if (p.id !== selfId) others.set(p.id, p);
-    this.#buffer.push({ t: performance.now(), players: others });
+    this.#buffer.push({ t: now, players: others });
     if (this.#buffer.length > 30) this.#buffer.shift();
+    // PRO-ceremony (SPEC 34.5): 6 s of history per player for the kill cam
+    for (const [id, p] of others) {
+      let h = this.#history.get(id);
+      if (!h) { h = []; this.#history.set(id, h); }
+      h.push({ t: now, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch ?? 0, h: p.h });
+      trimHistory(h, now);
+    }
+    for (const id of this.#history.keys()) if (!others.has(id)) this.#history.delete(id);
+    this.#last = others;
   }
+
+  // PRO-ceremony begin (SPEC 34.5 / 34.6)
+  #history = new Map();
+  #last = new Map();
+  #hidden = new Set();
+
+  historyOf(id) {
+    return this.#history.get(id) ?? [];
+  }
+
+  // The last snapshot's other players, for the minimap.
+  lastPlayers() {
+    return [...this.#last.values()];
+  }
+
+  // Hides a player's mesh while the kill cam looks out of their eyes.
+  setHidden(id, hidden) {
+    if (hidden) this.#hidden.add(id); else this.#hidden.delete(id);
+    const mesh = this.#meshes.get(id);
+    if (mesh && hidden) mesh.visible = false;
+  }
+  // PRO-ceremony end
 
   update(now) {
     const buf = this.#buffer;
@@ -73,7 +106,7 @@ export class RemotePlayers {
       const mesh = this.#meshes.get(id) ?? this.#create(id);
       mesh.position.set(lerp(pa.x, pb.x, k), lerp(pa.y, pb.y, k), lerp(pa.z, pb.z, k));
       mesh.rotation.y = lerpAngle(pa.yaw, pb.yaw, k);
-      mesh.visible = pb.alive === 1;
+      mesh.visible = pb.alive === 1 && !this.#hidden.has(id); // PRO-ceremony: hidden while the kill cam uses their eyes
       if (mesh.userData.name !== pb.name) this.#setTag(mesh, pb.name);
       if (mesh.userData.team !== pb.tm) this.#setTeam(mesh, id, pb.tm);
       // SPEC 23: a crouched or sliding body is squashed to its hitbox height; the tag stays above the head.

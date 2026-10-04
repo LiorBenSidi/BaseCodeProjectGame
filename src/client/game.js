@@ -1,4 +1,5 @@
-import { INPUT_DT, PLAYER } from '../shared/constants.js';
+import { INPUT_DT, PLAYER, RESPAWN_MS } from '../shared/constants.js';
+import { killcamWindow, killcamSample } from './ceremony.js'; // PRO-ceremony: SPEC 34.5
 import { WEAPONS } from '../shared/weapons.js';
 import { stepPlayer, eyeOf } from '../shared/movement.js';
 import { ClockSync } from './clockSync.js';
@@ -41,6 +42,11 @@ export class Game {
   #net = null;
   #name = '';
   #me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, alive: false };
+  // PRO-ceremony begin (SPEC 34)
+  #killcam = null; // { id, name, weapon, startedAt, from, to, duration }
+  #lastShotAt = new Map(); // player id -> performance.now() of their last shot, for the minimap reveal
+  #myTeam = -1;
+  // PRO-ceremony end
   #id = null;
   #seq = 0;
   #pending = [];
@@ -81,6 +87,7 @@ export class Game {
     this.#weaponView = new WeaponView(this.#gfx.camera); // SPEC 29.4
     this.#gfx.scene.add(this.#gfx.camera); // the view model is a child of the camera
     window.addEventListener('keydown', (e) => {
+      if ((e.code === 'Digit1' || e.code === 'Digit2') && !e.repeat) { const c = this.#hud.voteCandidate(e.code === 'Digit1' ? 0 : 1); if (c && this.#hud.castVote(c)) return; } // PRO-ceremony: SPEC 34.4 vote keys
       if (e.code === 'Tab') { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
       if (e.code === 'KeyG' && !e.repeat && this.#input.locked) this.throwGrenade();
       // SPEC 20.3: weapon intents; the server's state machine decides whether they take effect.
@@ -241,17 +248,22 @@ export class Game {
       welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#setMap(m.map); this.#pickups.setSpots(m.pickups); },
       pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
       snap: (m) => this.#onSnapshot(m),
-      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
+      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) { this.#threat(m.from[0], m.from[2]); this.#lastShotAt.set(m.id, performance.now()); } this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
       verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
       boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
         if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
         if (m.killer === this.#id) { this.#cue('kill', { mine: true }); const b = m.multiText ?? m.streakText; if (b) this.#hud.banner(b); } else if (m.streakText && m.streak >= 5) this.#hud.killFeed(`${m.killerName} is on a ${m.streak} kill streak: ${m.streakText}`);
-        if (m.victim === this.#id) this.#cue('death');
+        if (m.victim === this.#id) { this.#cue('death'); this.#startKillcam(m); } // PRO-ceremony: SPEC 34.5
       },
       chat: (m) => this.#hud.chat({ name: m.name, team: m.team, text: m.text }),
-      matchEnd: (m) => { this.#hud.matchEnd(m, this.#id); this.#cue('matchEnd'); }, // SPEC 22
+      matchEnd: (m) => { this.#hud.matchEnd(m, this.#id, { onVote: (mapId) => this.#net.send({ t: 'vote', mapId }) }); this.#cue('matchEnd'); this.#endKillcam(); }, // SPEC 22 + PRO-ceremony vote
+      // PRO-ceremony begin (SPEC 34)
+      matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
+      vote: (m) => this.#hud.votes(m.counts),
+      medal: (m) => { if (m.id === this.#id) { this.#hud.medal(m.medals); this.#cue('kill', { mine: true }); } },
+      // PRO-ceremony end
       matchStart: (m) => { this.#hud.matchStart(); this.#cue('matchStart'); if (m.map) { this.#setMap(m.map); this.#pickups.setSpots(m.pickups); this.#hud.killFeed(`Map: ${m.map.name}`); } },
       // SPEC 24 / 25 feedback lines
       ability: (m) => { if (m.id === this.#id && m.denied) this.#hud.abilityDenied(m.slot, m.denied); this.#cue('ability', { denied: !!m.denied, mine: m.id === this.#id }); },
@@ -282,6 +294,7 @@ export class Game {
     this.#combat.setPlayers(snap.players);
     const mine = snap.players.find((p) => p.id === this.#id);
     if (!mine) return;
+    if (typeof mine.tm === 'number') this.#myTeam = mine.tm; // PRO-ceremony: minimap ally / enemy
 
     this.#pending = this.#pending.filter((c) => c.seq > snap.ack);
     Object.assign(this.#me, {
@@ -410,6 +423,28 @@ export class Game {
     this.#fps.since = now;
   }
 
+  // PRO-ceremony begin (SPEC 34.5): the kill cam replays the killer's last seconds from their eyes until the respawn
+  #startKillcam(m) {
+    if (!m.killer || m.killer === this.#id) return;
+    const history = this.#remote.historyOf(m.killer);
+    if (history.length < 2) return;
+    const now = performance.now();
+    const win = killcamWindow(now, RESPAWN_MS);
+    const last = this.#remote.lastPlayers().find((p) => p.id === m.killer);
+    const weapon = last?.w ? (WEAPONS[last.w]?.name ?? last.w) : '';
+    this.#killcam = { id: m.killer, name: m.killerName ?? 'Unknown', weapon, startedAt: now, ...win };
+    this.#remote.setHidden(m.killer, true);
+    this.#hud.killcam({ name: this.#killcam.name, weapon });
+  }
+
+  #endKillcam() {
+    if (!this.#killcam) return;
+    this.#remote.setHidden(this.#killcam.id, false);
+    this.#killcam = null;
+    this.#hud.killcam(null);
+  }
+  // PRO-ceremony end
+
   #frame(now) {
     requestAnimationFrame((t) => this.#frame(t));
     const dt = Math.min(0.1, (now - this.#lastFrame) / 1000); // clamp: a background tab must not flood the server
@@ -442,6 +477,22 @@ export class Game {
     this.#weaponView?.setVisible(this.#me.alive && !scoped);
     this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
     this.#footsteps(dt, speed);
+    // PRO-ceremony begin (SPEC 34.5 / 34.6)
+    if (this.#killcam) {
+      const kc = this.#killcam;
+      const elapsed = now - kc.startedAt;
+      if (elapsed >= kc.duration + 400 || this.#me.alive) this.#endKillcam();
+      else {
+        const sample = killcamSample(this.#remote.historyOf(kc.id), kc.from + Math.min(elapsed, kc.duration));
+        if (sample) {
+          camera.position.set(sample.x, sample.y + eyeOf({ h: sample.h }), sample.z);
+          camera.rotation.set(sample.pitch, sample.yaw, 0);
+          this.#weaponView?.setVisible(false);
+        }
+      }
+    }
+    this.#hud.minimap(this.#map, { x: this.#me.x, z: this.#me.z, yaw: this.#input.yaw }, this.#remote.lastPlayers(), { now, team: this.#myTeam, lastShotAt: this.#lastShotAt });
+    // PRO-ceremony end
     renderer.render(scene, camera);
   }
 }

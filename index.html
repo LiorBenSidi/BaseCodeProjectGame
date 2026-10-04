@@ -36,7 +36,18 @@
         <div id="xp-bar" aria-label="Experience"><div id="xp-fill"></div><span id="xp-label">LVL 1  0 / 100 XP</span></div>
       </div>
       <div id="perk-offer" hidden aria-label="Perk offer"></div>
-      <div id="match-end" hidden><div id="match-end-title"></div><div id="match-end-sub"></div><div class="match-end-hint">Next match starts shortly</div></div>
+      <div id="match-end" hidden>
+        <div id="match-end-title"></div>
+        <div id="match-end-sub"></div>
+        <ol id="podium" aria-label="Top players"></ol>
+        <div id="my-medals" aria-label="Your medals"></div>
+        <div id="vote" aria-label="Next map vote" hidden><p class="vote-title">Vote for the next map</p><div id="vote-options"></div></div>
+        <div class="match-end-hint" id="match-end-hint">Next match starts shortly</div>
+      </div>
+      <div id="intro" hidden aria-live="assertive"><div id="intro-count"></div><div id="intro-sub"></div></div>
+      <div id="killcam" hidden><span class="kc-label">KILLCAM</span><span id="killcam-who"></span></div>
+      <div id="medals" aria-live="polite"></div>
+      <canvas id="minimap" width="160" height="160" aria-label="Minimap"></canvas>
       <div id="feed"></div>
       <div id="hit-info"></div>
       <div id="combat-log" aria-live="polite"></div>

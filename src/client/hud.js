@@ -3,6 +3,10 @@
 // player named "<img src=x onerror=...>" from becoming stored XSS in everyone else's browser.
 // All state derivation lives in hudModel.js (pure, unit tested); this file only moves it into the DOM.
 
+import { introText, podium, mvp, medalLines, voteView, minimapLayout } from './ceremony.js'; // PRO-ceremony: SPEC 34
+import { MEDALS } from '../shared/medals.js'; // PRO-ceremony
+import { MAPS } from '../shared/maps.js'; // PRO-ceremony: vote names
+
 import { CHAT_KEEP } from '../shared/social.js';
 import { deriveAbilityChips, deriveXpBar, perkCards } from './kitUi.js';
 import {
@@ -210,6 +214,7 @@ export class Hud {
     this.#renderHealth(me.hp);
     this.#renderAmmo(me);
     this.#renderMatch(match);
+    this.intro(match, now); // PRO-ceremony
     this.#renderKit(self);
     this.#renderRespawn(me, now);
     this.#renderFeed(now);
@@ -228,19 +233,162 @@ export class Hud {
     if (!st.ending) this.setScoreboardVisible(false);
   }
 
-  matchEnd(m, myId) {
+  // PRO-ceremony begin (SPEC 34.2 / 34.4): podium, my medals, the next map vote
+  #vote = { candidates: [], counts: {}, mine: null, onVote: null };
+  #introEl = $('intro');
+  #introCount = $('intro-count');
+  #introSub = $('intro-sub');
+  #lastIntro = null;
+  #killcamEl = $('killcam');
+  #killcamWho = $('killcam-who');
+  #medalsEl = $('medals');
+  #minimap = $('minimap');
+
+  matchEnd(m, myId, { onVote = null } = {}) {
     if (!this.#endScreen) return;
     this.#endTitle.textContent = deriveMatchEndText(m, myId);
-    const top = (m.ranking ?? []).slice(0, 3).map((r) => `${r.name} ${r.k}/${r.d}`).join('   ');
-    this.#endSub.textContent = top ? `Top: ${top}` : '';
+    const top = mvp(m.ranking ?? []);
+    this.#endSub.textContent = top ? `MVP: ${top.name}` : '';
+    const list = $('podium');
+    if (list) {
+      list.replaceChildren(...podium(m.ranking, m.medals ?? {}, myId).map((r) => {
+        const li = document.createElement('li');
+        li.className = `${r.rank === 1 ? 'first' : ''} ${r.me ? 'me' : ''}`.trim();
+        const rank = document.createElement('span'); rank.className = 'rank'; rank.textContent = `#${r.rank}`;
+        const name = document.createElement('span'); name.className = 'name'; name.textContent = r.name; // textContent only: names are hostile
+        const kd = document.createElement('span'); kd.className = 'kd'; kd.textContent = `${r.k} / ${r.d}  (${r.kd})`;
+        const pm = document.createElement('span'); pm.className = 'pm'; pm.textContent = r.medals ? `${r.medals} medal${r.medals === 1 ? '' : 's'}` : '';
+        li.append(rank, name, kd, pm);
+        return li;
+      }));
+    }
+    const mine = $('my-medals');
+    if (mine) mine.replaceChildren(...medalLines(m.medals ?? {}, myId).map((l) => { const e = document.createElement('span'); e.textContent = `${l.name}${l.count > 1 ? ` x${l.count}` : ''}`; return e; }));
+    this.#vote = { candidates: m.voteCandidates ?? [], counts: {}, mine: null, onVote };
+    this.#renderVote();
     this.#endScreen.hidden = false;
-    this.setScoreboardVisible(true);
+    this.setScoreboardVisible(false); // the podium replaces the raw board; Tab still opens it
+  }
+
+  votes(counts) {
+    this.#vote.counts = counts ?? {};
+    this.#renderVote();
+  }
+
+  // Cast my vote (click or key); the server broadcasts the counts back.
+  castVote(mapId) {
+    if (!this.#vote.candidates.includes(mapId)) return false;
+    this.#vote.mine = mapId;
+    this.#vote.onVote?.(mapId);
+    this.#renderVote();
+    return true;
+  }
+
+  voteCandidate(index) {
+    return this.#vote.candidates[index] ?? null;
+  }
+
+  #renderVote() {
+    const box = $('vote'), opts = $('vote-options');
+    if (!box || !opts) return;
+    const names = Object.fromEntries(Object.values(MAPS).map((m) => [m.id, m.name]));
+    const view = voteView(this.#vote.candidates, this.#vote.counts, this.#vote.mine, names);
+    box.hidden = view.length === 0;
+    opts.replaceChildren(...view.map((v) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = v.mine ? 'mine' : '';
+      b.style.setProperty('--share', `${Math.round(v.share * 100)}%`);
+      const bar = document.createElement('i');
+      const label = document.createElement('span'); label.textContent = `${v.key}  ${v.name}`;
+      const small = document.createElement('small'); small.textContent = `${v.votes} vote${v.votes === 1 ? '' : 's'}`;
+      label.append(small);
+      b.append(bar, label);
+      b.addEventListener('click', () => this.castVote(v.id));
+      return b;
+    }));
   }
 
   matchStart() {
     if (this.#endScreen) this.#endScreen.hidden = true;
     this.setScoreboardVisible(false);
   }
+
+  // SPEC 34.1: intro countdown from the match snapshot; GO flashes for the first second of play.
+  intro(match, now = Date.now()) {
+    if (!this.#introEl) return;
+    const phase = match?.phase;
+    if (phase === 'ending') { const hint = $('match-end-hint'); if (hint) hint.textContent = match.left > 0 ? `Next match in ${match.left}s` : 'Next match starting'; }
+    if (phase === 'intro') {
+      const text = introText(match.left);
+      if (text !== this.#lastIntro) { this.#lastIntro = text; this.#introCount.textContent = text; this.#introCount.classList.remove('go'); this.#introCount.style.animation = 'none'; void this.#introCount.offsetWidth; this.#introCount.style.animation = ''; }
+      this.#introSub.textContent = 'Get ready';
+      this.#introEl.hidden = false;
+      this.#goUntil = null;
+    } else if (this.#lastIntro !== null && this.#lastIntro !== 'GO') {
+      this.#lastIntro = 'GO';
+      this.#introCount.textContent = 'GO';
+      this.#introCount.classList.add('go');
+      this.#introSub.textContent = '';
+      this.#goUntil = now + 900;
+    } else if (this.#goUntil !== null && now >= this.#goUntil) {
+      this.#goUntil = null;
+      this.#lastIntro = null;
+      this.#introEl.hidden = true;
+    }
+  }
+  #goUntil = null;
+
+  // SPEC 34.3: medal toasts, newest at the bottom, each fades on its own.
+  medal(ids) {
+    if (!this.#medalsEl) return;
+    for (const id of ids) {
+      const def = MEDALS[id];
+      if (!def) continue;
+      const el = document.createElement('div');
+      el.className = 'medal';
+      const b = document.createElement('b'); b.textContent = def.short;
+      const t = document.createElement('span'); t.textContent = def.name;
+      el.append(b, t);
+      this.#medalsEl.append(el);
+      setTimeout(() => el.remove(), 3100);
+    }
+    while (this.#medalsEl.childElementCount > 4) this.#medalsEl.firstElementChild.remove();
+  }
+
+  // SPEC 34.5: the kill cam tag.
+  killcam(info) {
+    if (!this.#killcamEl) return;
+    this.#killcamEl.hidden = !info;
+    if (info) this.#killcamWho.textContent = `${info.name}${info.weapon ? `  ·  ${info.weapon}` : ''}`;
+  }
+
+  // SPEC 34.6: minimap, drawn each frame from the layout.
+  minimap(map, me, others, opts) {
+    const c = this.#minimap;
+    if (!c) return;
+    const on = this.prefs?.minimap !== false && !!map;
+    c.hidden = !on;
+    if (!on) return;
+    const size = c.width;
+    const lay = minimapLayout(map, me, others, size, opts);
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(0, 0, size, size);
+    for (const b of lay.boxes) { ctx.fillStyle = b.tall ? 'rgba(230,237,243,0.55)' : 'rgba(230,237,243,0.3)'; ctx.fillRect(b.x, b.y, b.w, b.h); }
+    for (const d of lay.dots) {
+      ctx.fillStyle = d.kind === 'ally' ? '#5ce1ff' : '#ff5252';
+      ctx.beginPath(); ctx.arc(d.x, d.y, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(lay.me.x, lay.me.y);
+    ctx.rotate(-lay.me.yaw); // yaw 0 looks toward -Z, which is up on a north-up map
+    ctx.fillStyle = '#3ddc84';
+    ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // PRO-ceremony end
 
   notice(text) {
     this.#notice.textContent = text;
