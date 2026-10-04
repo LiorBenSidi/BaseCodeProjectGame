@@ -893,3 +893,14 @@ Account line from `auth.me()` with Sign in (`auth.redirectToLogin(href)`) / Sign
 ### 27.5 Tests
 `tests/unit/rooms.test.js` (4), `persistence.test.js` (5, including the room hooks), `persistenceActor.test.js` (3: identity mapping, a `tdm-*` instance runs TDM and writes registry, result and stats through a fake service-role client, a failing write never reaches the room), `lobby.test.js` (2). `netActor.test.js` updated to the room grammar.
 
+## 28. Content: maps, avatars, sound (Batch 6, D-025)
+
+### 28.1 Map registry and rotation
+`src/shared/maps.js`: `MAPS` = `arena` (the original `MAP`), `foundry` (two raised decks joined by a bridge over a sunken lane, half 36), `crossfire` (a plus of 4 m walls splitting the floor into four rooms around an open hub, half 40). Each map: `{ id, name, half, boxes, spawns, pickups }` with 8 spawns and 9 pickup spots including one sniper and at least two health. `mapForMatch(number)` rotates in registry order starting at `arena` for match 1; an empty room resets to match 0, so a fresh room always opens on Arena. `GameRoom` keeps `#map`, feeds its boxes / half to movement, hitscan, grenades, abilities, effects and spawns, and switches map (`#switchMap`) before the restart respawns so players land on the new map; pickups and grenades are rebuilt. `welcome.map` and `matchStart.map` carry `describeMap(m)` = `{ id, name, half, boxes }`; `matchStart.pickups` carries the new spots. The client (`Game.#setMap`) replaces its prediction collision set and calls `scene.setMap`, which rebuilds the arena group (floor, grid, boxes) and disposes the old geometry; the kill feed shows "Map: <name>". Validity test: every spawn and pickup stands on free ground, raised pickups sit on a box top (`tests/unit/maps.test.js`).
+
+### 28.2 Kit avatars
+`src/client/avatars.js`: the shared box figure gets one accent group per kit (`KIT_ACCENTS`, index = `kt` from the snapshot): Vanguard shoulder plate and pauldrons, Phantom hood and cloak, Engineer backpack and antenna, Medic chest cross. The body material stays shared so team color still drives the figure. `RemotePlayers` reapplies the accent when `kt` changes (kit swap at respawn, decoys copy their owner's kit).
+
+### 28.3 Procedural sound
+`src/client/audio.js`: no audio assets; every cue is a WebAudio oscillator sweep with an optional noise burst (`CUES`: per-weapon shots, hit, kill, death, boom, pickup, ability, denied, level, match). `cueFor(event, data)` is pure and keeps private cues private (another player's kill, pickup or denied ability is silent). `falloff(d)` attenuates world-positioned cues (full inside 4 m, silent at 60 m). The context is created inside the Play click (`Game.join` calls `unlock()`), and the module is inert without an `AudioContext`. Settings panel: "Sound" checkbox (`bca.sound`, default on).
+

@@ -6,7 +6,7 @@
 // enforces the rules that matter for fairness (replay protection, command budget, fire rate).
 
 import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER } from '../shared/constants.js';
-import { MAP } from '../shared/map.js';
+import { MAPS, mapForMatch, describeMap } from '../shared/maps.js'; // SPEC 28: one map per match
 import { stepPlayer, eyeOf, heightOf } from '../shared/movement.js';
 import { aimDir } from '../shared/hitscan.js';
 import { applyDamage, resolveShot } from '../shared/combat.js';
@@ -37,7 +37,8 @@ export class GameRoom {
   #tick = 0;
   #grenades = [];
   #nextGrenadeId = 1;
-  #pickups = buildPickups(MAP.pickups);
+  #map = MAPS[mapForMatch(1)];
+  #pickups = buildPickups(this.#map.pickups);
   #fx = []; // SPEC 24 active effects: shields, decoys, heal zones, stasis fields
   #nextFxId = 1;
   #now;
@@ -117,7 +118,7 @@ export class GameRoom {
     };
     this.#place(p);
     this.#players.set(id, p);
-    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
+    this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), map: describeMap(this.#map), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
     this.#roster();
@@ -199,7 +200,7 @@ export class GameRoom {
       this.#throw(p);
     }
     this.#stepGrenades(now);
-    stepEffects(this.#fx, this.#players.values(), now, TICK_MS, MAP.boxes);
+    stepEffects(this.#fx, this.#players.values(), now, TICK_MS, this.#map.boxes);
     for (const p of this.#players.values()) {
       if (!p.alive && now >= p.respawnAt) this.#respawn(p, now);
     }
@@ -221,7 +222,7 @@ export class GameRoom {
       const raw = p.queue.shift();
       const cmd = slow < 1 ? { ...raw, fwd: raw.fwd * slow, right: raw.right * slow, sprint: false } : raw;
       if (p.alive && p.grapple) applyGrapple(p, cmd.jump, this.#now());
-      if (p.alive) stepPlayer(p, cmd);
+      if (p.alive) stepPlayer(p, cmd, this.#map.boxes, this.#map.half);
       p.yaw = cmd.yaw;
       p.pitch = cmd.pitch;
       p.lastSeq = cmd.seq;
@@ -241,7 +242,7 @@ export class GameRoom {
       p.wantsAbility = null;
       if (this.#match.phase !== 'playing') continue;
       const others = [...this.#players.values()];
-      const r = useAbility(p, slot, { nowMs: now, boxes: MAP.boxes, half: MAP.half, players: others, fx: this.#fx, nextFxId: () => this.#nextFxId++, cdMul: p.progress.mods.cdMul });
+      const r = useAbility(p, slot, { nowMs: now, boxes: this.#map.boxes, half: this.#map.half, players: others, fx: this.#fx, nextFxId: () => this.#nextFxId++, cdMul: p.progress.mods.cdMul });
       if (r.ok) this.#broadcast({ t: 'ability', id: p.id, ability: r.ability, slot, cd: r.cooldownMs });
       else this.#sendTo(p, { t: 'ability', id: p.id, slot, denied: r.reason });
     }
@@ -293,6 +294,7 @@ export class GameRoom {
       return;
     }
     if (shouldRestart(this.#match, now)) {
+      this.#switchMap(this.#match.number + 1); // SPEC 28: before respawns, so they land on the new map
       for (const p of this.#players.values()) {
         p.kills = 0;
         p.deaths = 0;
@@ -305,6 +307,15 @@ export class GameRoom {
       }
       this.#startMatch(now);
     }
+  }
+
+  // SPEC 28: the map rotates with the match number; pickups and grenades are rebuilt for it.
+  #switchMap(matchNumber) {
+    const next = MAPS[mapForMatch(matchNumber)];
+    if (next === this.#map) return;
+    this.#map = next;
+    this.#pickups = buildPickups(this.#map.pickups);
+    this.#grenades = [];
   }
 
   #roster() {
@@ -324,8 +335,9 @@ export class GameRoom {
   #startMatch(now) {
     this.#fx = []; // SPEC 24: no effects carry over
     startMatch(this.#match, now);
+    this.#switchMap(this.#match.number);
     this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
-    this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number });
+    this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number, map: describeMap(this.#map), pickups: describePickups(this.#pickups) });
     this.#roster();
   }
 
@@ -342,7 +354,7 @@ export class GameRoom {
     const targets = [];
     for (const q of this.#players.values()) if (q !== p && q.alive) targets.push({ id: q.id, p: q });
     for (const d of decoyTargets(this.#fx)) if (d.fx.owner !== p.id) targets.push(d); // SPEC 24.3 decoys soak bullets
-    const boxes = this.#fx.length ? MAP.boxes.concat(shieldBoxes(this.#fx)) : MAP.boxes; // SPEC 24.3 shields block
+    const boxes = this.#fx.length ? this.#map.boxes.concat(shieldBoxes(this.#fx)) : this.#map.boxes; // SPEC 24.3 shields block
 
     // One ray per pellet, each with its own spread sample; damage is summed per victim and applied once.
     const perVictim = new Map();
@@ -394,8 +406,8 @@ export class GameRoom {
   }
 
   #stepGrenades(now) {
-    const boxes = this.#fx.length ? MAP.boxes.concat(shieldBoxes(this.#fx)) : MAP.boxes; // SPEC 24.3 grenades bounce off shields
-    for (const g of this.#grenades) stepGrenade(g, 1 / TICK_RATE, boxes, MAP.half);
+    const boxes = this.#fx.length ? this.#map.boxes.concat(shieldBoxes(this.#fx)) : this.#map.boxes; // SPEC 24.3 grenades bounce off shields
+    for (const g of this.#grenades) stepGrenade(g, 1 / TICK_RATE, boxes, this.#map.half);
     const exploded = this.#grenades.filter((g) => g.exploded);
     if (exploded.length === 0) return;
     this.#grenades = this.#grenades.filter((g) => !g.exploded);
@@ -460,7 +472,7 @@ export class GameRoom {
   #place(p) {
     const enemies = [];
     for (const q of this.#players.values()) if (q !== p) enemies.push(q);
-    const s = pickSpawn(MAP.spawns, enemies, this.#random);
+    const s = pickSpawn(this.#map.spawns, enemies, this.#random);
     p.x = s.x; p.y = 0; p.z = s.z;
     p.vx = 0; p.vy = 0; p.vz = 0;
     p.onGround = true;

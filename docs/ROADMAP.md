@@ -36,6 +36,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - ~~Kits with abilities and in-match progression (XP, levels, perks).~~ Done 2026-10-04 (D-023).
 - ~~Rooms and lobby (room ids with mode, registry, quick play, join by code).~~ Done 2026-10-04 (D-024).
 - ~~Sign-in binding, match results, lifetime stats and leaderboard.~~ Done 2026-10-04 (D-024).
+- ~~Content: map registry with rotation (Arena, Foundry, Crossfire), kit avatars, procedural sound.~~ Done 2026-10-04 (D-025).
 
 ## Phase 3 - Rooms and lobby
 - Multiple `GameRoom` instances, lobby list, matchmaking by capacity.

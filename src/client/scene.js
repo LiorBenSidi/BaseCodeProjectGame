@@ -57,21 +57,33 @@ export function createScene(canvas) {
   fill.position.set(...FILL.position);
   scene.add(fill);
 
-  const size = MAP.half * 2;
+  // SPEC 28: the arena (floor, grid, boxes) lives in one group so a map change can rebuild it.
+  let arena = buildArena(MAP);
+  scene.add(arena);
+  const setMap = (map) => {
+    scene.remove(arena);
+    arena.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+    arena = buildArena(map ?? MAP);
+    scene.add(arena);
+  };
+
+  function buildArena(map) {
+  const group = new THREE.Group();
+  const size = map.half * 2;
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(size, size),
     new THREE.MeshStandardMaterial({ color: FLOOR.color, roughness: FLOOR.roughness, metalness: FLOOR.metalness }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
-  scene.add(floor);
-  const grid = new THREE.GridHelper(size, MAP.half, GRID.center, GRID.line);
+  group.add(floor);
+  const grid = new THREE.GridHelper(size, map.half, GRID.center, GRID.line);
   grid.material.transparent = true;
   grid.material.opacity = GRID.opacity;
   grid.position.y = 0.01;
-  scene.add(grid);
+  group.add(grid);
 
-  MAP.boxes.forEach((b, i) => {
+  map.boxes.forEach((b, i) => {
     const w = b.max[0] - b.min[0];
     const h = b.max[1] - b.min[1];
     const d = b.max[2] - b.min[2];
@@ -85,8 +97,10 @@ export function createScene(canvas) {
     mesh.position.set(b.min[0] + w / 2, b.min[1] + h / 2, b.min[2] + d / 2);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    scene.add(mesh);
+    group.add(mesh);
   });
+  return group;
+  }
 
   function resize() {
     const w = window.innerWidth;
@@ -98,5 +112,5 @@ export function createScene(canvas) {
   window.addEventListener('resize', resize);
   resize();
 
-  return { THREE, renderer, scene, camera };
+  return { THREE, renderer, scene, camera, setMap };
 }

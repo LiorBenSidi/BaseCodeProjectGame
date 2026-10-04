@@ -1,6 +1,6 @@
 // Settings panel on the menu screen (docs/SPEC.md 19.2). DOM glue only: the values, defaults, clamping and
 // persistence live in settings.js and deviceMode.js, which the unit tests cover.
-import { getSensitivity, getShowFps, getTouchControls, setSensitivity, setShowFps, setTouchControls } from './settings.js';
+import { getSensitivity, getShowFps, getSound, getTouchControls, setSensitivity, setShowFps, setSound, setTouchControls } from './settings.js';
 
 export function bindSettingsPanel(doc, game) {
   const panel = doc.getElementById('settings');
@@ -41,4 +41,11 @@ export function bindSettingsPanel(doc, game) {
   fpsBox.checked = showFps;
   game.setShowFps(showFps);
   fpsBox.addEventListener('change', () => game.setShowFps(setShowFps(undefined, fpsBox.checked)));
+  // SPEC 28.3 sound toggle
+  const soundBox = doc.getElementById('sound');
+  if (soundBox) {
+    soundBox.checked = getSound();
+    game.setSound(soundBox.checked);
+    soundBox.addEventListener('change', () => game.setSound(setSound(undefined, soundBox.checked)));
+  }
 }

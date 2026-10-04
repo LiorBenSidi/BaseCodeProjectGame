@@ -260,3 +260,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Affects: docs/SPEC.md sections 26 and 27; `src/shared/rooms.js`, `src/shared/persistence.js`, `src/server/GameRoom.js` (hooks, userId), `src/server/matchSession.js`, `base44/actors/Match/{matchHost,persistence,entry}.js|ts`, `base44/entities/*.jsonc`, `src/client/{lobby,main,game,hud,netActor}.js`, `index.html`, `src/client/style.css`.
 - Shipping note: entity schemas and the actor need their own owner actions (`base44 entities push`, actor deploy); merge + Publish covers the frontend only.
 
+### D-025 (W1) Content without binary assets: map registry, kit avatars, procedural sound
+- Status: decided
+- Date: 2026-10-04
+- Decision: V1 content is code, not files. Maps are box layouts in a registry rotated per match by the server (one source of truth for collision, spawns and pickups; the client renders what the server describes). Avatars are kit accents on the shared figure instead of per-kit models. Sound is synthesized in WebAudio. This keeps the repo asset-free, the actor bundle small, and every piece unit-testable; glTF models and recorded audio can replace each layer later behind the same interfaces (`describeMap`, `applyKitAccent`, `CUES`).
+- Source: owner's V1 plan 2026-10-04 ("maps, objects, players, avatars"); the approved batch order's Phase 4 content.
+- Affects: docs/SPEC.md section 28; `src/shared/maps.js`, `src/server/GameRoom.js` (map per match), `src/client/{scene,game,remote,avatars,audio,settings,settingsPanel}.js`, `index.html`.
+

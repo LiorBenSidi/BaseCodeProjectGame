@@ -14,6 +14,8 @@ import { Input } from './input.js';
 import { Network } from './net.js';
 import { ActorNetwork, roomIdFromLocation } from './netActor.js';
 import { createClient } from '@base44/sdk';
+import { MAP } from '../shared/map.js';
+import { Audio, cueFor, falloff } from './audio.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
 import { TouchControls } from './touch.js';
@@ -54,6 +56,8 @@ export class Game {
   #self = null; // SPEC 24.5 private block of the last snapshot
   #sdk = null;
   #roomId = null;
+  #map = MAP; // SPEC 28: the current map's collision set, replaced on welcome / matchStart
+  #audio = new Audio(); // SPEC 28.3
   #threats = [];
   #lastHp = null;
   #eyeY = null; // SPEC 23 smoothed camera height
@@ -110,6 +114,18 @@ export class Game {
   }
 
   /** SPEC 19.2: FPS readout, measured from frame deltas and refreshed twice a second. */
+  setSound(on) {
+    this.#audio.setEnabled(on);
+  }
+
+  // SPEC 28.3: a cue at a world position is attenuated by its distance from the local player.
+  #cue(event, data = {}, at = null) {
+    const id = cueFor(event, data);
+    if (!id) return;
+    const d = at ? Math.hypot(at[0] - this.#me.x, at[2] - this.#me.z) : 0;
+    this.#audio.play(id, falloff(d));
+  }
+
   setShowFps(on) {
     this.#fps.on = on === true;
     const el = document.getElementById('fps');
@@ -173,6 +189,13 @@ export class Game {
       pos: [this.#me.x, this.#me.y, this.#me.z], rtt: this.#clock.rtt, clockOffset: this.#clock.offset };
   }
 
+  // SPEC 28: a map description from the server replaces the arena and the prediction collision set.
+  #setMap(desc) {
+    if (!desc || !Array.isArray(desc.boxes)) return;
+    this.#map = { half: Number(desc.half) || MAP.half, boxes: desc.boxes };
+    this.#gfx.setMap?.({ ...this.#map, id: desc.id, name: desc.name });
+  }
+
   // SPEC 26: an SDK client for lobby reads on the actor transport; null on the Node dev server.
   lobbyClient() {
     const appId = import.meta.env?.VITE_BASE44_APP_ID;
@@ -182,23 +205,24 @@ export class Game {
   }
 
   join(name, kit = this.#kit, roomId = roomIdFromLocation(window.location.search)) {
+    this.#audio.unlock(); // SPEC 28.3: join runs inside the Play click, the gesture browsers require
     this.#name = name;
     this.#kit = KITS[kit] ? kit : this.#kit;
     this.#roomId = roomId;
     this.#hud.setRoom(roomId);
     const handlers = {
-      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#pickups.setSpots(m.pickups); },
-      pickup: (m) => this.#hud.killFeed(pickupText(m)),
+      welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#setMap(m.map); this.#pickups.setSpots(m.pickups); },
+      pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
       snap: (m) => this.#onSnapshot(m),
-      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); },
-      verdict: (m) => this.#combat.verdict(m),
-      boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); },
-      kill: (m) => this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`),
-      matchEnd: (m) => this.#hud.matchEnd(m, this.#id), // SPEC 22
-      matchStart: () => this.#hud.matchStart(),
+      shot: (m) => { this.#addTracer(m); if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) this.#cue('hit'); },
+      boom: (m) => { this.#combat.boom(m, this.#id); this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
+      kill: (m) => { this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`); if (m.killer === this.#id) this.#cue('kill', { mine: true }); if (m.victim === this.#id) this.#cue('death'); },
+      matchEnd: (m) => { this.#hud.matchEnd(m, this.#id); this.#cue('matchEnd'); }, // SPEC 22
+      matchStart: (m) => { this.#hud.matchStart(); this.#cue('matchStart'); if (m.map) { this.#setMap(m.map); this.#pickups.setSpots(m.pickups); this.#hud.killFeed(`Map: ${m.map.name}`); } },
       // SPEC 24 / 25 feedback lines
-      ability: (m) => { if (m.id === this.#id && m.denied) this.#hud.abilityDenied(m.slot, m.denied); },
-      xp: (m) => { if (m.levelUp) this.#hud.killFeed(`Level ${m.lvl}: pick a perk (3 / 4)`); },
+      ability: (m) => { if (m.id === this.#id && m.denied) this.#hud.abilityDenied(m.slot, m.denied); this.#cue('ability', { denied: !!m.denied, mine: m.id === this.#id }); },
+      xp: (m) => { if (m.levelUp) { this.#hud.killFeed(`Level ${m.lvl}: pick a perk (3 / 4)`); this.#cue('levelUp'); } },
       perk: (m) => this.#hud.killFeed(`Perk: ${PERKS[m.id]?.name ?? m.id}`),
       pong: (m) => this.#clock.onPong(m, Date.now()),
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
@@ -234,7 +258,7 @@ export class Game {
       // SPEC 24.2: the dash runs inside stepPlayer, so prediction needs its remaining time and direction
       dash: snap.self?.dash ?? 0, dashDx: snap.self?.dashDx ?? 0, dashDz: snap.self?.dashDz ?? 0,
     });
-    if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c);
+    if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c, this.#map.boxes, this.#map.half);
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
     this.#onDamage(mine);
     this.#hud.update(mine, snap.players, Date.now(), snap.match, snap.self);
@@ -285,7 +309,7 @@ export class Game {
       this.#accumulator -= INPUT_DT;
       const s = this.#input.sample();
       const cmd = { seq: ++this.#seq, fwd: s.fwd, right: s.right, jump: s.jump, sprint: s.sprint, crouch: s.crouch, yaw: this.#input.yaw, pitch: this.#input.pitch };
-      if (this.#me.alive) stepPlayer(this.#me, cmd);
+      if (this.#me.alive) stepPlayer(this.#me, cmd, this.#map.boxes, this.#map.half);
       this.#pending.push(cmd);
       outgoing.push(cmd);
     }

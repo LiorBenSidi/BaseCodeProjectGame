@@ -8,6 +8,7 @@ export const KEYS = {
   SENSITIVITY: 'bca.sensitivity',
   TOUCH_CONTROLS: 'bca.touchControls',
   SHOW_FPS: 'bca.showFps',
+  SOUND: 'bca.sound', // SPEC 28.3, default on
 };
 
 function resolveStorage(storage) {
@@ -88,3 +89,27 @@ export function setShowFps(storage, value) {
   }
   return boolVal;
 }
+
+export function getSound(storage) {
+  const store = resolveStorage(storage);
+  if (!store) return true;
+  try {
+    return store.getItem(KEYS.SOUND) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+export function setSound(storage, value) {
+  const store = resolveStorage(storage);
+  const boolVal = Boolean(value);
+  if (store) {
+    try {
+      store.setItem(KEYS.SOUND, String(boolVal));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  return boolVal;
+}
+

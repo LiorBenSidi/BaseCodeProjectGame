@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NAME_TAG, nameTagLayout, teamColorHex } from './arenaStyle.js';
+import { applyKitAccent } from './avatars.js';
 import { PLAYER } from '../shared/constants.js';
 
 const INTERP_DELAY_MS = 100; // render remote players ~3 ticks in the past so there is always a pair to blend
@@ -78,6 +79,8 @@ export class RemotePlayers {
       // SPEC 23: a crouched or sliding body is squashed to its hitbox height; the tag stays above the head.
       const hk = typeof pb.h === 'number' ? Math.max(0.3, pb.h / PLAYER.height) : 1;
       if (mesh.userData.hk !== hk) this.#setHeight(mesh, hk);
+      // SPEC 28.2: kit accent follows the snapshot's kit index
+      if (mesh.userData.kt !== pb.kt) { mesh.userData.kt = pb.kt; applyKitAccent(mesh.userData.body, pb.kt); }
     }
     for (const [id, mesh] of this.#meshes) {
       if (seen.has(id)) continue;
