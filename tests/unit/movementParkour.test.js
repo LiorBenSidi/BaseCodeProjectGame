@@ -15,13 +15,15 @@ const box = (cx, cz, w, d, h, y0 = 0) => ({ min: [cx - w / 2, y0, cz - d / 2], m
 const run = (p, c, n, boxes = [], half = 40) => { for (let i = 0; i < n; i++) stepPlayer(p, c, boxes, half); return p; };
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) <= eps, `${a} ~ ${b}`);
 
-test('sprint: forward input at sprintMul speed; no sprint sideways or backwards', () => {
+test('sprint: sprintMul speed in every direction (SPEC 32.1 omnimovement), nothing without input', () => {
   const p = run(fresh(), cmd({ fwd: 1, sprint: true }), 60);
   near(-p.z, PLAYER.speed * PLAYER.sprintMul);
   const q = run(fresh(), cmd({ right: 1, sprint: true }), 60);
-  near(q.x, PLAYER.speed);
+  near(q.x, PLAYER.speed * PLAYER.sprintMul, 1e-9, 'strafe sprint');
   const r = run(fresh(), cmd({ fwd: -1, sprint: true }), 60);
-  near(r.z, PLAYER.speed);
+  near(r.z, PLAYER.speed * PLAYER.sprintMul, 1e-9, 'backwards sprint');
+  const s = run(fresh(), cmd({ sprint: true }), 60);
+  near(s.x, 0); near(s.z, 0);
 });
 
 test('crouch: hitbox drops to crouchHeight at once, speed to crouchMul, eye follows; standing up needs head room', () => {
@@ -98,7 +100,7 @@ test('mantle: without a jump a 1.5 m ledge is a wall', () => {
 });
 
 test('wall jump: airborne against a wall, a fresh jump press launches away from it, once per airtime', () => {
-  const wall = box(0, -3, 10, 1, 6);
+  const wall = box(0, -2.5, 10, 1, 6); // face at z = -2: reachable in the 0.5 s of air time at walking speed
   const p = fresh();
   step(p, cmd({ fwd: 1, jump: true }), [wall]);
   run(p, cmd({ fwd: 1, jump: false }), 20, [wall]); // reach the wall in the air
@@ -127,11 +129,10 @@ test('wall jump needs a fresh press: holding jump from the ground never wall jum
 });
 
 test('air control: horizontal velocity changes by at most airAccel * dt per step in the air, keeps momentum without input', () => {
-  const p = fresh();
-  step(p, cmd({ jump: true }));
+  const p = fresh({ y: 30, vy: 0, onGround: false }); // high up: 1.37 s of fall, enough air time to measure
   step(p, cmd({ right: 1 }));
   near(p.vx, PLAYER.airAccel * DT, 1e-9);
-  run(p, cmd({ right: 1 }), 20);
+  run(p, cmd({ right: 1 }), 40); // 41 * 0.2 m/s = 8.2 > speed: saturates at the walking speed
   near(p.vx, PLAYER.speed, 1e-9);
   step(p, cmd());
   near(p.vx, PLAYER.speed, 1e-9, 'no input in the air keeps the momentum');

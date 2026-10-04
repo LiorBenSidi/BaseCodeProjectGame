@@ -9,36 +9,44 @@ const W = (o) => Object.freeze({ ...o, bands: Object.freeze(o.bands.map((b) => O
 
 // bands use the combat.js shape { below, damage } so bandDamage/shotDamage apply unchanged.
 // The rifle is byte for byte the Milestone 1 weapon (RIFLE in combatData.js): same interval, same bands.
+// SPEC 32.4: the cosmetic recoil kick of every weapon recovers over this time (client camera only).
+export const RECOIL_RECOVERY_MS = 120;
+
 export const WEAPONS = Object.freeze({
   rifle: W({
     id: 'rifle', name: 'Rifle', slot: 'primary', fireIntervalMs: RIFLE.cooldownMs, range: RIFLE.range,
     magSize: 30, reserve: 90, reloadMs: 2000, switchMs: 400, pellets: 1,
     spreadBase: 0, spreadPerShot: 0.006, spreadDecayPerMs: 0.00005, spreadMax: 0.06,
     recoilPitch: 0.02, recoilYaw: 0.005, bands: RIFLE.bands,
+    adsMs: 250, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
   }),
   smg: W({
     id: 'smg', name: 'SMG', slot: 'primary', fireIntervalMs: 90, range: 60,
     magSize: 35, reserve: 105, reloadMs: 1600, switchMs: 300, pellets: 1,
     spreadBase: 0.012, spreadPerShot: 0.006, spreadDecayPerMs: 0.00006, spreadMax: 0.08,
     recoilPitch: 0.012, recoilYaw: 0.008, bands: [{ below: 12, damage: 18 }, { below: 25, damage: 14 }, { below: 60, damage: 9 }],
+    adsMs: 180, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
   }),
   shotgun: W({
     id: 'shotgun', name: 'Shotgun', slot: 'primary', fireIntervalMs: 800, range: 35,
     magSize: 8, reserve: 32, reloadMs: 2500, switchMs: 500, pellets: 8,
     spreadBase: 0.08, spreadPerShot: 0.02, spreadDecayPerMs: 0.00004, spreadMax: 0.12,
     recoilPitch: 0.06, recoilYaw: 0.015, bands: [{ below: 10, damage: 12 }, { below: 20, damage: 7 }, { below: 35, damage: 3 }],
+    adsMs: 220, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
   }),
   sniper: W({
     id: 'sniper', name: 'Sniper', slot: 'primary', fireIntervalMs: 1200, range: 200,
     magSize: 5, reserve: 20, reloadMs: 3000, switchMs: 600, pellets: 1, scoped: true,
     spreadBase: 0.001, spreadPerShot: 0.05, spreadDecayPerMs: 0.00003, spreadMax: 0.1,
     recoilPitch: 0.08, recoilYaw: 0.002, bands: [{ below: 50, damage: 85 }, { below: 100, damage: 75 }, { below: 200, damage: 65 }],
+    adsMs: 320, adsSensMul: 0.65, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
   }),
   pistol: W({
     id: 'pistol', name: 'Pistol', slot: 'sidearm', fireIntervalMs: 220, range: 70,
     magSize: 12, reserve: 48, reloadMs: 1400, switchMs: 250, pellets: 1,
     spreadBase: 0.006, spreadPerShot: 0.012, spreadDecayPerMs: 0.00007, spreadMax: 0.05,
     recoilPitch: 0.025, recoilYaw: 0.004, bands: [{ below: 15, damage: 22 }, { below: 30, damage: 16 }, { below: 70, damage: 10 }],
+    adsMs: 160, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
   }),
 });
 

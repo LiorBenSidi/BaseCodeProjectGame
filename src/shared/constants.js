@@ -13,22 +13,30 @@ export function isDiagRoom(roomId) {
   return typeof roomId === 'string' && roomId.startsWith(DIAG_ROOM_PREFIX);
 }
 
+// SPEC 32 tuning (D-029: BO6 Omnimovement & Feel).
 export const PLAYER = {
   radius: 0.4, // half-width of the AABB hitbox
   height: 1.8,
   eye: 1.6, // camera height above feet
-  speed: 7, // m/s
+  // SPEC 32 tuning (D-029, BO6 reference): walk 5.6, sprint 7.2, tactical sprint 8.5 m/s, 1.0 m jump apex.
+  speed: 5.6, // m/s, walking
   jump: 8, // m/s initial vertical velocity
-  gravity: 24, // m/s^2
-  // SPEC 23 movement set (D-022). All in metres, seconds or multipliers of `speed`.
-  sprintMul: 1.35, // forward-ish input only
-  crouchHeight: 1.2, // hitbox height while crouched or sliding
-  crouchMul: 0.55, // ground speed while crouched
-  airAccel: 30, // m/s^2 toward the wanted horizontal velocity while airborne (air control)
+  gravity: 32, // m/s^2; apex = jump^2 / (2 gravity) = 1.0 m
+  // SPEC 23 movement set (D-022), retuned by SPEC 32. All in metres, seconds or multipliers of `speed`.
+  sprintMul: 7.2 / 5.6, // SPEC 32.1: sprint in any direction (omnimovement)
+  tacSprintMul: 8.5 / 5.6, // SPEC 32.2: tactical sprint, forward only, in bursts
+  tacBurst: 2.5, // s of tactical sprint per press
+  tacCooldown: 4, // s before the next tactical sprint
+  crouchHeight: 1.2, // hitbox height while crouched, sliding or diving
+  crouchMul: 0.5, // ground speed while crouched
+  airAccel: 12, // m/s^2 toward the wanted horizontal velocity while airborne (air control, weighty jumps)
   stepHeight: 0.55, // a ledge this high is climbed while walking, no jump needed
   mantleHeight: 1.5, // a ledge up to this high is grabbed while airborne and moving into it
-  slideSpeed: 11, // m/s at the start of a slide, decaying to crouch speed over slideTime
-  slideTime: 0.7, // s
+  slideSpeed: 10, // m/s at the start of a slide, decaying to crouch speed over slideTime
+  slideTime: 0.65, // s
+  slideCancelWindow: 0.25, // s from the slide start in which a jump keeps the slide velocity (slide cancel)
+  diveTime: 0.6, // s in the low dive state
+  diveSpeed: 2.5 / 0.6, // m/s, so a dive covers 2.5 m
   wallJumpPush: 6, // m/s away from the wall
   wallJumpMul: 0.9, // of `jump`
   wallJumpsPerAir: 1,

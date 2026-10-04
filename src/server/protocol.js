@@ -25,6 +25,8 @@ function parseCmd(c) {
     jump: !!c.jump,
     sprint: !!c.sprint, // SPEC 23
     crouch: !!c.crouch, // SPEC 23
+    dive: !!c.dive, // SPEC 32.2
+    tac: !!c.tac, // SPEC 32.2 tactical sprint
     yaw: c.yaw,
     pitch: clamp(c.pitch, -MAX_PITCH, MAX_PITCH),
   };

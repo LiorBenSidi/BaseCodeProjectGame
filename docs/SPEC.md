@@ -786,7 +786,7 @@ All in `src/shared/movement.js` (`stepPlayer`, plus `heightOf(p)` and `eyeOf(p)`
 - Snapshot entries gain `h` (rounded to 3 decimals). Remote bodies are squashed to `h / height`; the name tag follows.
 
 ### 23.2 Sprint and slide
-- `sprint` with `fwd > 0` (not crouched, not sliding) multiplies ground speed by `sprintMul` (1.35). Sideways or backward input never sprints.
+- `sprint` with `fwd > 0` (not crouched, not sliding) multiplies ground speed by `sprintMul` (1.35). Sideways or backward input never sprints. **Amended by SPEC 32.1 (D-029): sprint works in every direction and `sprintMul` is 7.2 / 5.6; the numbers in this section are the Batch 3d values, SPEC 32 holds the current table.**
 - Slide: on the ground, with `sprint` held and a horizontal input, a fresh `crouch` press starts a slide of `slideTime` (0.7 s): speed starts at `slideSpeed` (11) and decays linearly to crouch speed, the direction is locked to the input at the start, the hitbox is the crouch height. Holding crouch does not re-trigger; a crouch tap without sprint only crouches. A jump ends the slide (the momentum carries into the air).
 
 ### 23.3 Step-up and mantle
@@ -926,3 +926,49 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 ### 29.6 Tests
 `tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
 
+
+## 32. BO6 feel: tuning, omnimovement, tactical sprint, dive, camera, gunplay, gamepad, aim assist (Pro batch P3, D-029)
+
+Reference: Call of Duty Black Ops 6. Everything in 32.1 and 32.2 is shared deterministic movement (`src/shared/movement.js`,
+server authoritative, client prediction); 32.3 to 32.6 are client only. The server never sees camera feel, recoil or
+aim assist: hits are still resolved from the real view ray.
+
+### 32.1 Tuning table (`PLAYER` in `src/shared/constants.js`)
+
+| Quantity | Batch 3d | SPEC 32 | Note |
+|---|---|---|---|
+| walk `speed` | 7 | 5.6 m/s | |
+| sprint | 9.45 | 7.2 m/s (`sprintMul` 7.2 / 5.6) | any direction (omnimovement) |
+| tactical sprint | none | 8.5 m/s (`tacSprintMul` 8.5 / 5.6) | forward only, `tacBurst` 2.5 s, `tacCooldown` 4 s |
+| crouch | 0.55x | 0.5x (2.8 m/s) | |
+| `jump` / `gravity` | 8 / 24 (1.33 m apex) | 8 / 32 (1.0 m apex) | snappier arc, 0.5 s air time |
+| `airAccel` | 30 | 12 m/s^2 | weightier jumps, less air strafing |
+| `slideSpeed` / `slideTime` | 11 / 0.7 | 10 / 0.65 s | |
+| `slideCancelWindow` | none | 0.25 s | |
+| `diveTime` / `diveSpeed` | none | 0.6 s / 2.5 m per dive | |
+
+Unchanged: `stepHeight`, `mantleHeight`, wall jump, dash (SPEC 24.2).
+
+### 32.2 Movement rules
+- Sprint (`cmd.sprint`) applies in any direction with a horizontal input; with no input it does nothing.
+- Slide: a fresh `crouch` press while sprinting on the ground starts a slide along the input direction (backwards and strafe slides included). Speed decays linearly from `slideSpeed` to crouch speed over `slideTime`. Starting a slide ends a tactical sprint.
+- Slide cancel: a fresh `jump` inside the first `slideCancelWindow` seconds of a slide keeps the current slide velocity through the jump. A later jump still jumps but keeps only the decayed slide speed of that step (unchanged from SPEC 23).
+- Tactical sprint (`cmd.tac`, edge triggered): starts on the ground with `fwd > 0.5`, no slide, no dive, cooldown over. Runs for `tacBurst` seconds at `tacSprintMul` while `fwd > 0.1` and not crouched; ends at once when the forward input stops, the player crouches, slides or dives. Every end starts `tacCooldown`. Timers `p.tac` and `p.tacCd` live on the player and are not in the snapshot: like the slide, the client keeps its own copy.
+- Dive (`cmd.dive`, edge triggered): on the ground while sprinting or tactical sprinting with a horizontal input. Locks the input direction for `diveTime`, moves at `diveSpeed`, uses the crouch hitbox from the first step, ignores steering, cannot jump, falls under gravity if it leaves a ledge. Ends a tactical sprint. After the dive the player stands if there is head room, else stays crouched.
+- `p.mantled` is true for exactly the step in which an airborne climb (SPEC 23.3 mantle) happened; the client camera dips on it.
+- Protocol (`src/server/protocol.js`): `dive` and `tac` are coerced to booleans like `sprint` and `crouch`; everything else about a command is unchanged.
+
+### 32.3 Camera feel (`src/client/cameraFeel.js`, applied in `game.js` inside `// PRO-feel`)
+Landing dip by fall speed (none below 1 m/s, capped at 0.25 m, recovers in under a second), head bob by ground speed (off in ADS), fov kick +5 sprinting and +8 in tactical sprint (eased, not applied while aiming), 3 degree roll while sliding, 0.25 m lowering while diving, 150 ms dip on mantle. Lateral bob is applied in camera space.
+
+### 32.4 Gunplay
+`WEAPONS[id].adsMs` (rifle 250, SMG 180, shotgun 220, sniper 320, pistol 160) paces the fov ease: `adsLerpRate = 3000 / adsMs`, so the sight is within 5% of the target after `adsMs`. `adsSensMul` (0.8, sniper 0.65) multiplies the zoom sensitivity scale while aiming (`adsSensitivity`). The cosmetic recoil kick (SPEC 20) now recovers over `RECOIL_RECOVERY_MS` = 120. Hit resolution is unchanged. Client events on `src/client/eventBus.js`: `bodyHit`, `headshot`, `killConfirm` (from the verdict, with the verdict as payload) and `kill` (from the kill broadcast, with `mine` and `me` flags); HUD, audio and view model batches subscribe instead of reaching into `game.js`.
+
+### 32.5 Aim assist (`src/client/aimAssist.js`)
+For `gamepad` and `touch` aim only; mouse aim is never assisted. Inside a 10 degree cone (1.5 m to 60 m, live enemies of the last snapshot, teammates excluded in TDM) the turn is scaled by 0.6, and while turning or moving the view drifts toward the target by 3.5% of the remaining angle per update. Client view angles only.
+
+### 32.6 Controls (`src/client/bindings.js`, `src/client/input.js`)
+Keys are read through `bind(action)` / `isBound(action, code)` with the default map (W A S D, Space, Shift sprint, C or Ctrl crouch, V dive, R reload, 1 / 2 weapons, G grenade, Q / E abilities, 3 / 4 perks, F inspect, Tab scoreboard, Enter chat); `setBinding`, `loadBindings` and `conflicts` serve the settings editor (batch P4). Double tap crouch dives, double tap sprint starts the tactical sprint. Gamepad standard mapping: left stick move, right stick aim (deadzone 0.15, power curve 1.5), RT shoot, LT ADS, A jump, B crouch (double tap dives), X reload, Y switch, LB / RB abilities, right stick click tactical sprint, Start grenade, Select scoreboard. Touch aim goes through `Input.aimTurn`, so it may be assisted.
+
+### 32.7 Tests
+`tests/unit/movementOmni.test.js` (8: tuning table, tactical sprint burst, cooldown and ends, backwards slide, slide cancel early and late, dive distance, lock and hitbox, dive ends tactical sprint and cannot jump, mantled flag), `proFeel.test.js` (5: bindings, camera curves, aim assist, event bus, stick helpers), `aim.test.js` (+1: ADS multiplier and per weapon pace), `protocol.test.js` (+1: dive and tac coercion), and the SPEC 23 suites retuned to the new numbers without weakening (`movement.test.js`, `movementParkour.test.js`, `gameRoom.test.js`).
