@@ -281,7 +281,7 @@ export class Game {
       snap: (m) => this.#onSnapshot(m),
       shot: (m) => { this.#addTracer(m); this.#fx.shot(m.from, m.to, performance.now(), m.id === this.#id); // PRO-env
   if (m.id !== this.#id) this.#threat(m.from[0], m.from[2]); this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
-      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit'); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit'); if (m.target !== null) this.#remote.flash(m.target); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events; PRO-weapons: SPEC 31.3 hit flash
       boom: (m) => { this.#fx.boom(m.at, performance.now()); this.#combat.boom(m, this.#id); // PRO-env
   this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
       kill: (m) => {

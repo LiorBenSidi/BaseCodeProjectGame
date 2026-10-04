@@ -1,26 +1,32 @@
 // First-person weapon view model (SPEC 29.4): a few boxes per weapon parented to the camera, with
 // recoil kick, reload dip, ADS pull-in and walk sway. Layout is a pure table; `WeaponView` is Three.js.
 import * as THREE from 'three';
+import { weaponModel, MATERIALS } from './weaponModels.js';
 
-// Parts: [w, h, d, x, y, z] in camera space (camera looks down -Z; right-handed hold at bottom right).
+// SPEC 31.1: the parts come from weaponModels.js (shared with the third person hands); WEAPON_VIEW keeps the
+// per weapon hold tweaks (pistols sit closer and higher).
 export const WEAPON_VIEW = Object.freeze({
-  rifle: { color: 0x3b4252, parts: [[0.08, 0.1, 0.7, 0, 0, -0.1], [0.06, 0.14, 0.18, 0, -0.1, 0.1], [0.03, 0.03, 0.4, 0, 0.05, -0.45]] },
-  smg: { color: 0x2e3440, parts: [[0.08, 0.1, 0.45, 0, 0, -0.05], [0.05, 0.16, 0.1, 0, -0.12, 0.05], [0.05, 0.2, 0.06, 0, -0.14, -0.1]] },
-  shotgun: { color: 0x5a3b2e, parts: [[0.09, 0.1, 0.85, 0, 0, -0.15], [0.08, 0.14, 0.2, 0, -0.08, 0.15], [0.04, 0.04, 0.5, 0, -0.06, -0.4]] },
-  sniper: { color: 0x1f2a24, parts: [[0.07, 0.09, 1.0, 0, 0, -0.2], [0.05, 0.14, 0.2, 0, -0.1, 0.15], [0.05, 0.05, 0.3, 0, 0.09, -0.15]] },
-  pistol: { color: 0x2b2b2b, parts: [[0.05, 0.07, 0.25, 0, 0, 0], [0.04, 0.14, 0.07, 0, -0.1, 0.08]] },
+  rifle: { hold: [0, 0, 0] }, smg: { hold: [0, 0, 0.05] }, shotgun: { hold: [0, -0.02, -0.05] }, sniper: { hold: [0, 0, -0.1] }, pistol: { hold: [-0.04, 0.04, 0.15] },
 });
+export const INSPECT_MS = 1400; // SPEC 31.1: F turns the weapon over and back
 export const REST = Object.freeze({ x: 0.28, y: -0.24, z: -0.5 }); // hip position in camera space
 export const ADS_POS = Object.freeze({ x: 0, y: -0.14, z: -0.42 }); // centred under the crosshair
 export const KICK = 0.06; // metres back per shot
 export const RELOAD_DIP = 0.18;
 
 // Pose for the frame. Pure, so it is testable: ads 0..1, kick 0..1 (decays), reload 0..1 (dip), sway in metres.
-export function pose({ ads = 0, kick = 0, reload = 0, swayX = 0, swayY = 0 } = {}) {
+export function pose({ ads = 0, kick = 0, reload = 0, swayX = 0, swayY = 0, inspect = 0 } = {}) {
   const x = REST.x + (ADS_POS.x - REST.x) * ads + swayX * (1 - ads);
   const y = REST.y + (ADS_POS.y - REST.y) * ads + swayY * (1 - ads) - RELOAD_DIP * reload;
   const z = REST.z + (ADS_POS.z - REST.z) * ads + KICK * kick;
-  return { x, y, z, pitch: kick * 0.25 - reload * 0.9 };
+  // inspect 0..1: lift toward the eye and roll the weapon over, then back
+  const ins = Math.sin(inspect * Math.PI);
+  return {
+    x: x - ins * 0.1, y: y + ins * 0.08, z: z + ins * 0.05,
+    pitch: kick * 0.25 - reload * 0.9 + ins * 0.2,
+    yaw: ins * 0.9,
+    roll: ins * 1.1,
+  };
 }
 
 export class WeaponView {
@@ -32,6 +38,7 @@ export class WeaponView {
   #reloadUntil = 0;
   #reloadMs = 1;
   #t = 0;
+  #inspectStart = -Infinity;
 
   constructor(camera) {
     this.#camera = camera;
@@ -41,20 +48,43 @@ export class WeaponView {
     if (id === this.#id) return;
     this.#id = id;
     if (this.#group) { this.#camera.remove(this.#group); this.#group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
-    const def = WEAPON_VIEW[id] ?? WEAPON_VIEW.rifle;
+    const view = WEAPON_VIEW[id] ?? WEAPON_VIEW.rifle;
+    const model = weaponModel(id);
     const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.55, metalness: 0.4 });
-    for (const [w, h, d, x, y, z] of def.parts) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z);
-      g.add(m);
+    const mats = {
+      body: new THREE.MeshStandardMaterial(MATERIALS.body),
+      wood: new THREE.MeshStandardMaterial(MATERIALS.wood),
+      glass: new THREE.MeshStandardMaterial({ ...MATERIALS.glass, emissive: 0x204060 }),
+      accent: new THREE.MeshStandardMaterial({ color: model.accent, roughness: 0.4, metalness: 0.5 }),
+    };
+    const gun = new THREE.Group();
+    for (const [w, h, d, x, y, z, m] of model.parts) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats[m] ?? mats.body);
+      mesh.position.set(x, y, z);
+      gun.add(mesh);
     }
+    gun.position.set(...view.hold);
+    g.add(gun);
+    // SPEC 31.1: forearms and gloves so the weapon is held, not floating
+    const glove = new THREE.MeshStandardMaterial({ color: 0x1c2026, roughness: 0.8, metalness: 0.0 });
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x3a4250, roughness: 0.9, metalness: 0.0 });
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.34), sleeve); rightArm.position.set(0.06, -0.16, 0.26); rightArm.rotation.x = 0.5;
+    const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, 0.1), glove); rightHand.position.set(0.01, -0.1, 0.05);
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.4), sleeve); leftArm.position.set(-0.16, -0.18, -0.15); leftArm.rotation.set(0.25, -0.5, 0);
+    const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.1, 0.1), glove); leftHand.position.set(-0.02, -0.06, -0.36 + (model.muzzle + 0.62) * 0.4);
+    g.add(rightArm, rightHand, leftArm, leftHand);
     this.#camera.add(g);
     this.#group = g;
   }
 
   fired() {
     this.#kick = 1;
+  }
+
+  // SPEC 31.1: inspect animation; ignored while one is running
+  inspect(now = performance.now()) {
+    if (now - this.#inspectStart < INSPECT_MS) return;
+    this.#inspectStart = now;
   }
 
   reloading(ms, now) {
@@ -75,8 +105,10 @@ export class WeaponView {
     const sway = Math.min(1, moving / 6) * 0.012;
     const remaining = this.#reloadUntil - now;
     const reload = remaining > 0 ? Math.sin((1 - remaining / this.#reloadMs) * Math.PI) : 0;
-    const p = pose({ ads: this.#ads, kick: this.#kick, reload, swayX: Math.sin(this.#t) * sway, swayY: Math.abs(Math.cos(this.#t)) * sway });
+    const insAge = now - this.#inspectStart;
+    const inspect = insAge >= 0 && insAge < INSPECT_MS && this.#ads < 0.5 ? insAge / INSPECT_MS : 0;
+    const p = pose({ ads: this.#ads, kick: this.#kick, reload, swayX: Math.sin(this.#t) * sway, swayY: Math.abs(Math.cos(this.#t)) * sway, inspect });
     this.#group.position.set(p.x, p.y, p.z);
-    this.#group.rotation.set(p.pitch, 0, 0);
+    this.#group.rotation.set(p.pitch, p.yaw, p.roll);
   }
 }

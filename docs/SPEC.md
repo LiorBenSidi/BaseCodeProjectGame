@@ -1005,3 +1005,19 @@ Keys are read through `bind(action)` / `isBound(action, code)` with the default 
 
 ### 32.7 Tests
 `tests/unit/movementOmni.test.js` (8: tuning table, tactical sprint burst, cooldown and ends, backwards slide, slide cancel early and late, dive distance, lock and hitbox, dive ends tactical sprint and cannot jump, mantled flag), `proFeel.test.js` (5: bindings, camera curves, aim assist, event bus, stick helpers), `aim.test.js` (+1: ADS multiplier and per weapon pace), `protocol.test.js` (+1: dive and tac coercion), and the SPEC 23 suites retuned to the new numbers without weakening (`movement.test.js`, `movementParkour.test.js`, `gameRoom.test.js`).
+## 31. Pro weapons and characters (Pro batch P2, D-028)
+
+Client rendering only; no gameplay number changes. Readability rule from SPEC 30.1 applies: the figure stays one
+team colored material, accents are small.
+
+### 31.1 Weapon models (`src/client/weaponModels.js`, `weaponView.js`)
+One parts table per weapon (receiver, barrel, handguard or pump, grip, magazine, stock, sights or scope with glass ends) in weapon space (muzzle toward -Z), four materials (`body`, `accent` per weapon, `wood`, `glass`), shared by the first person view and the hands of remote players. `weaponLength` ranks sniper > shotgun > rifle > SMG > pistol (tested). The view model adds forearms and gloves so the weapon is held. `WeaponView.inspect()` (F, SPEC 32.6) lifts and rolls the weapon over `INSPECT_MS` = 1400 and back, never while aiming; `pose()` gains `inspect`, `yaw` and `roll`.
+
+### 31.2 Character rig (`src/client/characterRig.js`, `remote.js`)
+Torso, pelvis, head, visor, two arms and two legs with pivots at shoulders and hips, dimensions in `RIG`. `walkCycle(phase, speed, { airborne, crouchK })` returns leg and arm angles, bob and forward lean (sprint leans more, crouch steps shorter, airborne tucks); `advancePhase` ties the cycle to distance (one cycle per 1.6 m, so feet match the ground at any speed). The head follows the snapshot pitch. The weapon in hand follows `w` from the snapshot. Kit accents (SPEC 28.2) and crouch squash (SPEC 23) are unchanged.
+
+### 31.3 Hit flash and death pose
+A verdict with damage flashes the victim's body emissive for 120 ms (`hitFlash`), so the shooter sees the hit land on the figure, not only on the HUD. A player whose `alive` turns 0 tips over (`deathPose`: roll to 0.92 of a quarter turn and sink 0.35 m over 450 ms, fading out in the last 30%) before the mesh hides; respawn resets it.
+
+### 31.4 Tests
+`tests/unit/proWeapons.test.js` (4: model coverage, materials and lengths; rig cycle; phase, flash and death curves; inspect pose).

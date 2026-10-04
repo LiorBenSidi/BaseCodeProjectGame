@@ -290,3 +290,9 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's Pro program approval 2026-10-04 ("Approve all six"), BO6 as the feel reference.
 - Affects: docs/SPEC.md section 32 (amends 23.2); `src/shared/{constants,movement,weapons}.js`, `src/server/protocol.js`, `src/client/{input,aim,bindings,cameraFeel,aimAssist,eventBus,touch,remote,game}.js`.
 - Alternatives: keep the Batch 3d arcade tuning (rejected: floaty against the reference); sync tac and dive timers in the snapshot (rejected for now: the slide already works client local, and the snapshot stays small).
+### D-028 (P2) Weapons and characters
+- Status: decided
+- Date: 2026-10-05
+- Decision: Replace the three box guns and the two box figure with a shared procedural weapon parts table (first and third person), an articulated rig with a distance driven walk cycle, hit flash and a death pose. Procedural geometry, no downloaded models (same reasoning as D-027's amendment).
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 31; `src/client/{weaponModels,characterRig,weaponView,remote,game}.js`.
