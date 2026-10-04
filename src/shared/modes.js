@@ -3,11 +3,21 @@
 export const MODES = Object.freeze({
   dm: Object.freeze({ id: 'dm', name: 'Deathmatch', teams: false, timeLimitMs: 300_000, scoreLimit: 25 }),
   tdm: Object.freeze({ id: 'tdm', name: 'Team Deathmatch', teams: true, timeLimitMs: 480_000, scoreLimit: 50 }),
+  // PRO-audio (SPEC 35.3): the practice range never ends; dummies walk the map and never shoot
+  range: Object.freeze({ id: 'range', name: 'Practice Range', teams: false, timeLimitMs: Infinity, scoreLimit: Infinity, practice: true }),
 });
 export const MODE_IDS = Object.freeze(Object.keys(MODES));
 export const DEFAULT_MODE = 'dm';
 export const INTRO_MS = 5000; // 5 s pre-match intro freeze and countdown
 export const ENDING_MS = 15000; // 15 s end screen with next-map vote, then restart
+// PRO-audio (SPEC 35.3): how many seats bots fill per mode while a human is present, and how they play.
+export const BOT_CONFIG = Object.freeze({
+  dm: Object.freeze({ fill: 2, difficulty: 'medium' }),
+  tdm: Object.freeze({ fill: 4, difficulty: 'medium' }),
+  range: Object.freeze({ fill: 4, difficulty: 'dummy' }),
+});
+export const botConfigFor = (modeId) => BOT_CONFIG[modeId] ?? Object.freeze({ fill: 0, difficulty: 'medium' });
+
 export const TEAM_NAMES = Object.freeze(['Blue', 'Red']);
 
 export function modeDef(id) {
@@ -182,7 +192,7 @@ export function matchSnapshot(m, nowMs) {
   if (m.phase === 'intro') {
     left = Math.max(0, Math.ceil((m.introEndsAt - nowMs) / 1000));
   } else if (m.phase === 'playing') {
-    left = Math.max(0, Math.round((m.endsAt - nowMs) / 1000));
+    left = Number.isFinite(m.endsAt) ? Math.max(0, Math.round((m.endsAt - nowMs) / 1000)) : -1; // PRO-audio: an endless mode reports -1 so the HUD shows no timer
   } else if (m.phase === 'ending') {
     left = Math.max(0, Math.ceil((m.endedAt + ENDING_MS - nowMs) / 1000));
   }

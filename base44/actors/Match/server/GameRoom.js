@@ -7,6 +7,7 @@
 
 import { TICK_RATE, MAX_PLAYERS, MAX_HP, RESPAWN_MS, PLAYER } from '../shared/constants.js';
 import { MAPS, mapForMatch, describeMap } from '../shared/maps.js'; // SPEC 28: one map per match
+import { newBrain, botStep, botName, botsWanted, seededRng, isDifficulty } from '../shared/bots.js'; // PRO-audio: SPEC 35.3 bots
 import { sanitizeChat, chatAllowed, recordKill, resetStreak, streakEndedText } from '../shared/social.js'; // SPEC 29
 import { stepPlayer, eyeOf, heightOf } from '../shared/movement.js';
 import { aimDir } from '../shared/hitscan.js';
@@ -57,7 +58,18 @@ export class GameRoom {
   // persistence paths (never per tick); a hook that throws is logged and ignored.
   #hooks;
 
-  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE, hooks = null } = {}) {
+  // PRO-audio begin (SPEC 35.3): bots fill seats up to `botFill` while humans are present, and leave as humans arrive
+  #bots = new Map(); // bot player id -> brain
+  #botFill = 0;
+  #botDifficulty = 'medium';
+  #botRng = seededRng(1);
+  #botSeed = 1;
+  // PRO-audio end
+  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE, hooks = null, botFill = 0, botDifficulty = 'medium', botSeed = 1 } = {}) {
+    this.#botFill = Math.max(0, botFill | 0);
+    this.#botDifficulty = isDifficulty(botDifficulty) ? botDifficulty : 'medium';
+    this.#botSeed = botSeed;
+    this.#botRng = seededRng(botSeed);
     this.#now = now;
     this.#hooks = hooks;
     this.#random = random;
@@ -79,7 +91,7 @@ export class GameRoom {
     return this.#players.size;
   }
 
-  addPlayer({ send, name, kit, userId = null } = {}) {
+  addPlayer({ send, name, kit, userId = null, bot = false } = {}) {
     if (typeof send !== 'function') throw new TypeError('addPlayer requires a send(obj) function');
     if (this.#players.size >= this.#maxPlayers) return null;
 
@@ -87,6 +99,7 @@ export class GameRoom {
     const p = {
       id,
       name: sanitizeName(name) || `Player${id}`,
+      bot, // PRO-audio: SPEC 35.3
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
       onGround: true,
       yaw: 0,
@@ -126,14 +139,72 @@ export class GameRoom {
     this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), map: describeMap(this.#map), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
+    this.#balanceBots();
     this.#roster();
     return p;
   }
+
+  // PRO-audio begin (SPEC 35.3)
+  get humanCount() {
+    let n = 0;
+    for (const p of this.#players.values()) if (!p.bot) n += 1;
+    return n;
+  }
+
+  get botCount() {
+    return this.#bots.size;
+  }
+
+  // Adds one bot. Bots are ordinary players with `bot: true`; their messages go nowhere.
+  addBot(difficulty = this.#botDifficulty) {
+    const brain = newBrain(difficulty, this.#botSeed + this.#bots.size + this.#nextId);
+    const taken = new Set([...this.#players.values()].map((p) => p.name));
+    const p = this.addPlayer({ send: () => {}, name: botName(brain, taken), kit: undefined, userId: null, bot: true });
+    if (!p) return null;
+    this.#bots.set(p.id, brain);
+    this.#log?.info('bot joined', { id: p.id, difficulty: brain.difficulty });
+    return p;
+  }
+
+  removeBot(id) {
+    if (!this.#bots.has(id)) return false;
+    this.#bots.delete(id);
+    return this.removePlayer(id);
+  }
+
+  // Keeps `botFill` seats filled while at least one human is in the room; an empty room has no bots.
+  #balanceBots() {
+    if (this.#balancing) return;
+    this.#balancing = true;
+    try {
+      const humans = this.humanCount;
+      const wanted = humans === 0 ? 0 : botsWanted(humans, this.#botFill, this.#maxPlayers);
+      while (this.#bots.size > wanted) this.removeBot([...this.#bots.keys()].at(-1));
+      while (this.#bots.size < wanted && this.#players.size < this.#maxPlayers) if (!this.addBot()) break;
+    } finally { this.#balancing = false; }
+  }
+  #balancing = false;
+
+  // Bots think before the commands run, so their input lands in the same tick as a human's.
+  #stepBots(now) {
+    if (this.#bots.size === 0) return;
+    const all = [...this.#players.values()];
+    for (const [id, brain] of this.#bots) {
+      const bot = this.#players.get(id);
+      if (!bot) { this.#bots.delete(id); continue; }
+      const r = botStep(brain, bot, all, this.#map, now, this.#botRng, sameTeam);
+      this.handleInput(id, [r.cmd]);
+      if (r.reload) this.handleReload(id);
+      if (r.shoot) this.handleShoot(id);
+    }
+  }
+  // PRO-audio end
 
   removePlayer(id) {
     const removed = this.#players.delete(id);
     if (removed) this.#log?.info('player left', { id, players: this.#players.size });
     if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
+    if (removed && !this.#balancing) this.#balanceBots(); // PRO-audio: humans leaving or arriving change the fill
     if (removed) this.#roster();
     return removed;
   }
@@ -203,6 +274,7 @@ export class GameRoom {
     this.#tick += 1;
     const now = this.#now();
 
+    this.#stepBots(now); // PRO-audio: SPEC 35.3
     for (const p of this.#players.values()) this.#runCommands(p);
     this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
@@ -310,7 +382,7 @@ export class GameRoom {
     if (reason !== null) {
       const medals = matchEndMedals(this.#medals, this.#players.values()); // PRO-ceremony: flawless and the medal totals
       const result = { ...endMatch(this.#match, this.#players.values(), now, reason, voteCandidatesFor(MAP_IDS, this.#map.id)), medals };
-      const roster = [...this.#players.values()];
+      const roster = [...this.#players.values()].filter((p) => !p.bot); // PRO-audio: persistence records humans only
       this.#log?.info('match end', { reason, number: result.number });
       this.#broadcast({ t: 'matchEnd', ...result });
       this.#hook('matchEnd', { result, players: roster, mode: this.#match.mode, nowMs: now });
@@ -359,7 +431,7 @@ export class GameRoom {
   }
 
   #roster() {
-    this.#hook('roster', { players: this.#players.size, maxPlayers: this.#maxPlayers, phase: this.#match.phase, matchNumber: this.#match.number, nowMs: this.#now() });
+    this.#hook('roster', { players: this.humanCount, maxPlayers: this.#maxPlayers, bots: this.#bots.size, phase: this.#match.phase, matchNumber: this.#match.number, nowMs: this.#now() });
   }
 
   #hook(name, info) {
@@ -539,7 +611,7 @@ export class GameRoom {
     for (const p of this.#players.values()) {
       const ws = activeWeapon(p.loadout);
       players.push({
-        id: p.id, name: p.name,
+        id: p.id, name: p.name, ...(p.bot ? { bot: 1 } : {}), // PRO-audio: bots are marked for the scoreboard
         x: round3(p.x), y: round3(p.y), z: round3(p.z), vy: round3(p.vy),
         g: p.onGround ? 1 : 0,
         h: round3(heightOf(p)), // SPEC 23: current hitbox height (crouch, slide)

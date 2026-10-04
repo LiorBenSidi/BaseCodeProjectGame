@@ -309,3 +309,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Intro countdown only on restarts (the first match of a room starts at once, which also keeps every existing room test valid), server judged medals broadcast with the kill, a two-candidate next-map vote with rotation as the fallback, a client side kill cam from 6 s of remote history (no server replay state), and a north-up minimap with ally-always / enemy-on-reveal rules so the map does not become a radar.
 - Source: owner's Pro program approval 2026-10-04.
 - Affects: docs/SPEC.md section 34; `src/shared/{modes,medals}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{ceremony,hud,remote,game}.js`, `index.html`, `style.css`, actor mirror.
+
+### D-032 (P6) Sound engine, bots, range, onboarding
+- Status: decided
+- Date: 2026-10-05
+- Decision: Keep audio procedural (layered synthesis, panning, distance filter, buses, ducking) instead of shipping sample files: zero license risk, zero download, and the palette is tunable in code. Bots are a pure seeded brain run by the room, filling seats per mode and yielding to humans, so nobody ever plays an empty room. The practice range is a mode (so it reuses rooms, lobby and the match loop) with dummies, and the tutorial lives there, advancing only on real actions.
+- Source: owner's Pro program approval 2026-10-04.
+- Affects: docs/SPEC.md section 35; `src/client/{audio,audioModel,tutorial,game,hud,hudModel}.js`, `src/shared/{bots,modes}.js`, `src/server/{GameRoom,config,server}.js`, `base44/actors/Match/matchHost.js`, actor mirror, `index.html`, `style.css`.

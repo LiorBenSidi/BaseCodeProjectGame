@@ -456,7 +456,7 @@ export class Hud {
       const chipCell = document.createElement('span');
       chipCell.className = 'col-chip';
       chipCell.append(chip);
-      row.append(chipCell, cell('col-name', p.name), cell('col-k', String(p.k)), cell('col-d', String(p.d)));
+      row.append(chipCell, cell('col-name', p.bot === 1 ? `${p.name} [BOT]` : p.name), cell('col-k', String(p.k)), cell('col-d', String(p.d))); // PRO-audio: SPEC 35.3
       return row;
     });
     const head = document.createElement('div');
