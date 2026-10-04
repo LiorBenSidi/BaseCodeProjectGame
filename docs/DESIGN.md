@@ -274,3 +274,11 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner's request 2026-10-04 to compare with popular games and be at least as good in every way.
 - Affects: docs/SPEC.md section 29; `src/shared/social.js`, `src/server/{protocol,matchSession,GameRoom}.js`, `src/client/{aim,weaponView,input,game,hud,main,remote,audio,settings,settingsPanel}.js`, `index.html`, `src/client/style.css`.
 
+
+
+### D-032 (P6) Sample-based 3D audio, bots, and first-launch onboarding
+- Status: decided
+- Date: 2026-10-04
+- Decision: Replace WebAudio synth sweeps with sample-based audio decoding and 3D HRTF panning + occlusion-lite lowpass filtering; implement a pure deterministic bot brain with waypoint graphs and practice range mode (`range`); add an interactive first-launch onboarding overlay and contextual tips.
+- Source: owner approved Pro program batch P6 brief (2026-10-04).
+- Affects: docs/SPEC.md section 35; `src/client/audio.js`, `src/client/audioModel.js`, `src/client/tutorial.js`, `src/client/game.js`, `src/client/hud.js`, `src/client/settings.js`, `src/shared/bots.js`, `src/shared/modes.js`, `src/server/GameRoom.js`, `src/server/server.js`, `src/server/matchSession.js`, `public/assets/audio/*`, `docs/ASSETS.md`.

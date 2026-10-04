@@ -926,3 +926,31 @@ Own steps: a `step` cue every 2.4 m of ground travel above 1 m/s. Remote steps: 
 ### 29.6 Tests
 `tests/unit/social.test.js` (4: sanitize and pacing, protocol, streak and multi-kill rules, room relay), `aim.test.js` (2: fov and ADS targets, view model pose). Existing exact-shape kill tests still pass because milestone fields are optional.
 
+
+
+## 35. Sample Audio Engine, Bots and Onboarding (Batch P6, D-032)
+
+### 35.1 Audio Engine Architecture and Audio Model
+`src/client/audioModel.js` (pure audio math and logic) and `src/client/audio.js` (WebAudio engine rewrite):
+- Audio manifest with lazy loading and decode cache (`decodeAudioData`).
+- Four audio buses: Master, Music, SFX, UI reading settings keys `audioMaster`, `audioMusic`, `audioSfx` (defaults 0.8, 0.5, 1.0) and master enabled toggle `bca.sound`.
+- Positional 3D audio via WebAudio `PannerNode` with HRTF panning model, exponential distance rolloff, and occlusion-lite muffling (lowpass filter cutoff at 800 Hz when map box intersects line-of-sight from listener to emitter).
+- Sound assets (.ogg format) under `public/assets/audio/`, <= 200 KB each for SFX, <= 1 MB each for music loops (menu and in-match ambient). CC0 assets recorded in `docs/ASSETS.md`.
+- Per-weapon firing sounds with distant variant (>30 m), staged reload foley, footsteps by surface/speed, slide/jump/land, hit layers (body/headshot/kill confirm), kit ability sounds (dash, shield, blink, decoy, grapple, scan, heal zone, stasis), grenade bounce/explosion, pickup, UI feedback, stings (intro, win, lose), low HP heartbeat, menu music loop, and ambient match loop.
+
+### 35.2 Announcer Callouts
+Text callouts only (no TTS) rendered via HUD banners and kill feed: "FIRST BLOOD", "DOUBLE KILL", "TRIPLE KILL", "MULTI KILL", "KILLING SPREE", "RAMPAGE", "UNSTOPPABLE", "GODLIKE", "LEGENDARY", "VICTORY", "DEFEAT".
+
+### 35.3 Bots and Practice Range
+`src/shared/bots.js`:
+- Pure, deterministic bot decision brain driven by an injected seeded random function `rng()`.
+- Waypoint graph built from map boxes and arena bounds (grid walkability).
+- Bot states: patrol, line-of-sight detection using `rayHitsBox` hitscan helper, approach target, shoot with accuracy and reaction time tuned by difficulty (`easy`, `medium`, `hard`), retreat to health pickup on low HP (<35 HP), pick up weapons.
+- `GameRoom.js`: Bots are represented as players with `bot: true` in snapshots and scoreboard. Auto-fills rooms up to `minPlayers` (default 0 for public rooms), leaving when human players join.
+- Practice Range mode (`range`) in `src/shared/modes.js`: Solo room prefix `range-`, infinite time limit, 3 easy/dummy bots, instant respawn, registered in `matchSession.js` and `server.js`.
+
+### 35.4 Onboarding and Contextual Tips
+`src/client/tutorial.js` (pure step logic unit tested):
+- First-launch practice range tutorial overlay with 10 sequential action steps: move, sprint, slide, jump/mantle, aim/shoot dummy, reload, switch weapon, throw grenade, kit Q/E abilities, perk pick.
+- Steps advance on real action input/events. Skip button sets `bca.tutorialDone = true`.
+- Contextual tips in the first two live matches, displayed one at a time.
