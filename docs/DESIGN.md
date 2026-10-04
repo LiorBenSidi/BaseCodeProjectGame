@@ -316,3 +316,10 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Keep audio procedural (layered synthesis, panning, distance filter, buses, ducking) instead of shipping sample files: zero license risk, zero download, and the palette is tunable in code. Bots are a pure seeded brain run by the room, filling seats per mode and yielding to humans, so nobody ever plays an empty room. The practice range is a mode (so it reuses rooms, lobby and the match loop) with dummies, and the tutorial lives there, advancing only on real actions.
 - Source: owner's Pro program approval 2026-10-04.
 - Affects: docs/SPEC.md section 35; `src/client/{audio,audioModel,tutorial,game,hud,hudModel}.js`, `src/shared/{bots,modes}.js`, `src/server/{GameRoom,config,server}.js`, `base44/actors/Match/matchHost.js`, actor mirror, `index.html`, `style.css`.
+
+### D-033 Research polish
+- Status: decided
+- Date: 2026-10-05
+- Decision: Adopt the small, high value items from the two research passes (docs/RESEARCH_ADOPTION.md) directly in the Pro integration: telemetry row, audio mix presets, controller deadzones and curves, render scale, frame cap. Larger items (snapshot occlusion culling, high contrast outlines, crosshair share codes) go to the ROADMAP with their reference, not into this PR.
+- Source: Lior, 2026-10-05 ("make sure you really learned from the deep researches and implement in our game").
+- Affects: docs/SPEC.md section 36; `src/client/{telemetry,gamepadCurve,audio,post,scene,input,prefs,game}.js`, `style.css`.

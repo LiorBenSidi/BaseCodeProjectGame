@@ -19,10 +19,15 @@ export const PREFS_SCHEMA = Object.freeze({
   diveDoubleTap: { tab: 'controls', label: 'Double tap crouch to dive', type: 'bool', def: true },
   autoReload: { tab: 'controls', label: 'Reload automatically when empty', type: 'bool', def: true },
   gamepadSens: { tab: 'controls', label: 'Controller look sensitivity', type: 'range', min: 0.3, max: 3, step: 0.1, def: 1 },
-  gamepadDeadzone: { tab: 'controls', label: 'Controller stick deadzone', type: 'range', min: 0.05, max: 0.4, step: 0.01, def: 0.15 },
+  gamepadDeadzone: { tab: 'controls', label: 'Controller inner deadzone', type: 'range', min: 0.05, max: 0.4, step: 0.01, def: 0.15 },
+  gamepadOuterDeadzone: { tab: 'controls', label: 'Controller outer deadzone', type: 'range', min: 0, max: 0.3, step: 0.01, def: 0.02 }, // SPEC 36.3
+  gamepadCurve: { tab: 'controls', label: 'Controller response curve', type: 'enum', values: ['standard', 'linear', 'dynamic'], def: 'standard' }, // SPEC 36.3
   aimAssist: { tab: 'controls', label: 'Aim assist (controller and touch only)', type: 'bool', def: true },
   // Video
   quality: { tab: 'video', label: 'Graphics quality', type: 'enum', values: ['auto', 'low', 'medium', 'high'], def: 'auto' },
+  renderScale: { tab: 'video', label: 'Render scale (%)', type: 'range', min: 50, max: 100, step: 5, def: 100 }, // SPEC 36.4
+  fpsCap: { tab: 'video', label: 'Frame rate limit', type: 'enum', values: ['off', '30', '60', '120', '144'], def: 'off' }, // SPEC 36.4
+  telemetry: { tab: 'video', label: 'Telemetry readout (fps, ping, jitter, loss)', type: 'bool', def: false }, // SPEC 36.1
   headBob: { tab: 'video', label: 'Head bob', type: 'range', min: 0, max: 1, step: 0.1, def: 1 },
   fovKick: { tab: 'video', label: 'Sprint FOV kick', type: 'bool', def: true },
   cameraShake: { tab: 'video', label: 'Camera shake (landing, slide tilt)', type: 'range', min: 0, max: 1, step: 0.1, def: 1 },
@@ -32,6 +37,7 @@ export const PREFS_SCHEMA = Object.freeze({
   masterVolume: { tab: 'audio', label: 'Master volume', type: 'range', min: 0, max: 100, step: 1, def: 80 },
   sfxVolume: { tab: 'audio', label: 'Effects', type: 'range', min: 0, max: 100, step: 1, def: 100 },
   uiVolume: { tab: 'audio', label: 'Interface', type: 'range', min: 0, max: 100, step: 1, def: 70 },
+  audioMix: { tab: 'audio', label: 'Audio mix', type: 'enum', values: ['default', 'night', 'headphones'], def: 'default' }, // SPEC 36.2
   hitSound: { tab: 'audio', label: 'Hit marker sound', type: 'bool', def: true },
   footsteps: { tab: 'audio', label: 'Footsteps', type: 'bool', def: true },
   // HUD

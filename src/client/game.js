@@ -27,6 +27,7 @@ import { RECOIL_RECOVERY_MS } from '../shared/weapons.js';
 // PRO-feel end
 import { newTutorial, current as tutorialStep, advance as tutorialAdvance, progress as tutorialProgress, shouldStart as tutorialShouldStart, markDone as tutorialMarkDone, nextTip, TIPS_KEY } from './tutorial.js'; // PRO-audio: SPEC 35.4
 import { modeForRoomId } from '../shared/rooms.js'; // PRO-audio
+import { newTelemetry, recordPing, recordSnapshot, stats as telemetryStats, format as telemetryFormat, level as telemetryLevel, frameDue } from './telemetry.js'; // SPEC 36
 import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
@@ -64,6 +65,9 @@ export class Game {
   #accumulator = 0;
   #lastFrame = performance.now();
   #fps = { on: false, frames: 0, since: performance.now() };
+  #tele = newTelemetry(); // SPEC 36.1
+  #fpsCap = 0; // SPEC 36.4, 0 = uncapped
+  #lastRenderAt = 0;
   #clock = new ClockSync(); // SPEC 18.2: room clock estimate and RTT from ping/pong
   #lastShot = 0;
   #weapon = WEAPONS.rifle; // SPEC 20: the weapon the server says is in hand; paces our shoot intents and recoil
@@ -191,6 +195,11 @@ export class Game {
     this.#audio.setLevel('master', prefs.masterVolume / 100);
     this.#audio.setLevel('sfx', prefs.sfxVolume / 100);
     this.#audio.setLevel('ui', (prefs.uiVolume ?? 80) / 100);
+    // SPEC 36: research polish, D-033
+    this.#audio.setMix?.(prefs.audioMix ?? 'default');
+    this.#gfx.setRenderScale?.(prefs.renderScale ?? 100);
+    this.#fpsCap = prefs.fpsCap && prefs.fpsCap !== 'off' ? Number(prefs.fpsCap) : 0;
+    if (prefs.telemetry) this.setShowFps(true);
     this.#gfx.setQuality?.(prefs.quality === 'auto' ? null : prefs.quality);
     this.#hud.applyPrefs?.(prefs);
   }
@@ -323,7 +332,7 @@ export class Game {
     const handlers = {
       welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#setMap(m.map); this.#pickups.setSpots(m.pickups); },
       pickup: (m) => { this.#hud.killFeed(pickupText(m)); this.#cue('pickup', { mine: m.id === this.#id }); },
-      snap: (m) => this.#onSnapshot(m),
+      snap: (m) => { recordSnapshot(this.#tele, performance.now()); this.#onSnapshot(m); }, // SPEC 36.1
       shot: (m) => { this.#addTracer(m); this.#fx.shot(m.from, m.to, performance.now(), m.id === this.#id); // PRO-env
   if (m.id !== this.#id) { this.#threat(m.from[0], m.from[2]); this.#lastShotAt.set(m.id, performance.now()); this.#tip('firstShotHeard'); } this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
       verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit', { head: m.zone === 'head' }); this.#tut('hit'); this.#tip('firstHit'); if (m.target !== null) this.#remote.flash(m.target); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events; PRO-weapons: SPEC 31.3 hit flash
@@ -513,9 +522,11 @@ export class Game {
     const elapsed = now - this.#fps.since;
     if (elapsed < 500) return;
     const el = document.getElementById('fps');
-    const fps = `${Math.round((this.#fps.frames * 1000) / elapsed)} FPS`;
     const rtt = this.#clock.stats().rtt;
-    if (el) el.textContent = rtt === null ? fps : `${fps} · ${rtt} ms`;
+    if (rtt !== null) recordPing(this.#tele, rtt);
+    this.#tele.fps = Math.round((this.#fps.frames * 1000) / elapsed);
+    const s = telemetryStats(this.#tele); // SPEC 36.1: fps, ping, jitter, loss
+    if (el) { el.textContent = telemetryFormat(s); el.dataset.level = telemetryLevel(s); }
     this.#fps.frames = 0;
     this.#fps.since = now;
   }
@@ -662,6 +673,6 @@ export class Game {
     }
     this.#hud.minimap(this.#map, { x: this.#me.x, z: this.#me.z, yaw: this.#input.yaw }, this.#remote.lastPlayers(), { now, team: this.#myTeam, lastShotAt: this.#lastShotAt });
     // PRO-ceremony end
-    this.#gfx.render(); // PRO-env: SPEC 30.5 post pipeline (bloom, FXAA, output); low quality renders directly
+    if (frameDue(this.#lastRenderAt, now, this.#fpsCap)) { this.#lastRenderAt = now; this.#gfx.render(); } // PRO-env post pipeline; SPEC 36.4 frame cap
   }
 }

@@ -1,3 +1,4 @@
+import { shapeStick } from './gamepadCurve.js'; // SPEC 36.3
 import { getSensitivity } from './settings.js';
 import { bind, isBound } from './bindings.js';
 import { defaults as prefDefaults } from './prefs.js'; // PRO-menu: SPEC 33 control preferences
@@ -169,10 +170,11 @@ export class Input {
     const gp = this.#gamepad();
     if (!gp) return null;
     const btn = (i) => !!gp.buttons[i]?.pressed || (gp.buttons[i]?.value ?? 0) > 0.5;
-    const rsX = applyDeadzone(gp.axes[2] ?? 0);
-    const rsY = applyDeadzone(gp.axes[3] ?? 0);
+    const shape = { inner: this.prefs.gamepadDeadzone ?? 0.15, outer: this.prefs.gamepadOuterDeadzone ?? 0.02, curve: this.prefs.gamepadCurve ?? 'standard' }; // SPEC 36.3
+    const rsX = shapeStick(gp.axes[2] ?? 0, shape);
+    const rsY = shapeStick(gp.axes[3] ?? 0, shape);
     if (rsX !== 0 || rsY !== 0) {
-      this.aimTurn(-stickCurve(rsX) * this.gamepadSensitivity * this.prefs.gamepadSens, -stickCurve(rsY) * this.gamepadSensitivity * this.prefs.gamepadSens * (this.prefs.invertY ? -1 : 1), 'gamepad'); // PRO-menu
+      this.aimTurn(-rsX * this.gamepadSensitivity * this.prefs.gamepadSens, -rsY * this.gamepadSensitivity * this.prefs.gamepadSens * (this.prefs.invertY ? -1 : 1), 'gamepad'); // PRO-menu
     }
     const rt = (gp.buttons[7]?.value ?? 0) > 0.2 || btn(7);
     const lt = (gp.buttons[6]?.value ?? 0) > 0.2 || btn(6);

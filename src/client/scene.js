@@ -158,5 +158,5 @@ export function createScene(canvas) {
   setMap(MAP);
   resize();
 
-  return { THREE, renderer, scene, camera, setMap, setQuality, render: () => post.render(), get quality() { return quality; }, get theme() { return theme; } };
+  return { THREE, renderer, scene, camera, setMap, setQuality, setRenderScale: (pct) => post.setRenderScale(pct), render: () => post.render(), get quality() { return quality; }, get theme() { return theme; } };
 }

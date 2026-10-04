@@ -1090,3 +1090,25 @@ First run in a practice range (never finished before, `localStorage` `bca.tutori
 
 ### 35.5 Tests
 `tests/unit/audio.test.js` (4: cue table and variants, falloff, pan / filter / bus math, fake context graph incl. panner, lowpass, cap), `proBots.test.js` (6: rng and names, waypoints and LOS, brain behaviour per difficulty, seat math and range mode, room fill / leave, a medium bot lands hits and dummies never do), `proTutorial.test.js` (2). Live check on the dev server: one human joins, bot "Rook" joins, moves and fires.
+
+## 36. Research polish (D-033)
+
+What the two read-only research passes (docs/RESEARCH_ADOPTION.md) added on top of the six Pro batches.
+
+### 36.1 Telemetry readout (`src/client/telemetry.js`)
+The FPS readout becomes the CS2 style telemetry row: `60 FPS · 31 ms · ±4 · 1% loss`. Pure rolling statistics over a 60 sample window: ping is the latest RTT, jitter the standard deviation of the RTT samples, loss the share of snapshot intervals longer than 2.5 ticks. `level()` colours the row (ok / warn / bad: warn at ping > 80, jitter > 15, loss > 2 %, fps < 55; bad at 150 / 40 / 10 % / 30). Pref `telemetry` turns it on; the F3 style toggle still works.
+
+### 36.2 Audio mix presets (`audio.js` `MIXES`, `setMix`)
+A `DynamicsCompressorNode` after the master bus. `default` (threshold -6 dB, ratio 2), `night` (-30 dB, ratio 8, makeup 1.6: footsteps and reloads stay audible at low volume), `headphones` (-16 dB, ratio 3, makeup 1.15). Pref `audioMix`.
+
+### 36.3 Controller response (`src/client/gamepadCurve.js`)
+Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales from 0, outer lets a worn stick reach full tilt early) and three response curves (`standard` power 1.5, `linear`, `dynamic` smoothstep S curve). Prefs `gamepadDeadzone` (inner), `gamepadOuterDeadzone`, `gamepadCurve`. Applied to the right stick in input.js.
+
+### 36.4 Render scale and frame cap
+`post.setRenderScale(pct)` multiplies the pixel ratio by 0.5 .. 1 (pref `renderScale`, 50 .. 100 %). `frameDue(last, now, cap)` skips rendering between frames when pref `fpsCap` is 30 / 60 / 120 / 144 (`off` = uncapped); simulation and networking keep running every frame.
+
+### 36.5 Measured scaling (dev server, 2026-10-05)
+`node src/server/index.js` with N clients each sending inputs at 60 Hz for 15 s, snapshot gaps measured client side: 8 clients: 29.3 snaps/s each, gap p50 33.4 ms, p90 35.4, p99 47.3, max 98. 24 clients: the room cap (16) rejects the surplus, the 16 seated get 29.1 snaps/s, p50 33.5, p90 37.1, p99 48.3, max 59. Tick rate holds at a full room.
+
+### 36.6 Tests
+`tests/unit/researchPolish.test.js` (3): telemetry math and levels, deadzones and curves, mix presets through a fake compressor plus the prefs fields.

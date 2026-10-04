@@ -23,9 +23,10 @@ export function createPost(renderer, scene, camera) {
   composer.addPass(output);
   let tier = 'high';
   let settings = QUALITY_SETTINGS.high;
+  let renderScale = 1; // SPEC 36.4: internal resolution fraction (0.5 .. 1)
 
   function resize(w, h) {
-    const pr = Math.min(window.devicePixelRatio || 1, settings.maxPixelRatio);
+    const pr = Math.min(window.devicePixelRatio || 1, settings.maxPixelRatio) * renderScale;
     renderer.setPixelRatio(pr);
     composer.setPixelRatio(pr);
     composer.setSize(w, h);
@@ -42,10 +43,15 @@ export function createPost(renderer, scene, camera) {
     resize(window.innerWidth, window.innerHeight);
   }
 
+  function setRenderScale(pct) {
+    renderScale = Math.min(1, Math.max(0.5, (Number(pct) || 100) / 100));
+    resize(window.innerWidth, window.innerHeight);
+  }
+
   function render() {
     if (tier === 'low') renderer.render(scene, camera);
     else composer.render();
   }
 
-  return { composer, render, resize, setQuality, get tier() { return tier; }, get settings() { return settings; } };
+  return { composer, render, resize, setQuality, setRenderScale, get renderScale() { return renderScale; }, get tier() { return tier; }, get settings() { return settings; } };
 }

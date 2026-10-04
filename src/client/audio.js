@@ -7,6 +7,14 @@
 import { panFor, falloff as falloffM, isDistant, BUSES, DEFAULT_LEVELS, busGain, clampLevel, cutoffFor, DUCK } from './audioModel.js';
 
 export { panFor };
+
+// SPEC 36.2 mix presets: night compresses hard so footsteps and reloads stay audible at low volume;
+// headphones compresses lightly and lifts the master a touch. Threshold dB, ratio, knee dB, makeup gain.
+export const MIXES = Object.freeze({
+  default: Object.freeze({ threshold: -6, ratio: 2, knee: 6, makeup: 1 }),
+  night: Object.freeze({ threshold: -30, ratio: 8, knee: 12, makeup: 1.6 }),
+  headphones: Object.freeze({ threshold: -16, ratio: 3, knee: 10, makeup: 1.15 }),
+});
 export const falloff = falloffM;
 
 // Layer: { kind: 'osc' | 'noise' | 'sub', type, f0, f1, dur, gain, delay, hp, lp, q }. Times in seconds.
@@ -92,6 +100,8 @@ export class Audio {
   #noise = null;
   #levels = { ...DEFAULT_LEVELS };
   #listener = { x: 0, z: 0, yaw: 0 };
+  #comp = null;
+  #mix = 'default';
   #active = 0;
 
   constructor({ enabled = true, AudioContextClass = globalThis.AudioContext ?? globalThis.webkitAudioContext } = {}) {
@@ -125,6 +135,28 @@ export class Audio {
     return true;
   }
 
+  get mix() {
+    return this.#mix;
+  }
+
+  setMix(name) {
+    if (!MIXES[name]) return false;
+    this.#mix = name;
+    this.#applyMix();
+    return true;
+  }
+
+  #applyMix() {
+    if (!this.#comp) return;
+    const m = MIXES[this.#mix];
+    this.#comp.threshold.value = m.threshold;
+    this.#comp.ratio.value = m.ratio;
+    this.#comp.knee.value = m.knee;
+    this.#comp.attack.value = 0.003;
+    this.#comp.release.value = 0.25;
+    if (this.#master) this.#master.gain.value = this.#enabled ? this.#levels.master * m.makeup : 0;
+  }
+
   // Where the player's ears are, for panning. Call once per frame.
   setListener(x, z, yaw) {
     this.#listener = { x, z, yaw };
@@ -142,7 +174,12 @@ export class Audio {
     this.#ctx = new this.#Ctx();
     this.#master = this.#ctx.createGain();
     this.#master.gain.value = this.#enabled ? this.#levels.master : 0;
-    this.#master.connect(this.#ctx.destination);
+    if (typeof this.#ctx.createDynamicsCompressor === 'function') { // SPEC 36.2
+      this.#comp = this.#ctx.createDynamicsCompressor();
+      this.#master.connect(this.#comp);
+      this.#comp.connect(this.#ctx.destination);
+      this.#applyMix();
+    } else this.#master.connect(this.#ctx.destination);
     this.#duck = this.#ctx.createGain();
     this.#duck.gain.value = 1;
     this.#duck.connect(this.#master);
