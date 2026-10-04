@@ -7,7 +7,7 @@ import { MAX_HP, MAX_PLAYERS, PLAYER, RESPAWN_MS, TICK_RATE, WEAPON } from '../.
 import { SPAWN } from '../../src/shared/rules.js';
 
 // ------------------------------------------------------------------ helpers
-const STEP = 7 / 60; // one movement step at full speed, hand computed
+const STEP = 5.6 / 60; // one movement step at full speed, hand computed (SPEC 32 walk speed)
 // D-010/D-014: a level eye-height shot at 4-8 m lands in the head zone: 25 x 1.5 = 37.5 (hand computed).
 const LEVEL_HIT = 37.5;
 const near = (a, b, eps = 1e-6, msg = '') =>

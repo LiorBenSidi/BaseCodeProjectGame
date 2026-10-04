@@ -12,7 +12,7 @@ const near = (a, b, eps = 1e-9, msg = '') =>
 // -0 safe equality (assert.equal uses Object.is)
 const same = (a, b, msg = '') => assert.ok(a === b, `${msg} expected ${b}, got ${a}`);
 
-const STEP = 7 / 60; // speed 7 * dt 1/60, hand computed
+const STEP = 5.6 / 60; // speed 5.6 * dt 1/60, hand computed (SPEC 32 walk speed)
 const OPEN = []; // no boxes
 const BIG = 1000; // huge arena
 
@@ -113,10 +113,10 @@ test('speed is independent of yaw, even for a huge yaw value', () => {
   near(Math.hypot(p.x, p.z), STEP, 1e-9);
 });
 
-test('60 steps of fwd=1 travel exactly one second of speed (7 units)', () => {
+test('60 steps of fwd=1 travel exactly one second of speed (5.6 units)', () => {
   const p = mk();
   for (let i = 0; i < 60; i++) stepPlayer(p, cmd({ fwd: 1 }), OPEN, BIG);
-  near(p.z, -7, 1e-9);
+  near(p.z, -5.6, 1e-9);
 });
 
 test('no input stops horizontal motion immediately (no sliding)', () => {
@@ -134,21 +134,21 @@ test('standing on the floor keeps onGround true and vy exactly 0', () => {
   same(p.y, 0);
 });
 
-test('gravity: an airborne player gains vy of -gravity*dt (-0.4) per step', () => {
+test('gravity: an airborne player gains vy of -gravity*dt (-32/60) per step', () => {
   const p = stepPlayer(mk({ y: 1000, onGround: false }), cmd(), OPEN, BIG);
-  near(p.vy, -0.4);
+  near(p.vy, -32 / 60);
   assert.equal(p.onGround, false);
 });
 
-test('gravity accumulates: after 60 airborne steps vy is -24', () => {
+test('gravity accumulates: after 60 airborne steps vy is -32', () => {
   const p = mk({ y: 100000, onGround: false });
   for (let i = 0; i < 60; i++) stepPlayer(p, cmd(), OPEN, BIG);
-  near(p.vy, -24, 1e-9);
+  near(p.vy, -32, 1e-9);
 });
 
-test('jump from the ground sets vy to jump minus one step of gravity (7.6) and clears onGround', () => {
+test('jump from the ground sets vy to jump minus one step of gravity (8 - 32/60) and clears onGround', () => {
   const p = stepPlayer(mk(), cmd({ jump: true }), OPEN, BIG);
-  near(p.vy, 7.6);
+  near(p.vy, 8 - 32 / 60);
   assert.equal(p.onGround, false);
 });
 
@@ -160,10 +160,10 @@ test('jump without the jump flag does not leave the ground', () => {
 
 test('jump while airborne has no effect (only gravity applies)', () => {
   const p = stepPlayer(mk({ y: 5, vy: -1, onGround: false }), cmd({ jump: true }), OPEN, BIG);
-  near(p.vy, -1.4);
+  near(p.vy, -1 - 32 / 60);
 });
 
-test('a full jump peaks near v^2/2g (about 1.33) and returns to the floor', () => {
+test('a full jump peaks near v^2/2g (about 1.0, SPEC 32) and returns to the floor', () => {
   const p = mk();
   let peak = 0;
   stepPlayer(p, cmd({ jump: true }), OPEN, BIG);
@@ -171,7 +171,7 @@ test('a full jump peaks near v^2/2g (about 1.33) and returns to the floor', () =
     peak = Math.max(peak, p.y);
     stepPlayer(p, cmd(), OPEN, BIG);
   }
-  assert.ok(peak > 1.2 && peak < 1.45, `peak ${peak}`);
+  assert.ok(peak > 0.9 && peak < 1.1, `peak ${peak}`); // 64 / 64 = 1.0 m, minus discretisation
   assert.equal(p.onGround, true);
   same(p.y, 0);
   same(p.vy, 0);
@@ -182,7 +182,7 @@ test('holding jump does not double-jump mid-air', () => {
   stepPlayer(p, cmd({ jump: true }), OPEN, BIG);
   const vyAfterFirst = p.vy;
   stepPlayer(p, cmd({ jump: true }), OPEN, BIG);
-  near(p.vy, vyAfterFirst - 0.4);
+  near(p.vy, vyAfterFirst - 32 / 60);
 });
 
 test('y never goes below 0 even with a huge downward velocity', () => {
@@ -207,7 +207,7 @@ test('walking into a wall diagonally slides along the other axis', () => {
   const p = mk({ x: 1 });
   for (let i = 0; i < 100; i++) stepPlayer(p, cmd({ right: 1, fwd: 1 }), [wall], BIG);
   assert.ok(p.x + PLAYER.radius <= 2 + 1e-9);
-  assert.ok(p.z < -8 && p.z > -8.3, `z=${p.z}`); // 100 * STEP/sqrt2 = 8.25
+  assert.ok(p.z < -6.4 && p.z > -6.7, `z=${p.z}`); // 100 * STEP/sqrt2 = 6.6
 });
 
 test('sliding along Z is unaffected by being pressed against an X wall (velocity component zeroed only on hit axis)', () => {
