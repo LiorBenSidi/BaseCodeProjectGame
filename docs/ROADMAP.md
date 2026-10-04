@@ -34,6 +34,8 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - ~~Game modes: deathmatch with match timer, then team deathmatch.~~ Done 2026-10-04 (D-021).
 - ~~Movement polish: crouch, slide, step-up, air control.~~ Done 2026-10-04 (D-022), plus sprint, mantle and wall jump.
 - ~~Kits with abilities and in-match progression (XP, levels, perks).~~ Done 2026-10-04 (D-023).
+- ~~Rooms and lobby (room ids with mode, registry, quick play, join by code).~~ Done 2026-10-04 (D-024).
+- ~~Sign-in binding, match results, lifetime stats and leaderboard.~~ Done 2026-10-04 (D-024).
 
 ## Phase 3 - Rooms and lobby
 - Multiple `GameRoom` instances, lobby list, matchmaking by capacity.

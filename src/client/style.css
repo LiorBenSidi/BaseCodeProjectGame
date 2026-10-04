@@ -170,3 +170,23 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
   #kit-picker { grid-template-columns: 1fr; }
 }
 
+/* SPEC 26.4 lobby */
+.account { margin: 10px 0 0; font-size: 12px; color: var(--muted, #9aa4b2); }
+.account-actions { display: flex; gap: 8px; }
+button.ghost { padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 8px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
+button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
+.room-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+.room-actions select { padding: 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.04); color: inherit; font-size: 13px; }
+.room-actions .primary { padding: 8px 12px; }
+#join-code { margin-top: 8px; }
+.rooms, .leaderboard { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; max-height: 150px; overflow: auto; }
+.rooms .room { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; background: rgba(255, 255, 255, 0.04); color: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.rooms .room:hover { border-color: var(--accent, #38bdf8); }
+.rooms .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }
+.rooms .meta, .leaderboard .stat { color: var(--muted, #9aa4b2); white-space: pre; }
+.leaderboard li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 4px 2px; }
+.rooms .empty, .leaderboard .empty { font-size: 12px; color: var(--muted, #9aa4b2); }
+.room-line { margin: 6px 0 0; font-size: 12px; color: var(--accent, #38bdf8); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+#match-room { margin-left: 12px; font-size: 11px; letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.6); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+#menu { max-height: calc(100vh - 32px); overflow: auto; }
+

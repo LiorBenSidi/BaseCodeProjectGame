@@ -46,8 +46,14 @@ export class GameRoom {
   #maxPlayers;
   #match;
 
-  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE } = {}) {
+  // SPEC 26 / 27: `hooks.roster({ players, maxPlayers, phase, matchNumber })` fires on join, leave and
+  // match start / end; `hooks.matchEnd({ result, players })` fires after the matchEnd broadcast. Both are
+  // persistence paths (never per tick); a hook that throws is logged and ignored.
+  #hooks;
+
+  constructor({ now = () => Date.now(), random = Math.random, logger = null, maxPlayers = MAX_PLAYERS, mode = DEFAULT_MODE, hooks = null } = {}) {
     this.#now = now;
+    this.#hooks = hooks;
     this.#random = random;
     this.#log = logger;
     this.#maxPlayers = maxPlayers;
@@ -67,7 +73,7 @@ export class GameRoom {
     return this.#players.size;
   }
 
-  addPlayer({ send, name, kit } = {}) {
+  addPlayer({ send, name, kit, userId = null } = {}) {
     if (typeof send !== 'function') throw new TypeError('addPlayer requires a send(obj) function');
     if (this.#players.size >= this.#maxPlayers) return null;
 
@@ -99,6 +105,7 @@ export class GameRoom {
       protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
       team: assignTeam(this.#match, this.#players.values()), // SPEC 22: -1 in DM, 0 Blue / 1 Red in TDM
       // SPEC 24: kit and cooldowns; a kit change applies on the next spawn. SPEC 25: XP, level, perks.
+      userId: typeof userId === 'string' && userId.length > 0 && userId.length <= 64 ? userId : null, // SPEC 27: platform-verified, never from the payload
       kitState: newKitState(isKit(kit) ? kit : DEFAULT_KIT),
       nextKit: null,
       wantsAbility: null,
@@ -113,6 +120,7 @@ export class GameRoom {
     this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
+    this.#roster();
     return p;
   }
 
@@ -120,6 +128,7 @@ export class GameRoom {
     const removed = this.#players.delete(id);
     if (removed) this.#log?.info('player left', { id, players: this.#players.size });
     if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
+    if (removed) this.#roster();
     return removed;
   }
 
@@ -276,8 +285,11 @@ export class GameRoom {
     const reason = endReason(this.#match, this.#players.values(), now);
     if (reason !== null) {
       const result = endMatch(this.#match, this.#players.values(), now, reason);
+      const roster = [...this.#players.values()];
       this.#log?.info('match end', { reason, number: result.number });
       this.#broadcast({ t: 'matchEnd', ...result });
+      this.#hook('matchEnd', { result, players: roster, mode: this.#match.mode, nowMs: now });
+      this.#roster();
       return;
     }
     if (shouldRestart(this.#match, now)) {
@@ -295,11 +307,26 @@ export class GameRoom {
     }
   }
 
+  #roster() {
+    this.#hook('roster', { players: this.#players.size, maxPlayers: this.#maxPlayers, phase: this.#match.phase, matchNumber: this.#match.number, nowMs: this.#now() });
+  }
+
+  #hook(name, info) {
+    const fn = this.#hooks?.[name];
+    if (typeof fn !== 'function') return;
+    try {
+      fn(info);
+    } catch (err) {
+      this.#log?.warn('hook failed', { hook: name, error: err?.message });
+    }
+  }
+
   #startMatch(now) {
     this.#fx = []; // SPEC 24: no effects carry over
     startMatch(this.#match, now);
     this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
     this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number });
+    this.#roster();
   }
 
   #fire(p, now) {

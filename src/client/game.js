@@ -13,6 +13,7 @@ import { attributeDamage, calculateDamageAngle, pruneThreats } from './hudModel.
 import { Input } from './input.js';
 import { Network } from './net.js';
 import { ActorNetwork, roomIdFromLocation } from './netActor.js';
+import { createClient } from '@base44/sdk';
 import { RemotePlayers } from './remote.js';
 import { createScene } from './scene.js';
 import { TouchControls } from './touch.js';
@@ -51,6 +52,8 @@ export class Game {
   #effects;
   #kit = 'vanguard';
   #self = null; // SPEC 24.5 private block of the last snapshot
+  #sdk = null;
+  #roomId = null;
   #threats = [];
   #lastHp = null;
   #eyeY = null; // SPEC 23 smoothed camera height
@@ -170,9 +173,19 @@ export class Game {
       pos: [this.#me.x, this.#me.y, this.#me.z], rtt: this.#clock.rtt, clockOffset: this.#clock.offset };
   }
 
-  join(name, kit = this.#kit) {
+  // SPEC 26: an SDK client for lobby reads on the actor transport; null on the Node dev server.
+  lobbyClient() {
+    const appId = import.meta.env?.VITE_BASE44_APP_ID;
+    if (!appId) return null;
+    this.#sdk ??= createClient({ appId, requiresAuth: false });
+    return this.#sdk;
+  }
+
+  join(name, kit = this.#kit, roomId = roomIdFromLocation(window.location.search)) {
     this.#name = name;
     this.#kit = KITS[kit] ? kit : this.#kit;
+    this.#roomId = roomId;
+    this.#hud.setRoom(roomId);
     const handlers = {
       welcome: (m) => { this.#id = m.id; this.#pending = []; this.#lastHp = null; this.#hud.notice(''); this.#hud.show(); this.#pickups.setSpots(m.pickups); },
       pickup: (m) => this.#hud.killFeed(pickupText(m)),
@@ -198,7 +211,7 @@ export class Game {
     // derives it from BASE44_APP_ID); without it this is the Node/ws server.
     const appId = import.meta.env?.VITE_BASE44_APP_ID;
     this.#net = appId
-      ? new ActorNetwork(handlers, { appId, roomId: roomIdFromLocation(window.location.search) })
+      ? new ActorNetwork(handlers, { appId, roomId: this.#roomId, client: this.lobbyClient() })
       : new Network(handlers);
     this.#net.connect(name, this.#kit);
   }

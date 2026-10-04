@@ -1,6 +1,8 @@
 import { installDebugHarness } from './debugHarness.js';
 import { Game } from './game.js';
 import { loadKit, saveKit, renderKitPicker } from './kitUi.js';
+import { Lobby, describeRoom, roomLink } from './lobby.js';
+import { roomIdFromLocation } from '../shared/rooms.js';
 import { bindSettingsPanel } from './settingsPanel.js';
 import { injectTheme } from './theme.js';
 import { isTouchDevice } from './touch.js';
@@ -17,9 +19,23 @@ bindSettingsPanel(document, game);
 let kit = loadKit(window.localStorage);
 renderKitPicker(document.getElementById('kit-picker'), kit, (id) => { kit = id; saveKit(window.localStorage, id); game.selectKit(id); });
 
+// SPEC 26: rooms. The lobby exists only on the actor transport (Base44 build); the Node dev server has one room.
+let roomId = roomIdFromLocation(window.location.search);
+const roomLine = document.getElementById('room-line');
+const showRoom = (id) => {
+  roomId = id;
+  roomLine.hidden = false;
+  roomLine.textContent = `Room: ${describeRoom(id)}`;
+  window.history.replaceState(null, '', roomLink(window.location.origin, id));
+};
+if (new URLSearchParams(window.location.search).has('room')) showRoom(roomId);
+const lobby = new Lobby({ client: game.lobbyClient(), onRoom: showRoom });
+lobby.mount();
+
 menu.addEventListener('submit', (e) => {
   e.preventDefault();
-  game.join(nameInput.value, kit);
+  lobby.stop();
+  game.join(nameInput.value, kit, roomId);
   menu.hidden = true;
   // Both must run inside the user gesture.
   if (isTouchDevice()) game.enableTouch();

@@ -1,0 +1,19 @@
+// SPEC 27: lifetime totals per signed-in player, keyed by the platform-verified user id.
+{
+  "name": "PlayerStats",
+  "description": "Lifetime arena totals for a signed-in player. Written by the Match actor; read by everyone (leaderboard).",
+  "type": "object",
+  "properties": {
+    "user_id": { "type": "string", "description": "Platform-verified user id from the connection identity" },
+    "name": { "type": "string", "description": "Last callsign used" },
+    "kills": { "type": "number" },
+    "deaths": { "type": "number" },
+    "xp": { "type": "number", "description": "Sum of in-match XP" },
+    "matches": { "type": "number" },
+    "wins": { "type": "number" },
+    "best_kills": { "type": "number", "description": "Most kills in one match" },
+    "last_played": { "type": "string", "format": "date-time" }
+  },
+  "required": ["user_id"],
+  "rls": { "read": true, "write": false }
+}

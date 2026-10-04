@@ -31,6 +31,7 @@ export class Hud {
   #ammoValue = $('ammo-value');
   #matchTimer = $('match-timer');
   #matchTeams = $('match-teams');
+  #matchRoom = $('match-room'); // SPEC 26.4: the room id, so a friend can be told where to join
   #endScreen = $('match-end');
   #endTitle = $('match-end-title');
   #endSub = $('match-end-sub');
@@ -148,6 +149,12 @@ export class Hud {
     void chip.offsetWidth;
     chip.classList.add('deny');
     chip.title = reason === 'no_anchor' ? 'No surface in range' : reason;
+  }
+
+  setRoom(id) {
+    if (!this.#matchRoom) return;
+    this.#matchRoom.hidden = !id || id === 'arena-1';
+    this.#matchRoom.textContent = id ?? '';
   }
 
   killFeed(text, now = Date.now()) {

@@ -858,3 +858,38 @@ XP bar with level and `xp / next` label under the ability chips; a perk offer ca
 ### 25.5 Tests
 `tests/unit/abilities.test.js` (14: kit table, cooldowns, every ability, stepEffects, grapple, scan, heal, stasis, room welcome and snapshot, intent flow and denial, shield and decoy in the firing path, kit change on spawn and XP), `tests/unit/progression.test.js` (5), `tests/unit/kitUi.test.js` (4), SPEC 24 cases in `protocol.test.js`, snapshot key lists updated.
 
+## 26. Rooms and lobby (Batch 4, D-024)
+
+`src/shared/rooms.js` (pure). A room is one Match actor instance; its id carries the mode.
+
+### 26.1 Room ids
+`<mode>-<code>`: mode in `MODE_IDS` (`dm`, `tdm`), code `[a-z0-9]{4,12}`; generated codes are 6 chars from `ROOM_CODE_ALPHABET` (no i, l, o, 0, 1). `arena-1` (the legacy default) and `diag-*` rooms parse as `dm`. `modeForRoomId(id)` is what the actor hands to `GameRoom({ mode })`, so the first joiner's choice binds everyone (`MatchHost` reads it from `instanceId`). `roomIdFromLocation(search)` reads `?room=` and falls back to `arena-1` for anything that is not a room id; `roomLink(origin, id)` is the shareable link.
+
+### 26.2 Registry (entity `Room`)
+One row per room, written by the actor's service role on persistence paths only (join, leave, match start, match end; never per tick), coalesced to one write in flight per room (`base44/actors/Match/persistence.js`). Fields: `room_id`, `mode`, `players`, `max_players`, `phase`, `match_number`, `status` (`empty` / `open` / `full`), `last_seen`. RLS: read everyone, write nobody (the service role bypasses RLS). `lobbyRooms(rows, now)` shows `open` rows seen within `ROOM_STALE_MS` (120 s), fullest first.
+
+### 26.3 Hooks
+`GameRoom({ hooks })`: `roster({ players, maxPlayers, phase, matchNumber, nowMs })` after join, leave, match start and match end; `matchEnd({ result, players, mode, nowMs })` after the `matchEnd` broadcast. A throwing hook is logged and ignored; the simulation never waits on a write.
+
+### 26.4 Client
+Menu (actor transport only; the Node dev server shows "Local server: one room, no sign-in" and hides the lobby): mode select, Quick Play (`quickPlayRoom`: the fullest open room with space in that mode, else a new room), Create room (new code), Join by room id or link (`resolveJoinInput`), the open-room list (click to join), refreshed every 5 s from `entities.Room.list('-players', 50)`. Picking a room writes `?room=<id>` with `history.replaceState` and submits the menu. The HUD match bar shows the room id (hidden for `arena-1`).
+
+## 27. Sign-in binding and persistence (Batch 5, D-024)
+
+### 27.1 Identity
+`wrapConn` exposes `userId` only when `conn.identity.type === 'authenticated'`; `MatchSession` passes it to `addPlayer({ userId })`, never from the join payload. Anonymous players play normally and get no persistent stats.
+
+### 27.2 Entities
+- `PlayerStats` (keyed by `user_id`): `name` (last callsign), `kills`, `deaths`, `xp`, `matches`, `wins`, `best_kills`, `last_played`. Merged per match with `mergeStats` (totals add, `best_kills` is a max).
+- `MatchResult`: `room_id`, `mode`, `match_number`, `reason`, `winner { type, name?, team? }`, `team_scores`, `players [{ name, user_id, kills, deaths, team, xp, level }]`, `ended_at`.
+- Both RLS read everyone, write nobody. Schemas in `base44/entities/*.jsonc`; they reach the app with `base44 entities push` (or `base44 deploy`), which is an owner action like the actor deploy.
+
+### 27.3 Writes
+`Persistence.matchEnd` creates the `MatchResult`, then for each signed-in player reads the `PlayerStats` row by `user_id` and updates or creates it. Failures are logged per record; nothing propagates to the room. A win is by player id in DM and by team in TDM; a draw wins for nobody (`playerWon`).
+
+### 27.4 Client
+Account line from `auth.me()` with Sign in (`auth.redirectToLogin(href)`) / Sign out; the callsign defaults to the user's name. Leaderboard: top 10 `PlayerStats` by kills, wins, then fewer deaths (`leaderboard`), refreshed with the room list.
+
+### 27.5 Tests
+`tests/unit/rooms.test.js` (4), `persistence.test.js` (5, including the room hooks), `persistenceActor.test.js` (3: identity mapping, a `tdm-*` instance runs TDM and writes registry, result and stats through a fake service-role client, a failing write never reaches the room), `lobby.test.js` (2). `netActor.test.js` updated to the room grammar.
+

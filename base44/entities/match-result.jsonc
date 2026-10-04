@@ -1,0 +1,18 @@
+// SPEC 27: one record per finished match, the canonical result as the actor computed it.
+{
+  "name": "MatchResult",
+  "description": "A finished match: winner, scores and every player's line. Written by the Match actor.",
+  "type": "object",
+  "properties": {
+    "room_id": { "type": "string" },
+    "mode": { "type": "string", "enum": ["dm", "tdm"] },
+    "match_number": { "type": "number" },
+    "reason": { "type": "string", "description": "time, score or empty" },
+    "winner": { "type": "object", "description": "{ type: player | team | draw, name?, team? }" },
+    "team_scores": { "type": "array", "items": { "type": "number" }, "description": "[blue, red] in TDM, null in DM" },
+    "players": { "type": "array", "items": { "type": "object" }, "description": "{ name, user_id, kills, deaths, team, xp, level }" },
+    "ended_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["room_id", "mode", "ended_at"],
+  "rls": { "read": true, "write": false }
+}

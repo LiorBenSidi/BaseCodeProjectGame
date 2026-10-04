@@ -16,11 +16,7 @@ import { createClient } from '@base44/sdk';
 export const STALE_MS = 5000;
 const CONN_KEY = 'bca.connectionId';
 
-export function roomIdFromLocation(search, fallback = 'arena-1') {
-  const raw = new URLSearchParams(search).get('room') ?? fallback;
-  // Printable ASCII without '/', max 64: a subset of what the platform accepts, easy to share.
-  return /^[A-Za-z0-9_-]{1,64}$/.test(raw) ? raw : fallback;
-}
+export { roomIdFromLocation } from '../shared/rooms.js'; // SPEC 26: moved to the shared room grammar
 
 export function connectionId(storage) {
   let id = storage?.getItem(CONN_KEY);

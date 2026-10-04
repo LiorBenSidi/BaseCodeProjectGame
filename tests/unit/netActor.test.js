@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { roomIdFromLocation, connectionId, ActorNetwork, STALE_MS } from '../../src/client/netActor.js';
 
 test('roomIdFromLocation accepts a safe id and falls back otherwise', () => {
-  assert.equal(roomIdFromLocation('?room=lobby_2'), 'lobby_2');
+  assert.equal(roomIdFromLocation('?room=tdm-abcd'), 'tdm-abcd'); // SPEC 26 grammar
+  assert.equal(roomIdFromLocation('?room=lobby_2'), 'arena-1'); // not <mode>-<code>
   assert.equal(roomIdFromLocation(''), 'arena-1');
   assert.equal(roomIdFromLocation('?room=a/b'), 'arena-1');
   assert.equal(roomIdFromLocation('?room=' + 'x'.repeat(65)), 'arena-1');

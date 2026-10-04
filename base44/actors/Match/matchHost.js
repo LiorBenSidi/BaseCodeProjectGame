@@ -5,6 +5,7 @@
 // The actor's `conn` object is { id, identity?, send(data), reject(code, reason) }. MatchSession
 // wants { id, send(obj), close(reason) }; wrapConn adapts one to the other.
 
+import { modeForRoomId } from './shared/rooms.js';
 import { GameRoom } from './server/GameRoom.js';
 import { createLogger } from './server/logger.js';
 import { MatchSession } from './server/matchSession.js';
@@ -27,6 +28,8 @@ export const CLOSE_CODES = Object.freeze({
 export function wrapConn(conn) {
   return {
     id: conn.id,
+    // SPEC 27: the platform-verified principal; anonymous visitors get null and no persistent stats
+    userId: conn.identity?.type === 'authenticated' && typeof conn.identity.userId === 'string' ? conn.identity.userId : null,
     send: (obj) => conn.send(obj),
     close: (reason) => conn.reject(CLOSE_CODES[reason] ?? 4000, reason),
   };
@@ -53,6 +56,7 @@ export class MatchHost {
     tickMs = TICK_MS,
     maxCatchup = MAX_CATCHUP,
     diag = false,
+    persistence = null, // SPEC 26 / 27: { roster(info), matchEnd(info) } backed by the actor's service role
   } = {}) {
     this.#now = now;
     this.#clock = clock;
@@ -63,7 +67,14 @@ export class MatchHost {
     // in src/server where console is banned, so the sink is injected from here instead.
     const logSink = sink ?? ((line) => console.log(line)); // policy-allow: NO_CONSOLE_SERVER because this file is actor glue outside src/
     this.#log = createLogger(`actor:${instanceId}`, { level: logLevel, sink: logSink });
-    const room = new GameRoom({ now, logger: createLogger(`room:${instanceId}`, { level: logLevel, sink: logSink }) });
+    // SPEC 26: the mode is part of the room id, so every joiner of `tdm-xxxx` plays the same mode.
+    const hooks = persistence
+      ? {
+        roster: (info) => persistence.roster({ ...info, roomId: instanceId, mode: modeForRoomId(instanceId) }),
+        matchEnd: (info) => persistence.matchEnd({ ...info, roomId: instanceId }),
+      }
+      : null;
+    const room = new GameRoom({ now, mode: modeForRoomId(instanceId), hooks, logger: createLogger(`room:${instanceId}`, { level: logLevel, sink: logSink }) });
     this.#session = new MatchSession({ room, logger: this.#log, now });
   }
 

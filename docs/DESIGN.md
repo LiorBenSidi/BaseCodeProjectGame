@@ -252,3 +252,11 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: owner approved V1 plan 2026-10-04 (kits with abilities + in-match XP named as the unique layer).
 - Affects: docs/SPEC.md sections 24 and 25; `src/shared/abilities.js`, `src/shared/progression.js`, `src/shared/movement.js` (dash), `src/shared/constants.js`, `src/server/protocol.js`, `src/server/GameRoom.js`, `src/server/server.js`, `src/server/matchSession.js`, `src/client/{game,hud,kitUi,effects,net,netActor,main,debugHarness}.js`, `index.html`, `src/client/style.css`.
 
+### D-024 (W1, W8) Rooms, lobby, sign-in binding and persistence
+- Status: decided
+- Date: 2026-10-04
+- Decision: The mode lives in the room id (`<mode>-<code>`) because the actor knows nothing but its instance id. The lobby is a registry entity (`Room`) written by the actor's service role on persistence paths and read by everyone; no backend function, no extra actor. Results and lifetime stats (`MatchResult`, `PlayerStats`) are written by the actor from the canonical match end, keyed by the platform-verified `conn.identity.userId`; the join payload never carries identity. All writes are fire-and-forget behind room hooks so the simulation never waits on storage. Entities use RLS read everyone / write nobody; the service role bypasses RLS.
+- Source: owner approved V1 plan 2026-10-04; platform contract "Creating Actors" (conn.identity, this.client.asServiceRole, actors receive no secrets).
+- Affects: docs/SPEC.md sections 26 and 27; `src/shared/rooms.js`, `src/shared/persistence.js`, `src/server/GameRoom.js` (hooks, userId), `src/server/matchSession.js`, `base44/actors/Match/{matchHost,persistence,entry}.js|ts`, `base44/entities/*.jsonc`, `src/client/{lobby,main,game,hud,netActor}.js`, `index.html`, `src/client/style.css`.
+- Shipping note: entity schemas and the actor need their own owner actions (`base44 entities push`, actor deploy); merge + Publish covers the frontend only.
+

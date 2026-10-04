@@ -121,7 +121,7 @@ export class MatchSession {
     }
     if (msg.t === 'join') {
       if (s.player) return;
-      const player = this.#room.addPlayer({ name: msg.name, kit: msg.kit, send: (obj) => s.conn.send(obj) });
+      const player = this.#room.addPlayer({ name: msg.name, kit: msg.kit, userId: s.conn.userId ?? null, send: (obj) => s.conn.send(obj) }); // SPEC 27: userId comes from the transport, never the payload
       if (!player) {
         s.conn.send({ t: 'error', reason: 'room_full' });
         this.#drop(s, 'room_full');
