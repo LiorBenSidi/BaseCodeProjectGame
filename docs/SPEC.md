@@ -659,15 +659,18 @@ Client-only UX, HUD, theme system, menu skin, arena visual pass, and touch layou
     re-resolves the device mode at once (`Game.updateTouchMode`), also mid-match, without a reload.
   - Show FPS checkbox (`localStorage` key `bca.showFps`): `#fps` bottom-left, frames per 500 ms window.
 
-### 19.3 Arena visual pass (`src/client/scene.js`, `src/client/remote.js`)
-- Hemisphere light and directional sun light with soft shadow mapping enabled.
-- Dark fog matching the horizon/sky background color (`0x0f172a`).
-- Simple gradient skybox generated via inverted sphere geometry with vertex colors.
-- Box materials with slight roughness and metalness variation per box.
-- Toned-down floor grid with lower opacity and subtle line colors.
-- Team color meshes for remote players (Blue for even IDs, Red for odd IDs) with shadows.
-- Name tags above remote players rendered as `THREE.Sprite` using cached `CanvasTexture` per name.
-- Cheap CSS radial vignette overlay for framing.
+### 19.3 Arena visual pass (`src/client/arenaStyle.js`, `src/client/scene.js`, `src/client/remote.js`)
+Rendering only; no game rule changes. The numbers live in `arenaStyle.js` (pure, unit tested); `scene.js` and `remote.js` turn them into Three.js objects.
+- Renderer: ACES filmic tone mapping (exposure 1.15), PCF soft shadow maps. Shadow map 2048, or 1024 when the viewport is a phone (`shadowMapSizeFor(w, h)`: height <= 500 or width < 1000).
+- Sky: inverted sphere (radius 240) with vertex colors from `skyColorAt(h)`, horizon `0x0f172a` to zenith `0x070a16`, smoothstep eased. Vertex colors are converted from sRGB like a material color so the horizon matches the fog. `scene.background` is the horizon color.
+- Fog: `THREE.Fog(0x0f172a, 35, 140)`; `FOG.color === SKY.horizon`, `FOG.far >= MAP.half * 2`.
+- Lights: hemisphere `0x9db1dc` / `0x2a3140` at 1.0; warm sun `0xffe3c2` at 1.9 from `[28, 46, 18]` casting shadows (ortho shadow camera +-46, covers the arena and its walls); cool fill `0x8fa6ff` at 0.7 from `[-24, 20, -30]` without shadows so faces turned away from the sun still read.
+- Floor `0x343e4b` roughness 0.92, receives shadows. Grid helper at opacity 0.22 (`0x5a6b80` / `0x3b4858`).
+- Boxes: `boxMaterialParams(i)` gives hue 0.58 / saturation 0.14, lightness `0.38 + (i % 4) * 0.05`, roughness `0.55 + (i % 3) * 0.15`, metalness `0.04 + (i % 2) * 0.1`; cast and receive shadows.
+- Remote players: `teamColorHex(id)` = `PALETTE.teamBlue` for even ids, `PALETTE.teamRed` for odd ids (parity stands in for teams until Phase 2 TDM). Body, head and visor cast and receive shadows.
+- Name tags: `THREE.Sprite` with a `CanvasTexture` per distinct name (cached), `nameTagLayout(name)`: text capped at 16 code points (`?` when empty), 48 px tall canvas, width from the text, world height 0.36 with the canvas aspect, placed at y 2.05. The name is drawn with `fillText`, never inserted into the DOM. The tag follows the player's `name` in the snapshot and is rebuilt when it changes.
+- Vignette: `#vignette`, a fixed `radial-gradient` overlay under the HUD (`pointer-events: none`).
+- Verification: `tests/unit/arenaStyle.test.js`; a headless Chrome render with two bots in view at 1280x720 and 844x390 shows lit boxes, shadows, both team colors and the name tag.
 
 ### 19.4 Mobile touch controls resolution (`src/client/deviceMode.js`)
 - `resolveDeviceMode({ override, hasTouch, coarsePointer, userAgentMobile })`:

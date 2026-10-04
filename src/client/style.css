@@ -2,6 +2,8 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg, #0d1117); color: var(--text, #e6edf3); font: var(--font-md, 14px)/1.4 var(--font-family, system-ui, sans-serif); }
 canvas#game { display: block; width: 100vw; height: 100vh; }
 [hidden] { display: none !important; }
+/* SPEC 19.3: cheap radial vignette over the 3D view; the HUD stacks above it. */
+#vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.45) 100%); }
 
 /* Menu: a centered dark launcher card (SPEC 19.2). */
 #menu { position: fixed; inset: 0; margin: auto; width: min(360px, calc(100vw - 32px)); height: fit-content; padding: var(--space-lg, 24px); background: rgba(22, 27, 34, 0.94); border: 1px solid var(--surface-border, #30363d); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); display: grid; gap: var(--space-sm, 8px); backdrop-filter: blur(6px); }
