@@ -94,14 +94,6 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
     if (p.tac === 0) p.tacCd = PLAYER.tacCooldown;
   }
 
-  // SPEC 23.1 stance: crouch lowers the hitbox at once; standing up needs head room.
-  // SPEC 32.2: a dive uses the crouch hitbox for its whole duration.
-  const wantCrouch = !!cmd.crouch || p.slide > 0 || p.dive > 0;
-  const curH = heightOf(p);
-  let h = curH;
-  if (wantCrouch) h = PLAYER.crouchHeight;
-  else if (curH < H) h = freeAt(p.x, p.y, p.z, H, boxes) ? H : curH;
-  p.h = h;
 
   // SPEC 23.2 slide, amended by SPEC 32.1 omnimovement: sprinting in ANY direction on the ground and tapping
   // crouch while moving starts a slide along the input direction (so backwards and strafe slides work).
@@ -136,6 +128,15 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
     p.slide = 0;
     keepMomentum = true;
   }
+
+  // SPEC 23.1 stance: crouch lowers the hitbox at once; standing up needs head room. Evaluated after the slide and
+  // dive triggers so the hitbox drops on the very step they start. SPEC 32.2: a dive uses the crouch hitbox throughout.
+  const wantCrouch = !!cmd.crouch || p.slide > 0 || p.dive > 0;
+  const curH = heightOf(p);
+  let h = curH;
+  if (wantCrouch) h = PLAYER.crouchHeight;
+  else if (curH < H) h = freeAt(p.x, p.y, p.z, H, boxes) ? H : curH;
+  p.h = h;
 
   let speed = PLAYER.speed;
   if (p.dash > 0) {
