@@ -1,9 +1,9 @@
 // Deterministic player movement. Runs on the server (authoritative) and on the client
 // (prediction + replay after reconciliation). Both MUST call it with identical inputs.
 //
-// p   : { x, y, z, vx, vy, vz, onGround, h?, slide?, slideDx?, slideDz?, wallJumps?, jumpHeld?, crouchHeld? }
-//       (y = feet position; the SPEC 23 fields are created on first use so Milestone 1 callers keep working)
-// cmd : { fwd, right, jump, yaw, sprint?, crouch? }  (fwd/right in [-1, 1])
+// p   : { x, y, z, vx, vy, vz, onGround, h?, slide?, slideDx?, slideDz?, dive?, diveDx?, diveDz?,
+//         tacSprint?, tacSprintCd?, wallJumps?, jumpHeld?, crouchHeld?, diveHeld?, tacSprintHeld? }
+// cmd : { fwd, right, jump, yaw, pitch?, sprint?, crouch?, dive?, tacSprint? }  (fwd/right in [-1, 1])
 
 import { INPUT_DT, PLAYER } from './constants.js';
 import { MAP } from './map.js';
@@ -13,7 +13,7 @@ const H = PLAYER.height;
 const EPS = 1e-4;
 
 export const heightOf = (p) => (typeof p.h === 'number' ? p.h : H);
-// Eye and zone layout scale with the current height (crouch), so the camera and hit zones agree.
+// Eye and zone layout scale with the current height (crouch/dive), so camera and hit zones agree.
 export const eyeOf = (p) => PLAYER.eye * (heightOf(p) / H);
 
 function overlapsAt(p, b, h) {
@@ -61,12 +61,24 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
   const dt = INPUT_DT;
   const sin = Math.sin(cmd.yaw);
   const cos = Math.cos(cmd.yaw);
+
   const jumpEdge = !!cmd.jump && !p.jumpHeld;
   const crouchEdge = !!cmd.crouch && !p.crouchHeld;
+  const diveEdge = !!cmd.dive && !p.diveHeld;
+  const tacSprintEdge = !!cmd.tacSprint && !p.tacSprintHeld;
+
   p.jumpHeld = !!cmd.jump;
   p.crouchHeld = !!cmd.crouch;
+  p.diveHeld = !!cmd.dive;
+  p.tacSprintHeld = !!cmd.tacSprint;
+
   if (p.wallJumps === undefined) p.wallJumps = PLAYER.wallJumpsPerAir;
   if (p.slide === undefined) p.slide = 0;
+  if (p.dive === undefined) p.dive = 0;
+  if (p.tacSprint === undefined) p.tacSprint = 0;
+  if (p.tacSprintCd === undefined) p.tacSprintCd = 0;
+
+  p.mantled = false;
 
   // Camera looks down -Z at yaw 0; +yaw turns left.
   let wx = -sin * cmd.fwd + cos * cmd.right;
@@ -74,46 +86,106 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
   const len = Math.hypot(wx, wz);
   if (len > 1) { wx /= len; wz /= len; }
 
-  // SPEC 23.1 stance: crouch lowers the hitbox at once; standing up needs head room.
-  const wantCrouch = !!cmd.crouch || p.slide > 0;
+  // Update tactical sprint cooldown
+  p.tacSprintCd = Math.max(0, p.tacSprintCd - dt);
+
+  // Tac sprint activation (forward-only: cmd.fwd > 0.5)
+  if (tacSprintEdge && cmd.fwd > 0.5 && p.onGround && p.tacSprintCd === 0 && p.slide === 0 && p.dive === 0) {
+    p.tacSprint = PLAYER.tacSprintBurst;
+  }
+
+  // Manage tac sprint timer & cancellation
+  if (p.tacSprint > 0) {
+    if (cmd.fwd > 0.1 && !cmd.crouch && !cmd.dive && p.onGround) {
+      p.tacSprint = Math.max(0, p.tacSprint - dt);
+      if (p.tacSprint === 0) {
+        p.tacSprintCd = PLAYER.tacSprintCooldown;
+      }
+    } else {
+      p.tacSprint = 0;
+      p.tacSprintCd = PLAYER.tacSprintCooldown;
+    }
+  }
+
+  // Omnimovement sprint: any direction
+  const sprinting = !!cmd.sprint && !cmd.crouch && len > 0.1 && p.slide === 0 && p.dive === 0;
+  const tacSprinting = p.tacSprint > 0 && cmd.fwd > 0.1 && !cmd.crouch && p.slide === 0 && p.dive === 0;
+
+  // Omnimovement dive: press dive or crouch-crouch while sprinting
+  if (diveEdge && p.onGround && (sprinting || tacSprinting || len > 0.5) && p.dive === 0) {
+    p.dive = PLAYER.diveTime;
+    p.diveDx = len > 0 ? wx / len : -sin;
+    p.diveDz = len > 0 ? wz / len : -cos;
+    p.slide = 0;
+    p.tacSprint = 0;
+    p.tacSprintCd = PLAYER.tacSprintCooldown;
+  }
+
+  // Omnimovement slide
+  if (crouchEdge && p.onGround && (sprinting || tacSprinting || len > 0.5) && p.slide === 0 && p.dive === 0) {
+    p.slide = PLAYER.slideTime;
+    p.slideDx = len > 0 ? wx / len : -sin;
+    p.slideDz = len > 0 ? wz / len : -cos;
+    p.tacSprint = 0;
+    p.tacSprintCd = PLAYER.tacSprintCooldown;
+  }
+
+  // Slide cancel check: jumping or releasing crouch / standing within slideCancelWindow keeps momentum
+  if (p.slide > 0) {
+    const slideElapsed = PLAYER.slideTime - p.slide;
+    if (slideElapsed <= PLAYER.slideCancelWindow && (jumpEdge || !cmd.crouch)) {
+      // Keep momentum at current slide speed, cancel slide state
+      const k = p.slide / PLAYER.slideTime;
+      const crouchSpeed = PLAYER.speed * PLAYER.crouchMul;
+      const v = crouchSpeed + (PLAYER.slideSpeed - crouchSpeed) * k;
+      p.vx = p.slideDx * v;
+      p.vz = p.slideDz * v;
+      p.slide = 0;
+    }
+  }
+
+  // Stance: crouch lowers the hitbox at once; standing up needs head room.
+  const wantCrouch = !!cmd.crouch || p.slide > 0 || p.dive > 0;
   const curH = heightOf(p);
   let h = curH;
   if (wantCrouch) h = PLAYER.crouchHeight;
   else if (curH < H) h = freeAt(p.x, p.y, p.z, H, boxes) ? H : curH;
   p.h = h;
 
-  // SPEC 23.2 slide: sprinting on the ground and tapping crouch while moving.
-  const sprinting = !!cmd.sprint && !cmd.crouch && cmd.fwd > 0 && p.slide === 0;
-  if (crouchEdge && p.onGround && !!cmd.sprint && len > 0.5 && p.slide === 0) {
-    p.slide = PLAYER.slideTime;
-    p.slideDx = wx / len;
-    p.slideDz = wz / len;
-  }
-
-  let speed = PLAYER.speed;
   if (p.dash > 0) {
-    // SPEC 24.2 dash: a fixed-speed burst in a locked direction, on the ground or in the air; gravity still applies.
+    // Vanguard dash burst
     p.vx = p.dashDx * PLAYER.dashSpeed;
     p.vz = p.dashDz * PLAYER.dashSpeed;
     p.dash = Math.max(0, p.dash - dt);
     p.slide = 0;
+    p.dive = 0;
+  } else if (p.dive > 0 && p.onGround) {
+    p.vx = p.diveDx * PLAYER.diveSpeed;
+    p.vz = p.diveDz * PLAYER.diveSpeed;
+    p.dive = Math.max(0, p.dive - dt);
   } else if (p.slide > 0 && p.onGround) {
-    const k = p.slide / PLAYER.slideTime; // 1 at the start, 0 at the end
+    const k = p.slide / PLAYER.slideTime;
     const crouchSpeed = PLAYER.speed * PLAYER.crouchMul;
     const v = crouchSpeed + (PLAYER.slideSpeed - crouchSpeed) * k;
     p.vx = p.slideDx * v;
     p.vz = p.slideDz * v;
     p.slide = Math.max(0, p.slide - dt);
   } else if (p.onGround) {
-    if (p.slide > 0) p.slide = 0; // left the ground mid slide: the slide ends, the speed is kept below
+    if (p.slide > 0) p.slide = 0;
+    if (p.dive > 0) p.dive = 0;
+    let speed = PLAYER.speed;
     if (h < H) speed *= PLAYER.crouchMul;
-    else if (sprinting) speed *= PLAYER.sprintMul;
+    else if (tacSprinting) speed = PLAYER.speed * PLAYER.tacSprintMul;
+    else if (sprinting) speed = PLAYER.speed * PLAYER.sprintMul;
     p.vx = wx * speed;
     p.vz = wz * speed;
   } else {
-    // SPEC 23.4 air control: accelerate toward the wanted velocity instead of snapping to it.
-    const tx = wx * speed;
-    const tz = wz * speed;
+    // Airborne: air control accelerates toward target velocity
+    let wantSpeed = PLAYER.speed;
+    if (tacSprinting) wantSpeed = PLAYER.speed * PLAYER.tacSprintMul;
+    else if (sprinting) wantSpeed = PLAYER.speed * PLAYER.sprintMul;
+    const tx = wx * wantSpeed;
+    const tz = wz * wantSpeed;
     const maxDv = PLAYER.airAccel * dt;
     const dx = tx - p.vx;
     const dz = tz - p.vz;
@@ -129,6 +201,7 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
     p.vy = PLAYER.jump;
     p.onGround = false;
     p.slide = 0;
+    p.dive = 0;
   }
   p.vy -= PLAYER.gravity * dt;
 
@@ -136,12 +209,15 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
   const hitX = moveHorizontal(p, 'x', p.vx * dt, boxes, h);
   const hitZ = moveHorizontal(p, 'z', p.vz * dt, boxes, h);
 
-  // SPEC 23.3: walking into a low ledge climbs it; jumping into a taller one grabs it.
+  // Step-up / Mantle
   let climbed = false;
   if (hitX || hitZ) {
     const maxRise = wasGround ? PLAYER.stepHeight : (p.vy <= PLAYER.jump * 0.5 ? PLAYER.mantleHeight : 0);
     climbed = climb(p, hitX, 'x', p.vx * dt, boxes, h, maxRise) || climb(p, hitZ, 'z', p.vz * dt, boxes, h, maxRise);
-    // SPEC 23.5 wall jump: airborne, pressed against a wall, a fresh jump press, one per airtime.
+    if (climbed && !wasGround) {
+      p.mantled = true;
+    }
+    // Wall jump
     if (!climbed && !wasGround && jumpEdge && p.wallJumps > 0) {
       p.wallJumps -= 1;
       p.vy = PLAYER.jump * PLAYER.wallJumpMul;
@@ -171,7 +247,7 @@ export function stepPlayer(p, cmd, boxes = MAP.boxes, half = MAP.half) {
     if (p.vy < 0) p.vy = 0;
     p.onGround = true;
   }
-  if (climbed && p.vy === 0) p.onGround = true; // feet exactly on the ledge top count as standing
+  if (climbed && p.vy === 0) p.onGround = true;
   if (p.onGround) p.wallJumps = PLAYER.wallJumpsPerAir;
 
   const lim = half - R;

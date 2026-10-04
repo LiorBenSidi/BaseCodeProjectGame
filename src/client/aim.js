@@ -1,10 +1,10 @@
-// Aim-down-sights and field of view (SPEC 29.3). Pure: the camera and the settings panel consume this.
+// Aim-down-sights and field of view (SPEC 29.3, SPEC 32). Pure: camera and settings panel consume this.
 import { WEAPONS } from '../shared/weapons.js';
 
 export const DEFAULT_FOV = 80;
 export const MIN_FOV = 60;
 export const MAX_FOV = 110;
-export const ADS_LERP = 18; // per second, toward the target fov
+export const ADS_LERP = 18; // base per second lerp rate
 
 // Zoomed fov per weapon: the sniper scopes hard, everything else tightens a little.
 export const ADS_FOV = Object.freeze({ sniper: 28, rifle: 58, smg: 62, shotgun: 68, pistol: 64 });
@@ -23,8 +23,18 @@ export function targetFov(baseFov, weaponId, ads) {
 }
 
 // Mouse sensitivity scale while zoomed, so the same wrist travel covers the same screen fraction.
-export const sensitivityScale = (fov, baseFov) => Math.tan((fov * Math.PI) / 360) / Math.tan((baseFov * Math.PI) / 360);
+export function sensitivityScale(fov, baseFov, weaponId) {
+  const zoomScale = Math.tan((fov * Math.PI) / 360) / Math.tan((baseFov * Math.PI) / 360);
+  const w = WEAPONS[weaponId];
+  const adsSensMul = w?.adsSensMul ?? 0.8;
+  return zoomScale * adsSensMul;
+}
 
 export const isScoped = (weaponId, ads) => ads && WEAPONS[weaponId]?.id === 'sniper';
 
-export const stepFov = (fov, target, dt) => fov + (target - fov) * Math.min(1, dt * ADS_LERP);
+export function stepFov(fov, target, dt, weaponId = 'rifle') {
+  const w = WEAPONS[weaponId];
+  const adsMs = w?.adsMs ?? 250;
+  const lerpRate = (1000 / adsMs) * 2;
+  return fov + (target - fov) * Math.min(1, dt * lerpRate);
+}
