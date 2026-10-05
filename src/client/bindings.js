@@ -18,6 +18,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   weapon1: 'Digit1',
   weapon2: 'Digit2',
   grenade: 'KeyG',
+  melee: 'Mouse1', // SPEC 38.3: middle mouse, like the quick melee of most arena shooters (V stays the dive)
   ability1: 'KeyQ',
   ability2: 'KeyE',
   perk1: 'Digit3',
@@ -37,7 +38,7 @@ export const ACTION_LABELS = Object.freeze({
   fwd: ['Move forward', 'movement'], back: ['Move back', 'movement'], left: ['Move left', 'movement'], right: ['Move right', 'movement'],
   jump: ['Jump / wall jump', 'movement'], sprint: ['Sprint (double tap: tactical sprint)', 'movement'], crouch: ['Crouch / slide (double tap: dive)', 'movement'], dive: ['Dive', 'movement'],
   fire: ['Fire', 'combat'], ads: ['Aim down sights', 'combat'], reload: ['Reload', 'combat'], weapon1: ['Primary weapon', 'combat'], weapon2: ['Sidearm', 'combat'],
-  nextWeapon: ['Next weapon', 'combat'], prevWeapon: ['Previous weapon', 'combat'], grenade: ['Grenade', 'combat'], inspect: ['Inspect weapon', 'combat'],
+  nextWeapon: ['Next weapon', 'combat'], prevWeapon: ['Previous weapon', 'combat'], grenade: ['Grenade', 'combat'], melee: ['Melee (kit blade)', 'combat'], inspect: ['Inspect weapon', 'combat'],
   ability1: ['Ability 1', 'kit'], ability2: ['Ability 2', 'kit'], perk1: ['Pick perk 1', 'kit'], perk2: ['Pick perk 2', 'kit'],
   scoreboard: ['Scoreboard', 'interface'], chat: ['Chat', 'interface'],
 });
