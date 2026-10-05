@@ -104,11 +104,12 @@ export async function startServer(options = {}) {
     client = isProd ? 'static' : 'vite',
     sink,
     botFill = null, // PRO-audio: null = the mode default
+    mode = DEFAULT_MODE, // SPEC 37.7: dev server room mode (MODE env)
   } = options;
 
   const log = createLogger('server', { level: logLevel, ...(sink ? { sink } : {}) });
-  const botCfg = botConfigFor(DEFAULT_MODE); // PRO-audio: SPEC 35.3
-  const room = new GameRoom({ logger: createLogger('room', { level: logLevel, ...(sink ? { sink } : {}) }), botFill: botFill ?? botCfg.fill, botDifficulty: botCfg.difficulty });
+  const botCfg = botConfigFor(mode); // PRO-audio: SPEC 35.3
+  const room = new GameRoom({ logger: createLogger('room', { level: logLevel, ...(sink ? { sink } : {}) }), mode, botFill: botFill ?? botCfg.fill, botDifficulty: botCfg.difficulty });
 
   const httpServer = http.createServer();
   // Slowloris defence: bound how long a client may take to send headers/body.
