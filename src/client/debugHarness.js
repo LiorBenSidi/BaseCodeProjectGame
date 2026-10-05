@@ -15,6 +15,7 @@ export function installDebugHarness(game) {
     useAbility: (slot) => game.useAbility(slot), // SPEC 24
     pickPerk: (i) => game.pickPerk(i), // SPEC 25
     selectKit: (id) => game.selectKit(id),
+    cycleStation: () => game.cycleStation(), // SPEC 37.7
     state: () => game.debugState(),
   };
   window.__arenaDebug = api;

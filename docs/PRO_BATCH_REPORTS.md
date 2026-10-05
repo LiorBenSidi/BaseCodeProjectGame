@@ -91,3 +91,23 @@ Branch `feat/pro-audio` on `pro-integration`.
 - audio.js: P4 settings may call `setVolume`; this engine exposes `setLevel(bus, v)`. Wire P4's sliders to `setLevel('master' | 'sfx' | 'ui', v)` at integration.
 - game.js: `#cue` signature unchanged; the footsteps block gained a PRO-audio block right after it (P3 and P5 also touch the frame). hud.js scoreboard row edited (P4 / P5 touch other parts of hud.js).
 - modes.js: P5 reworked startMatch / matchSnapshot; the `range` mode and `-1 left` must survive the merge.
+
+# P7 report: Valorant polish (SPEC 37, D-036)
+
+Branch `feat/pro-p7-valorant` on `main`. Implemented directly, commit per feature.
+
+## Shipped
+- `shared/presence.js` radar pulse and AFK rules; GameRoom marks `sc` for everybody during the pulse, `radar: 1` on the snapshot, `afk: 1` on idle humans driven by an `easy` brain.
+- Abilities end spawn protection; `SHIELDED` marker in the HUD.
+- Minimap: radar sweep, pulse halo on revealed enemies, footstep ring while sprinting (24 m), vision wedge from the live fov; prefs `minimapFootsteps`, `minimapCone`.
+- `client/outline.js` + `remote.js` inverted hull enemy outline, pref `enemyOutline` off / yellow / red / purple.
+- `audioModel.hrtfLocalPosition` + PannerNode HRTF path, pref `spatialAudio` stereo / hrtf.
+- `shared/rangeStation.js` reaction station, `station` message in protocol, both dispatchers and the actor mirror; `T` cycles levels; HUD line from `hud.stationText`.
+
+## Verification
+- Unit 1090 (was 1077 at the start of the batch), regression 7, lint clean, actor mirror parity test green.
+- Fresh clone verification and browser smoke recorded below when the PR is opened.
+
+## Cross-batch notes
+- The AFK brain pushes commands with `seq = lastQueuedSeq`, so a client's pending-input reconciliation never sees a foreign ack.
+- `frozen` on a bot skips its brain step; nothing else reads it.
