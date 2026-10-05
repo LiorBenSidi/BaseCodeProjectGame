@@ -151,6 +151,7 @@ export class Game {
     });
     this.#touch = new TouchControls(this.#input, {
       grenade: () => this.throwGrenade(),
+      melee: () => this.melee(), // SPEC 38.3
       reload: () => this.reload(),
       swap: () => this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary'),
       scoreboard: (show) => this.#hud.setScoreboardVisible(show),
@@ -271,6 +272,7 @@ export class Game {
     if (!this.joined || !this.#me.alive) return false;
     this.#net.send({ t: 'melee' });
     this.#weaponView?.swing?.(meleeStyle(this.#kit));
+    this.#tut('melee');
     return true;
   }
 

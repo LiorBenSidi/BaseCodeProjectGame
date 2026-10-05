@@ -107,6 +107,7 @@ canvas#game { display: block; width: 100vw; height: 100vh; }
 #touch-sprint.on { background: rgba(56, 189, 248, 0.45); }
 #touch-nade { right: calc(40px + env(safe-area-inset-right)); bottom: calc(144px + env(safe-area-inset-bottom)); width: 54px; height: 54px; }
 #touch-reload { right: calc(104px + env(safe-area-inset-right)); bottom: calc(144px + env(safe-area-inset-bottom)); width: 54px; height: 54px; }
+#touch-melee { right: calc(168px + env(safe-area-inset-right)); bottom: calc(144px + env(safe-area-inset-bottom)); width: 54px; height: 54px; } /* SPEC 38.3 */
 #touch-swap { right: calc(104px + env(safe-area-inset-right)); bottom: calc(208px + env(safe-area-inset-bottom)); width: 54px; height: 54px; font-size: 13px; }
 #touch-score { right: calc(16px + env(safe-area-inset-right)); top: calc(56px + env(safe-area-inset-top)); width: 44px; height: 44px; }
 

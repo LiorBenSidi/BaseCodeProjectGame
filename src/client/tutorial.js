@@ -10,6 +10,7 @@ export const STEPS = Object.freeze([
   Object.freeze({ id: 'reload', title: 'Reload', text: 'R reloads. Empty magazines lose fights.', event: 'reload' }),
   Object.freeze({ id: 'switch', title: 'Switch weapon', text: '1 and 2 swap between your primary and sidearm.', event: 'switch' }),
   Object.freeze({ id: 'grenade', title: 'Grenade', text: 'G throws a grenade. It bounces, so aim at the floor.', event: 'throw' }),
+  Object.freeze({ id: 'melee', title: 'Melee', text: 'Middle mouse swings your kit blade. Two swings that meet clash: the later one recovers first.', event: 'melee' }),
   Object.freeze({ id: 'ability', title: 'Kit abilities', text: 'Q and E use your kit abilities. Watch the cooldown ring.', event: 'ability' }),
   Object.freeze({ id: 'done', title: 'Ready', text: 'That is the range. Quick Play puts you in a real match.', event: null }),
 ]);
