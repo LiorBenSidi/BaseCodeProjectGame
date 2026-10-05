@@ -52,6 +52,8 @@ function validateObject(data) {
       if (data.slot !== 'primary' && data.slot !== 'sidearm') return fail('bad_switch');
       return { ok: true, msg: { t: 'switch', slot: data.slot } };
     // SPEC 24.1 / 25.3: kit, ability and perk intents. The room's state machine decides whether they take effect.
+    case 'melee': // SPEC 38.3: a swing with the kit's melee style
+      return { ok: true, msg: { t: 'melee' } };
     case 'ability':
       if (data.slot !== 0 && data.slot !== 1) return fail('bad_ability');
       return { ok: true, msg: { t: 'ability', slot: data.slot } };
@@ -61,6 +63,10 @@ function validateObject(data) {
     case 'perk':
       if (typeof data.id !== 'string' || data.id.length > 32) return fail('bad_perk');
       return { ok: true, msg: { t: 'perk', id: data.id } };
+    case 'station':
+      // SPEC 37.7: range reaction station; level null turns it off, otherwise easy / medium / hard
+      if (data.level !== null && (typeof data.level !== 'string' || data.level.length > 16)) return fail('bad_station');
+      return { ok: true, msg: { t: 'station', level: data.level } };
     case 'vote':
       // SPEC 34.4: next-map vote; the room checks the id against the open candidates
       if (typeof data.mapId !== 'string' || data.mapId.length === 0 || data.mapId.length > 32) return fail('bad_vote');

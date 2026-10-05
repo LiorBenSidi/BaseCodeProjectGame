@@ -337,3 +337,17 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Keep a dependency free DevTools-protocol driver and its step files in the repository so the built client is exercised in a real browser before a release, locally against the Node server and after Publish against the live actor. Unit suites cannot see a null element dereference in a DOM handler; this run caught one on its first pass.
 - Source: smoke run 2026-10-05 (Play handler TypeError), Lior's "test everything, including live".
 - Affects: scripts/smoke-browser.mjs, docs/smoke/*.json, docs/SPEC.md 36.8, docs/TESTING.md.
+
+### D-036 (P7) Valorant polish
+- Status: decided
+- Date: 2026-10-05
+- Decision: Adopt seven items from the Valorant research as one batch: deathmatch radar pulse, spawn protection marker with abilities as a break condition, minimap footstep ring and vision cone, AFK detection with bot takeover, enemy outline colours, HRTF spatial audio, and a Range reaction station. The outline is an inverted hull on the remote figures rather than a post pass (no extra render cost, works on `low`). The radar is on the match clock so client and server agree without a new message. AFK activity is judged against the player's own last look so the takeover brain can never count as human activity. Deferred: crosshair share codes, TDM weapon stages, ping wheel, occlusion culling.
+- Source: Lior, 2026-10-05 ("Learn also from the Valorant Riot game", then P7 approval ~06:40 IL).
+- Affects: docs/SPEC.md section 37; `src/shared/{presence,rangeStation}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{outline,remote,ceremony,hud,game,prefs,bindings,audio,audioModel}.js`, `index.html`, `style.css`, actor mirror.
+
+### D-037 (P8) Weapons, hands and melee
+- Status: decided
+- Date: 2026-10-05
+- Decision: Three new weapon types (burst rifle, LMG, revolver) as slot-aware pickups; a pure first person clip set (draw, idle, bob, sprint carry, reload with the hand leaving the weapon, inspect, fire, swing, clash) composed on procedural arms, mirrored in third person from the snapshot; kit-bound melee styles with the clash and riposte rule (two swings that meet deal no damage, both are thrown apart, the later swing recovers first). Research is reference only, timings and the clash are original.
+- Source: Lior, 2026-10-05 ~06:40 IL ("Implement all guns animations and designs and types and the actual hands... learn from games references like CS2 and others, but also make sure that our game is unique").
+- Affects: docs/SPEC.md section 38; `src/shared/{weapons,melee,rules,maps,pickups}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{animClips,weaponView,weaponModels,remote,combatFx,audio,bindings,input,game,pickups,tutorial,touch}.js`, `index.html`.

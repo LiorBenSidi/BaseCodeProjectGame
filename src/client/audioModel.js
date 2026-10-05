@@ -2,6 +2,20 @@
 
 // Stereo pan (-1 left .. 1 right) of a source at (sx, sz) heard by a listener at (lx, lz) looking along yaw
 // (yaw 0 looks toward -Z, as in movement.js). Sources straight ahead or behind pan to 0; dead left pans to -1.
+// SPEC 37.6: source position in the listener's own frame for a PannerNode in HRTF mode. Web Audio's default
+// listener faces -Z with +X to the right, so a source straight ahead lands at negative z and panning needs no
+// listener orientation updates. Only the horizontal plane is tracked (the listener's ear height is the origin).
+export function hrtfLocalPosition(listener, source) {
+  const dx = source[0] - listener.x, dz = source[2] - listener.z;
+  const rx = Math.cos(listener.yaw), rz = -Math.sin(listener.yaw); // right
+  const fx = -Math.sin(listener.yaw), fz = -Math.cos(listener.yaw); // forward
+  const x = dx * rx + dz * rz;
+  const ahead = dx * fx + dz * fz;
+  return [x, source[1] ?? 0, -ahead];
+}
+
+export const SPATIAL_MODES = Object.freeze(['stereo', 'hrtf']);
+
 export function panFor(listener, source) {
   const dx = source[0] - listener.x, dz = source[2] - listener.z;
   const d = Math.hypot(dx, dz);

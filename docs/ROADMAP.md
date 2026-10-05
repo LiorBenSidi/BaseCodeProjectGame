@@ -70,7 +70,9 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 Weekly dependency PRs, monthly independent security review recorded in `docs/HARDENING_REVIEW.md`.
 
 ## From the 2026-10-05 research (deferred, see docs/RESEARCH_ADOPTION.md)
-- High contrast enemy outline mode (BO6 accessibility): outline pass in post.js, pref under accessibility.
+- Done in P7 (SPEC 37.5): enemy outline colours as an inverted hull (`enemyOutline` pref).
 - Crosshair RGB picker and import / export share codes (CS2).
 - Server side snapshot occlusion culling (Valorant fog of war): visibility test per viewer in GameRoom snapshots; anti wallhack and bandwidth.
+- From the Valorant research, deferred after P7 (SPEC 37.8): TDM weapon stages and spawner orbs, ping wheel with world markers, crosshair share codes.
 - Node version matrix in CI once a second runtime target exists.
+- After P8 (SPEC 38): per weapon reload variants (shell by shell for the shotgun, bolt cycle for the sniper), a melee-only mode, third person weapon swap animation.

@@ -91,3 +91,41 @@ Branch `feat/pro-audio` on `pro-integration`.
 - audio.js: P4 settings may call `setVolume`; this engine exposes `setLevel(bus, v)`. Wire P4's sliders to `setLevel('master' | 'sfx' | 'ui', v)` at integration.
 - game.js: `#cue` signature unchanged; the footsteps block gained a PRO-audio block right after it (P3 and P5 also touch the frame). hud.js scoreboard row edited (P4 / P5 touch other parts of hud.js).
 - modes.js: P5 reworked startMatch / matchSnapshot; the `range` mode and `-1 left` must survive the merge.
+
+# P7 report: Valorant polish (SPEC 37, D-036)
+
+Branch `feat/pro-p7-valorant` on `main`. Implemented directly, commit per feature.
+
+## Shipped
+- `shared/presence.js` radar pulse and AFK rules; GameRoom marks `sc` for everybody during the pulse, `radar: 1` on the snapshot, `afk: 1` on idle humans driven by an `easy` brain.
+- Abilities end spawn protection; `SHIELDED` marker in the HUD.
+- Minimap: radar sweep, pulse halo on revealed enemies, footstep ring while sprinting (24 m), vision wedge from the live fov; prefs `minimapFootsteps`, `minimapCone`.
+- `client/outline.js` + `remote.js` inverted hull enemy outline, pref `enemyOutline` off / yellow / red / purple.
+- `audioModel.hrtfLocalPosition` + PannerNode HRTF path, pref `spatialAudio` stereo / hrtf.
+- `shared/rangeStation.js` reaction station, `station` message in protocol, both dispatchers and the actor mirror; `T` cycles levels; HUD line from `hud.stationText`.
+
+## Verification
+- Unit 1090 (was 1077 at the start of the batch), regression 7, lint clean, actor mirror parity test green.
+- Fresh clone verification and browser smoke recorded below when the PR is opened.
+
+## Cross-batch notes
+- The AFK brain pushes commands with `seq = lastQueuedSeq`, so a client's pending-input reconciliation never sees a foreign ack.
+- `frozen` on a bot skips its brain step; nothing else reads it.
+
+# P8 report: weapons, hands and melee (SPEC 38, D-037)
+
+Branch `feat/pro-p8-weapons-hands-melee` on `main`.
+
+## Shipped
+- Weapons: burst rifle (3 round burst state machine, follow-up rounds fired by the room), LMG, revolver; slot-aware pickups on every map with their own pickup styles and view model holds; three new shot cues.
+- Hands: `animClips.js` pure clip set composed on procedural arms; draw on every switch timed to `switchMs`, reload moves the left hand, sprint carry, idle breathing; the kit blade appears on a swing.
+- Third person: remote figures read `rel` and `ml` from the snapshot (reload hand, swing arm, blade, clash shake), primed by the `melee` broadcast.
+- Melee: `src/shared/melee.js` state machine, cone test, knockback through the dash lane, the clash and riposte; `melee` message in both dispatchers; middle mouse default, side buttons share the edge channel.
+
+## Verification
+- Lint, unit 1090/1090, regression 7/7, build green; actor mirror synced.
+- Manual QA: pick up the revolver on arena (north edge), fire: a long trigger interval and a heavy kick. Burst rifle on crossfire: one click, three rounds. Melee a bot with middle mouse: swing, knockback, `melee` kill in the feed. Two browsers: swing into each other at the same moment, the spark and the ring, the later swing moves first.
+
+## Cross-batch notes
+- SPEC numbering: P7 (feat/pro-p7-valorant) owns section 37 and D-036; this branch appends 38 and D-037 after 36 / D-032 and will be rebased onto P7 at integration (tail-of-file conflicts only).
+- `GameRoom` snapshot entry gained `ml`; the contract test lists it. `input.js` edge lists gained `melee` and a mousedown edge loop for side buttons.

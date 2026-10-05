@@ -4,7 +4,7 @@
 // panned from the listener's point of view, lowpassed with distance, with a distant variant for far gunfire and a
 // ducking stage so your own shot sits on top of the mix. `cueFor` and the math in audioModel.js are the pure part;
 // `Audio` plays recipes, creates the context on the first user gesture, and stays silent without an AudioContext.
-import { panFor, falloff as falloffM, isDistant, BUSES, DEFAULT_LEVELS, busGain, clampLevel, cutoffFor, DUCK } from './audioModel.js';
+import { panFor, falloff as falloffM, isDistant, BUSES, DEFAULT_LEVELS, busGain, clampLevel, cutoffFor, DUCK, hrtfLocalPosition } from './audioModel.js';
 
 export { panFor };
 
@@ -50,6 +50,13 @@ export const CUES = Object.freeze({
   // pickups, kit, progression
   pickup: { bus: 'sfx', layers: [osc('sine', 520, 1040, 0.14, 0.2), osc('sine', 1040, 1560, 0.1, 0.1, { delay: 0.08 })] },
   ability: { bus: 'sfx', layers: [osc('sine', 300, 900, 0.2, 0.22), noise(0.15, 0.15, { hp: 3000 })] },
+  // SPEC 38.1 new weapons, SPEC 38.3 melee and the clash
+  shot_burst_rifle: { bus: 'sfx', duck: true, layers: [noise(0.05, 0.5, { hp: 1400 }), osc('square', 450, 110, 0.08, 0.2)] },
+  shot_lmg: { bus: 'sfx', duck: true, layers: [noise(0.08, 0.6, { hp: 900 }), osc('sawtooth', 300, 70, 0.11, 0.24), sub(90, 50, 0.1, 0.25)] },
+  shot_revolver: { bus: 'sfx', duck: true, layers: [noise(0.09, 0.7, { hp: 1100 }), osc('sawtooth', 700, 90, 0.14, 0.28), sub(110, 45, 0.14, 0.3)] },
+  melee: { bus: 'sfx', layers: [noise(0.14, 0.3, { lp: 2400, hp: 400 })] },
+  melee_hit: { bus: 'sfx', layers: [noise(0.06, 0.5, { lp: 900 }), sub(130, 60, 0.1, 0.35)] },
+  clash: { bus: 'sfx', duck: true, layers: [osc('triangle', 2400, 1800, 0.35, 0.22), osc('sine', 3600, 3000, 0.25, 0.1, { delay: 0.02 }), noise(0.05, 0.4, { hp: 3000 })] },
   denied: { bus: 'ui', layers: [osc('square', 200, 150, 0.08, 0.12)] },
   level: { bus: 'ui', layers: [osc('triangle', 523, 1046, 0.35, 0.25), osc('triangle', 784, 1568, 0.3, 0.12, { delay: 0.12 })] },
   medal: { bus: 'ui', layers: [osc('sine', 880, 1320, 0.18, 0.2), osc('sine', 1320, 1760, 0.22, 0.14, { delay: 0.12 })] },
@@ -78,6 +85,9 @@ export function cueFor(event, data = {}) {
     case 'medal': return 'medal';
     case 'reload': return 'reload';
     case 'switch': return 'switch';
+    case 'melee': return 'melee';
+    case 'melee_hit': return 'melee_hit';
+    case 'clash': return 'clash';
     case 'empty': return 'empty';
     case 'step': return 'step';
     case 'jump': return 'jump';
@@ -100,6 +110,7 @@ export class Audio {
   #noise = null;
   #levels = { ...DEFAULT_LEVELS };
   #listener = { x: 0, z: 0, yaw: 0 };
+  #spatial = 'stereo'; // SPEC 37.6: stereo pan (default) or HRTF through a PannerNode
   #comp = null;
   #mix = 'default';
   #active = 0;
@@ -158,6 +169,12 @@ export class Audio {
   }
 
   // Where the player's ears are, for panning. Call once per frame.
+  // SPEC 37.6: 'hrtf' uses a PannerNode per cue with the HRTF model; anything else keeps the stereo panner.
+  setSpatialMode(mode) {
+    this.#spatial = mode === 'hrtf' ? 'hrtf' : 'stereo';
+  }
+  get spatialMode() { return this.#spatial; }
+
   setListener(x, z, yaw) {
     this.#listener = { x, z, yaw };
   }
@@ -205,7 +222,17 @@ export class Audio {
     const out = ctx.createGain();
     out.gain.value = volume;
     let head = out;
-    if (at && typeof ctx.createStereoPanner === 'function') {
+    if (at && this.#spatial === 'hrtf' && typeof ctx.createPanner === 'function') {
+      // SPEC 37.6: HRTF with no distance model of its own; falloff and the lowpass below stay in charge of distance
+      const pan = ctx.createPanner();
+      pan.panningModel = 'HRTF';
+      pan.distanceModel = 'linear';
+      pan.rolloffFactor = 0;
+      const [lx, ly, lz] = hrtfLocalPosition(this.#listener, at);
+      pan.positionX.value = lx; pan.positionY.value = ly; pan.positionZ.value = lz;
+      out.connect(pan);
+      head = pan;
+    } else if (at && typeof ctx.createStereoPanner === 'function') {
       const pan = ctx.createStereoPanner();
       pan.pan.value = panFor(this.#listener, at);
       out.connect(pan);

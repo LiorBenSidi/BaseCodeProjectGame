@@ -1128,3 +1128,61 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 
 ### 36.9 Live check for the Pro program
 `ACTOR_BUILD = "4.0"`. `npm run actor-probe -- <app-id> diag-live-7 12 --inputs --diag` must report build 4.0 and a diag frame; a lone human in a `dm-` room must see a `[BOT]` row on the scoreboard; a `range-` room must show the tutorial and never shoot back.
+
+Live result 2026-10-05 (build 4.0 deployed 00:14Z, Publish 00:33Z, bundle index-DsNFpo3s.js):
+- `actor-probe diag-live-7`: build 4.0, diag frames, 26 snaps/s, p90 gap 35 ms.
+- `scripts/live-rooms-check.mjs`: dm room gives a lone human one bot (Rook) that fires; range room is mode range with three dummies (Rook, Mirage, Havoc) and zero shots in 12 s; tdm room is mode tdm with three bots, 67 shots, a kill and a medal between them.
+- Browser smoke against the live site (headless Chrome): settings tabs and search, deathmatch join with HUD, telemetry row, scoreboard showing `Rook [BOT]`, minimap; range room shows the tutorial (Step 1 of 10), skip works, HP stays 100. Headless swiftshader renders at 2 to 3 FPS, so the telemetry ping and loss numbers in that run reflect the slow render loop, not the server (the SDK probe measured 33 ms gaps at the same time).
+
+Mobile smoke (D1 touch gating, SPEC 33 layout): `docs/smoke/mobile.json` uses the driver's `emulate` step (`phone` = 390x844 touch device with a mobile user agent, `landscape` = 844x390, `desktop` clears it) and checks that the touch controls appear only under touch emulation, that the HUD and menu fit the viewport (no element past the right edge, no horizontal overflow) in portrait and landscape, and takes screenshots of the lobby, the match and the landscape match.
+Live result 2026-10-05 against the Pro build: touch detected, menu fits (0 overflowing elements), in match the touch root shows the 8 controls (menu, reload, weapon swap, grenade, jump, run, crouch, fire), HUD visible, status `100 HP Rifle 30 / 90 / READY`, landscape keeps the HP bar on screen with no horizontal overflow.
+
+
+## 37. Valorant polish (Pro batch P7, D-036)
+
+Seven items adopted from the Valorant read-only research (research/valorant-references.md, sections 3.1, 3.3, 5.2, 5.3, plus the Range notes), adapted to a browser arena with kits. Everything here is data in `src/shared/presence.js` and `src/shared/rangeStation.js` so the client and the server share one clock and one table.
+
+### 37.1 Deathmatch radar pulse (`src/shared/presence.js`)
+`RADAR = { periodMs: 5000, showMs: 1500 }`. In `dm` only, while the match is `playing`, the server marks every player `sc: 1` during the last 1.5 s of each 5 s period of the match clock (`now - match.startedAt`), and the snapshot carries `radar: 1`. The first pulse comes 3.5 s after the match goes live, never at the spawn. The client draws a sweep ring on the minimap while `radar` holds (200 ms grace across the snapshot gap) and shows revealed far enemies with a pulse halo (`dots[].pulse`). `tdm` and `range` never pulse. `radarActive(modeId, elapsedMs)`, `radarNextIn(elapsedMs)`.
+
+### 37.2 Spawn protection marker and break conditions
+`SPAWN.protectMs` stays 2000 ms (SPEC 21.2). It ends early on the player's first shot (existing) and now also on any ability use. While `sp: 1` the HUD shows a pulsing `SHIELDED` label above the health bar (`#protect`).
+
+### 37.3 Minimap footstep ring and vision cone (`src/client/ceremony.js` minimapLayout)
+`MINIMAP_FOOTSTEP_M = 24`: remote steps are cued at 0.35 volume with `falloff(d)` (full to 4 m, zero at 60 m), so at 24 m a step is still at half level, the distance a careful listener stops hearing it over the mix. While the local player sprints the minimap draws a dashed ring of that radius around them; a wedge of the current camera field of view is drawn ahead of the player marker. Both have prefs: `minimapFootsteps`, `minimapCone` (HUD tab, default on).
+
+### 37.4 AFK detection with bot takeover
+`AFK.idleMs = 60000`. A command counts as activity when it moves, jumps, sprints, crouches, dives, tac-sprints, or turns relative to the player's own last look (`cmdIsActive(cmd, prevYaw, prevPitch)`); the 60 Hz zero commands an idle client keeps sending do not count. In `dm` and `tdm`, while the match is `playing`, a human idle for 60 s is marked `afk` and an `easy` bot brain drives the body (same seat, name and score). Brain commands never advance the human's sequence, so their `ack` stays theirs. The first active human command hands the body back. The snapshot carries `afk: 1`; the scoreboard shows `[AFK]`. Never in the range.
+
+### 37.5 Enemy outline (`src/client/outline.js`, `remote.js`)
+Pref `enemyOutline`: `off` (default), `yellow`, `red`, `purple` (video tab). Implemented as an inverted hull: every body part of a remote figure carries a back-face `MeshBasicMaterial` copy scaled by `OUTLINE_SCALE = 1.08`, hidden unless the setting is on and the figure is an enemy (`isEnemyOf(team, selfTeam)`: everybody in DM, the other team in TDM). No extra render pass, works at every quality tier. Not an x-ray: the hull is occluded like the body.
+
+### 37.6 Spatial audio (`src/client/audioModel.js`, `audio.js`)
+Pref `spatialAudio`: `stereo` (default, the existing StereoPanner path) or `hrtf`. In HRTF mode every positioned cue goes through a `PannerNode` with `panningModel = 'HRTF'`, `distanceModel = 'linear'`, `rolloffFactor = 0`, positioned in the listener's own frame by `hrtfLocalPosition(listener, at)` (right = +x, ahead = -z, Web Audio's default listener orientation), so no listener orientation updates are needed. Distance stays with the existing `falloff` and lowpass.
+
+### 37.7 Range reaction station (`src/shared/rangeStation.js`)
+Range mode only. The `station` key (default `T`) cycles off, easy, medium, hard, off; the client sends `{ t: 'station', level }` (`null` = off). Levels: easy 2500 ms window, 8 to 22 m; medium 1500 ms, 10 to 28 m; hard 900 ms, 12 to 34 m. The first dummy becomes the target: teleported to a spawn in the level's distance band from the owner (fallback: any spawn more than 2 m away), frozen (`frozen` skips its brain), full health, facing the owner. A hit by the owner with damage closes the round and records `now - shownAt`; the window closing is a miss; 500 ms gap between rounds; 30 rounds end the session. Server messages `{ t: 'station', on, target | hit, ms | miss | reason, level, hits, misses, rounds, avgMs, bestMs, lastMs }` drive the `#station` HUD line (`stationText`). One station per room; another player's request is refused while it runs; it ends when the owner or the target leaves. Refused outside the range.
+
+### 37.8 Live check for P7
+`ACTOR_BUILD = "4.1"`. `npm run actor-probe -- <app-id> diag-live-8 12 --inputs --diag` must report build 4.1. Then in a `range-` room press `T` and see `Reaction (easy) armed`; in a `dm-` room watch the minimap sweep every 5 s.
+
+### 37.9 Deferred from the Valorant research
+Crosshair share codes, TDM weapon stages, ping wheel, server side occlusion culling (see docs/ROADMAP.md).
+
+## 38. Weapons, hands and melee (Pro batch P8, D-037)
+
+Read-only research first (research/weapon-animation-references.md in the conversation workspace: CS2, Valorant, BO6, Apex, Titanfall 2, Overwatch 2, Chivalry 2 and Mordhau), then the implementation. Nothing is copied from those games; the timings and the clash are ours.
+
+### 38.1 New weapon types (`src/shared/weapons.js`, `src/shared/rules.js`, `src/shared/maps.js`)
+Three weapons join the five: the burst rifle (primary, three rounds per trigger pull 70 ms apart, 30 round magazine, 600 ms between pulls, low spread), the LMG (primary, 80 round belt, slow 4.6 s reload, wide hip spread that ADS tightens hard) and the revolver (sidearm, 6 rounds, 58 damage with a 2.2x head multiplier, long trigger interval). The burst is a state machine on the weapon slot (`burstLeft`, `burstNextAt`): `recordShot` queues the follow-up rounds, `burstDue` tells the room to fire them on its own ticks, `fireBlock` returns `burst` while one is in flight, and a reload, an empty magazine or a switch cancels it (`cancelBurst`). Each is a floor pickup (`PICKUP_TYPES` with a `weapon` id) on every map; a pickup replaces the weapon in its own slot (the revolver takes the sidearm slot, never the rifle) and is refused when that weapon is already in hand with a full magazine.
+
+### 38.2 First person arms and the clip set (`src/client/animClips.js`, `src/client/weaponView.js`)
+The view model is two procedural arms (sleeves and gloves) holding the shared weapon model from `weaponModels.js`. All motion is pure math in `animClips.js`, composed additively on the hip or ADS pose: idle breathing (never still), walk bob and a sprint carry (weapon lowered and angled, scaled by speed, faded out while aiming), the draw clip on every switch (rises from below the frame over the weapon's `switchMs`), the reload clip (dip, tilt toward the eye, the left hand leaves the weapon for the magazine and comes back), inspect (lift and roll over), the fire kick, the melee swing and the clash knock. The third person rig reads the same states from the snapshot: `rel` drops the remote figure's left hand off the weapon, `ml` swings the right arm and shows the kit blade, so what a spectator sees is what the player feels.
+
+### 38.3 Kit melee and the clash (`src/shared/melee.js`, `GameRoom.#stepMelee`)
+Each kit carries a melee style (`MELEE_STYLES`): the Vanguard shock baton (slow, 55 damage, big knockback), the Phantom energy blade (fast, 45, lunge), the Engineer tactical stun blade (40, widest cone), the Medic dual combat knives (35, shortest recovery). A swing is `windup -> active -> recovery`; during `active` every living enemy inside the style's cone (`range`, `angleRad`, 1.6 m height tolerance) is hit once, knocked back through the dash lane (fixed speed, locked direction, so the push survives the ground speed reset), and a kill carries `zone: 'melee'`. A swing cancels the reload and the burst, ends spawn protection, and blocks the trigger until it ends. The client message is `{t: 'melee'}` (both dispatchers), default bind middle mouse (V stays the dive); the room broadcasts `{t: 'melee', id, style}` at the start and `ml` (0 none, 1 windup, 2 active, 3 recovery, 4 clash) in every snapshot entry.
+
+The clash is the unique rule: when two enemies swing into each other and both cones hold the other during the active window, nobody takes damage. Both are thrown 2 m apart and staggered (no shooting, no swinging), and the player who swung LATER (the one who read the attack and answered) recovers first: 250 ms for the riposte against 600 ms for the attacker. The room broadcasts `{t: 'clash', a, b, riposte, at}`: a white-blue spark at the midpoint, a ring cue, a knock on both view models (shorter for the riposte) and a kill feed line for the two players. Close range becomes a read instead of a damage race.
+
+### 38.4 Sound
+New cues: `shot_burst_rifle`, `shot_lmg`, `shot_revolver`, `melee` (swing, placed at the swinger), `melee_hit`, `clash` (ducking, placed at the clash point).

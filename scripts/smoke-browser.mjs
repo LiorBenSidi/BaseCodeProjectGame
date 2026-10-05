@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Headless browser smoke driver (SPEC 36.8, D-035). Drives the built client in Chrome over the DevTools protocol
-// with no extra dependency: a JSON list of steps ({goto, eval, sleep, shot, name}) from docs/smoke/; screenshots go to a
+// with no extra dependency: a JSON list of steps ({emulate, goto, eval, sleep, shot, name}) from docs/smoke/; screenshots go to a
 // fresh private temp directory printed at the end.
 // Usage: PORT=8820 ALLOWED_ORIGINS=http://localhost:8820 NODE_ENV=production node src/server/index.js &
 //        node scripts/smoke-browser.mjs docs/smoke/settings.json [http://host:port]
@@ -56,7 +56,21 @@ const gotoPath = (g) => {
 };
 const steps = JSON.parse(fs.readFileSync(stepsPath, 'utf8'));
 if (!Array.isArray(steps)) { console.error('steps file must be a JSON array'); process.exit(2); }
+// `emulate: "phone"` switches the tab to a 390x844 touch device with a mobile user agent (DevTools Emulation domain),
+// so docs/smoke/mobile.json can check the touch layout that D1 gates on device detection. `emulate: "desktop"` clears it.
+const emulate = async (kind) => {
+  if (kind === 'phone') {
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true, screenOrientation: { type: 'portraitPrimary', angle: 0 } });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' });
+  } else if (kind === 'landscape') {
+    await send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 3, mobile: true, screenOrientation: { type: 'landscapePrimary', angle: 90 } });
+  } else if (kind === 'desktop') {
+    await send('Emulation.clearDeviceMetricsOverride'); await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  } else throw new Error('emulate must be phone, landscape or desktop');
+};
 for (const s of steps) {
+  if (s.emulate) await emulate(s.emulate);
   if (s.goto) { await send('Page.navigate', { url: new URL(gotoPath(s.goto), base).href }); await sleep(s.wait ?? 2500); }
   if (s.eval) { const v = await evalJs(s.eval); console.log(`[${clean(s.name ?? 'eval', 60)}]`, clean(typeof v === 'string' ? v : JSON.stringify(v))); }
   if (s.sleep) await sleep(s.sleep);

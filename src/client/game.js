@@ -1,6 +1,6 @@
 import { INPUT_DT, PLAYER, RESPAWN_MS } from '../shared/constants.js';
 import { killcamWindow, killcamSample } from './ceremony.js'; // PRO-ceremony: SPEC 34.5
-import { WEAPONS } from '../shared/weapons.js';
+import { WEAPONS, meleeStyle } from '../shared/weapons.js';
 import { stepPlayer, eyeOf } from '../shared/movement.js';
 import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
@@ -27,6 +27,7 @@ import { RECOIL_RECOVERY_MS } from '../shared/weapons.js';
 // PRO-feel end
 import { newTutorial, current as tutorialStep, advance as tutorialAdvance, progress as tutorialProgress, shouldStart as tutorialShouldStart, markDone as tutorialMarkDone, nextTip, TIPS_KEY } from './tutorial.js'; // PRO-audio: SPEC 35.4
 import { modeForRoomId } from '../shared/rooms.js'; // PRO-audio
+import { nextLevel as nextStationLevel } from '../shared/rangeStation.js'; // SPEC 37.7
 import { newTelemetry, recordPing, recordSnapshot, stats as telemetryStats, format as telemetryFormat, level as telemetryLevel, frameDue } from './telemetry.js'; // SPEC 36
 import { WeaponView } from './weaponView.js';
 import { RemotePlayers } from './remote.js';
@@ -54,6 +55,9 @@ export class Game {
   #net = null;
   #name = '';
   #me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, alive: false };
+  #radarUntil = -Infinity; // SPEC 37.1: the last snapshot said the radar pulse is on
+  #sprinting = false; // SPEC 37.3: for the minimap footstep ring
+  #protectedSeen = false; // SPEC 37.2
   // PRO-ceremony begin (SPEC 34)
   #killcam = null; // { id, name, weapon, startedAt, from, to, duration }
   #lastShotAt = new Map(); // player id -> performance.now() of their last shot, for the minimap reveal
@@ -123,7 +127,9 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       if ((e.code === 'Digit1' || e.code === 'Digit2') && !e.repeat) { const c = this.#hud.voteCandidate(e.code === 'Digit1' ? 0 : 1); if (c && this.#hud.castVote(c)) return; } // PRO-ceremony: SPEC 34.4 vote keys
       if (isBound('scoreboard', e.code)) { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
+      if (isBound('station', e.code) && !e.repeat && this.#input.locked) this.cycleStation(); // SPEC 37.7
       if (isBound('grenade', e.code) && !e.repeat && this.#input.locked) this.throwGrenade();
+      if (isBound('melee', e.code) && !e.repeat && this.#input.locked) this.melee(); // SPEC 38.3
       // SPEC 20.3: weapon intents; the server's state machine decides whether they take effect.
       if (isBound('reload', e.code) && !e.repeat && this.#input.locked) this.reload();
       if (isBound('weapon1', e.code) && this.#input.locked) this.switchWeapon('primary');
@@ -150,6 +156,7 @@ export class Game {
     });
     this.#touch = new TouchControls(this.#input, {
       grenade: () => this.throwGrenade(),
+      melee: () => this.melee(), // SPEC 38.3
       reload: () => this.reload(),
       swap: () => this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary'),
       scoreboard: (show) => this.#hud.setScoreboardVisible(show),
@@ -197,6 +204,8 @@ export class Game {
     this.#audio.setLevel('ui', (prefs.uiVolume ?? 80) / 100);
     // SPEC 36: research polish, D-033
     this.#audio.setMix?.(prefs.audioMix ?? 'default');
+    this.#audio.setSpatialMode?.(prefs.spatialAudio ?? 'stereo'); // SPEC 37.6
+    this.#remote.setOutline(prefs.enemyOutline ?? 'off', this.#myTeam); // SPEC 37.5
     this.#gfx.setRenderScale?.(prefs.renderScale ?? 100);
     this.#fpsCap = prefs.fpsCap && prefs.fpsCap !== 'off' ? Number(prefs.fpsCap) : 0;
     if (prefs.telemetry) this.setShowFps(true);
@@ -263,6 +272,15 @@ export class Game {
     if (!this.joined || !this.#me.alive || slot === this.#weapon.slot) return;
     this.#net.send({ t: 'switch', slot });
     this.#cue('switch'); this.#tut('switch'); // PRO-audio
+  }
+
+  // SPEC 38.3: one swing with the kit's blade; the server resolves hits and clashes, the view model swings at once.
+  melee() {
+    if (!this.joined || !this.#me.alive) return false;
+    this.#net.send({ t: 'melee' });
+    this.#weaponView?.swing?.(meleeStyle(this.#kit));
+    this.#tut('melee');
+    return true;
   }
 
   throwGrenade() {
@@ -335,9 +353,24 @@ export class Game {
       snap: (m) => { recordSnapshot(this.#tele, performance.now()); this.#onSnapshot(m); }, // SPEC 36.1
       shot: (m) => { this.#addTracer(m); this.#fx.shot(m.from, m.to, performance.now(), m.id === this.#id); // PRO-env
   if (m.id !== this.#id) { this.#threat(m.from[0], m.from[2]); this.#lastShotAt.set(m.id, performance.now()); this.#tip('firstShotHeard'); } this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
-      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit', { head: m.zone === 'head' }); this.#tut('hit'); this.#tip('firstHit'); if (m.target !== null) this.#remote.flash(m.target); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events; PRO-weapons: SPEC 31.3 hit flash
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0 && m.zone === 'melee') this.#cue('melee_hit'); if (m.dmg > 0) { this.#cue('hit', { head: m.zone === 'head' }); this.#tut('hit'); this.#tip('firstHit'); if (m.target !== null) this.#remote.flash(m.target); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events; PRO-weapons: SPEC 31.3 hit flash
       boom: (m) => { this.#fx.boom(m.at, performance.now()); this.#combat.boom(m, this.#id); // PRO-env
   this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
+      // SPEC 38.3: a swing by anyone (the sound and the third person arm), a clash between two players (spark, ring, shake)
+      melee: (m) => {
+        const at = m.id === this.#id ? null : this.#remote.positionOf?.(m.id) ?? null;
+        this.#cue('melee', { mine: m.id === this.#id }, at);
+        if (m.id !== this.#id) this.#remote.swing?.(m.id, m.style);
+      },
+      clash: (m) => {
+        const mine = m.a === this.#id || m.b === this.#id;
+        this.#fx.clash?.(m.at, performance.now());
+        this.#cue('clash', { mine }, mine ? null : m.at);
+        if (mine) {
+          this.#weaponView?.clash?.(m.riposte === this.#id);
+          this.#hud.killFeed(m.riposte === this.#id ? 'Clash: riposte, you recover first' : 'Clash: staggered');
+        }
+      },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
         if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
@@ -347,6 +380,7 @@ export class Game {
         eventBus.emit('kill', { ...m, mine: m.killer === this.#id, me: m.victim === this.#id }); // PRO-feel
       },
       chat: (m) => this.#hud.chat({ name: m.name, team: m.team, text: m.text }),
+      station: (m) => { if (m.on === 1 && typeof m.target === 'number') this.#remote.flash(m.target); this.#hud.station(m); if (m.on === 0) setTimeout(() => this.#hud.station(null), 6000); }, // SPEC 37.7
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id, { onVote: (mapId) => this.#net.send({ t: 'vote', mapId }) }); this.#cue('matchEnd'); this.#endKillcam(); }, // SPEC 22 + PRO-ceremony vote
       // PRO-ceremony begin (SPEC 34)
       matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
@@ -383,7 +417,11 @@ export class Game {
     this.#combat.setPlayers(snap.players);
     const mine = snap.players.find((p) => p.id === this.#id);
     if (!mine) return;
-    if (typeof mine.tm === 'number') this.#myTeam = mine.tm; // PRO-ceremony: minimap ally / enemy
+    if (typeof mine.tm === 'number' && mine.tm !== this.#myTeam) { this.#myTeam = mine.tm; this.#remote.setOutline(this.#prefs.enemyOutline ?? 'off', mine.tm); } // PRO-ceremony: minimap ally / enemy; SPEC 37.5 outline side
+    if (snap.radar === 1) this.#radarUntil = performance.now() + 200; // SPEC 37.1: holds across the snapshot gap
+    // SPEC 37.2: a visible marker while spawn protection holds; shooting or an ability ends it on the server
+    const prot = mine.sp === 1 && mine.alive === 1;
+    if (prot !== this.#protectedSeen) { this.#protectedSeen = prot; this.#hud.protection(prot); }
 
     this.#pending = this.#pending.filter((c) => c.seq > snap.ack);
     Object.assign(this.#me, {
@@ -396,6 +434,7 @@ export class Game {
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c, this.#map.boxes, this.#map.half);
     if (typeof mine.tm === 'number') this.#team = mine.tm; // PRO-feel
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
+    this.#weaponView?.setDrawMs(this.#weapon.switchMs); // SPEC 38.2: the draw clip matches the server's switch time
     this.#weaponView?.setWeapon(this.#weapon.id);
     if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#cue('reload'); this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
     this.#onDamage(mine);
@@ -468,6 +507,7 @@ export class Game {
       else if (a === 'ability1') this.useAbility(0);
       else if (a === 'ability2') this.useAbility(1);
       else if (a === 'grenade') this.throwGrenade();
+      else if (a === 'melee') this.melee(); // SPEC 38.3
       else if (a === 'scoreboard') { this.#gpScoreboard = !this.#gpScoreboard; this.#hud.setScoreboardVisible(this.#gpScoreboard); }
     }
     // PRO-feel end
@@ -485,6 +525,15 @@ export class Game {
     this.#recoil.yaw -= dy;
     if (Math.abs(this.#recoil.pitch) < 1e-4) this.#recoil.pitch = 0;
     if (Math.abs(this.#recoil.yaw) < 1e-4) this.#recoil.yaw = 0;
+  }
+
+  // SPEC 37.7: Range reaction station, cycles off -> easy -> medium -> hard -> off. Range rooms only.
+  #stationLevel = null;
+  cycleStation() {
+    if (modeForRoomId(this.#roomId) !== 'range') return false;
+    this.#stationLevel = nextStationLevel(this.#stationLevel);
+    this.#net.send({ t: 'station', level: this.#stationLevel });
+    return true;
   }
 
   // SPEC 29.5: footsteps from movement, own and remote, synthesized like every other cue.
@@ -620,6 +669,7 @@ export class Game {
     this.#wasGround = !!this.#me.onGround;
     if (!this.#me.onGround) this.#lastVy = this.#me.vy ?? 0;
     const sprinting = this.#me.alive && this.#me.onGround && speed > PLAYER.speed + 0.3 && !(this.#me.slide > 0) && !(this.#me.dive > 0);
+    this.#sprinting = sprinting; // SPEC 37.3
     const feel = this.#feel.step(dt, {
       speed: this.#me.onGround ? speed : 0, baseSpeed: PLAYER.speed, isAds: ads,
       isSprinting: sprinting, isTacSprinting: sprinting && this.#me.tac > 0,
@@ -641,7 +691,7 @@ export class Game {
     const scoped = isScoped(this.#weapon.id, ads) && this.#fov < this.#baseFov * 0.6;
     this.#hud.setScoped(scoped);
     this.#weaponView?.setVisible(this.#me.alive && !scoped);
-    this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
+    this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads, sprinting }); // SPEC 38.2 sprint lowers the weapon
     this.#footsteps(dt, speed);
     // PRO-audio begin (SPEC 35.1 / 35.4): ears follow the camera; jump, land and slide cues; movement tutorial steps
     this.#audio.setListener(this.#me.x, this.#me.z, this.#input.yaw);
@@ -671,7 +721,11 @@ export class Game {
         }
       }
     }
-    this.#hud.minimap(this.#map, { x: this.#me.x, z: this.#me.z, yaw: this.#input.yaw }, this.#remote.lastPlayers(), { now, team: this.#myTeam, lastShotAt: this.#lastShotAt });
+    this.#hud.minimap(this.#map, { x: this.#me.x, z: this.#me.z, yaw: this.#input.yaw }, this.#remote.lastPlayers(), {
+      now, team: this.#myTeam, lastShotAt: this.#lastShotAt,
+      radar: this.#radarUntil > now, sprinting: this.#sprinting, fov: (this.#fov * Math.PI) / 180, // SPEC 37.1 / 37.3
+      footstepRing: this.#prefs.minimapFootsteps !== false, visionCone: this.#prefs.minimapCone !== false,
+    });
     // PRO-ceremony end
     if (frameDue(this.#lastRenderAt, now, this.#fpsCap)) { this.#lastRenderAt = now; this.#gfx.render(); } // PRO-env post pipeline; SPEC 36.4 frame cap
   }

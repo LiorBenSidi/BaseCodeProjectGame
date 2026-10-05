@@ -138,6 +138,8 @@ export class MatchSession {
       this.#room.handleReload(s.player.id);
     } else if (s.player && msg.t === 'ability') {
       this.#room.handleAbility(s.player.id, msg.slot);
+    } else if (s.player && msg.t === 'melee') {
+      this.#room.handleMelee(s.player.id); // SPEC 38.3
     } else if (s.player && msg.t === 'kit') {
       this.#room.handleKit(s.player.id, msg.id);
     } else if (s.player && msg.t === 'perk') {
@@ -148,6 +150,8 @@ export class MatchSession {
       this.#room.handleChat(s.player.id, msg.text);
     } else if (s.player && msg.t === 'vote') {
       this.#room.handleVote(s.player.id, msg.mapId); // PRO-ceremony: SPEC 34.4
+    } else if (s.player && msg.t === 'station') {
+      this.#room.handleStation(s.player.id, msg.level); // SPEC 37.7
     }
   }
 

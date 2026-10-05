@@ -1,0 +1,51 @@
+[
+ {
+  "emulate": "phone"
+ },
+ {
+  "goto": "/",
+  "wait": 3500
+ },
+ {
+  "name": "phone lobby",
+  "eval": "(() => { const m = document.getElementById('menu'); const r = m ? m.getBoundingClientRect() : null; return { viewport: [innerWidth, innerHeight], touchDetected: (navigator.maxTouchPoints||0) > 0, menuVisible: !!m && getComputedStyle(m).display !== 'none', menuWidth: r && Math.round(r.width), overflowX: document.documentElement.scrollWidth > innerWidth, buttons: [...document.querySelectorAll('#menu button')].filter(b => b.offsetParent).map(b => b.textContent.trim()).slice(0, 8) }; })()"
+ },
+ {
+  "name": "phone lobby offenders",
+  "eval": "(() => { const out = []; for (const e of document.querySelectorAll('body *')) { if (!e.offsetParent && e.tagName !== 'CANVAS') continue; const r = e.getBoundingClientRect(); if (r.width > 0 && (r.right > innerWidth + 1 || r.left < -1)) out.push(`${e.tagName.toLowerCase()}#${e.id || ''}.${String(e.className).split(' ')[0]} l=${Math.round(r.left)} r=${Math.round(r.right)}`); } return { innerWidth, offenders: out.slice(0, 12), count: out.length }; })()"
+ },
+ {
+  "shot": "phone-lobby"
+ },
+ {
+  "name": "play (phone)",
+  "eval": "(() => { const n = document.querySelector('#menu input[type=text], #name'); if (n) { n.value = 'Phone'; n.dispatchEvent(new Event('input', { bubbles: true })); } const b = [...document.querySelectorAll('#menu button')].find(b => /^(Play|Quick Play)$/i.test(b.textContent.trim())); if (!b) return 'no play button'; b.click(); return 'submitted'; })()"
+ },
+ {
+  "sleep": 4000
+ },
+ {
+  "name": "phone in match",
+  "eval": "(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none' && e.offsetParent !== null; }; const t = document.getElementById('touch') || document.querySelector('.touch-controls, #touch-controls, [data-touch]'); const btns = t ? [...t.querySelectorAll('button, [role=button]')].map(b => b.textContent.trim() || b.className).slice(0, 10) : []; return { hud: vis('hud'), menuHidden: !vis('menu'), touchRoot: !!t, touchVisible: !!t && getComputedStyle(t).display !== 'none', touchButtons: btns, status: document.getElementById('status')?.textContent.replace(/\\s+/g, ' ').trim(), overflowX: document.documentElement.scrollWidth > innerWidth }; })()"
+ },
+ {
+  "name": "phone match offenders",
+  "eval": "(() => { const out = []; for (const e of document.querySelectorAll('body *')) { if (!e.offsetParent && e.tagName !== 'CANVAS') continue; const r = e.getBoundingClientRect(); if (r.width > 0 && (r.right > innerWidth + 1 || r.left < -1)) out.push(`${e.tagName.toLowerCase()}#${e.id || ''}.${String(e.className).split(' ')[0]} l=${Math.round(r.left)} r=${Math.round(r.right)}`); } return { innerWidth, offenders: out.slice(0, 12), count: out.length }; })()"
+ },
+ {
+  "shot": "phone-match"
+ },
+ {
+  "emulate": "landscape"
+ },
+ {
+  "sleep": 1500
+ },
+ {
+  "name": "landscape in match",
+  "eval": "(() => { const t = document.getElementById('touch') || document.querySelector('.touch-controls, #touch-controls, [data-touch]'); const hb = document.getElementById('hp-bar')?.getBoundingClientRect(); return { viewport: [innerWidth, innerHeight], touchVisible: !!t && getComputedStyle(t).display !== 'none', hpBarOnScreen: !!hb && hb.bottom <= innerHeight && hb.right <= innerWidth, overflowX: document.documentElement.scrollWidth > innerWidth }; })()"
+ },
+ {
+  "shot": "phone-landscape"
+ }
+]

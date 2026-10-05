@@ -16,4 +16,8 @@ export const PICKUP_TYPES = Object.freeze({
   smg: Object.freeze({ id: 'smg', weapon: 'smg', respawnMs: 30_000 }),
   shotgun: Object.freeze({ id: 'shotgun', weapon: 'shotgun', respawnMs: 30_000 }),
   sniper: Object.freeze({ id: 'sniper', weapon: 'sniper', respawnMs: 45_000 }),
+  // SPEC 38.1: three more weapons; the revolver is a sidearm pickup (applyPickup follows the weapon's slot)
+  burst_rifle: Object.freeze({ id: 'burst_rifle', weapon: 'burst_rifle', respawnMs: 30_000 }),
+  lmg: Object.freeze({ id: 'lmg', weapon: 'lmg', respawnMs: 40_000 }),
+  revolver: Object.freeze({ id: 'revolver', weapon: 'revolver', respawnMs: 30_000 }),
 });

@@ -10,6 +10,7 @@ test('empty env yields the documented defaults', () => {
     allowedOrigins: [],
     logLevel: 'info',
     botFill: null, // SPEC 35.3: the mode default applies
+    mode: 'dm', // SPEC 37.7
   });
 });
 
@@ -126,5 +127,12 @@ test('two loadConfig calls return independent allowedOrigins arrays', () => {
 });
 
 test('the returned config has exactly the documented keys', () => {
-  assert.deepEqual(Object.keys(loadConfig({})).sort(), ['allowedOrigins', 'botFill', 'host', 'isProd', 'logLevel', 'port']);
+  assert.deepEqual(Object.keys(loadConfig({})).sort(), ['allowedOrigins', 'botFill', 'host', 'isProd', 'logLevel', 'mode', 'port']);
+});
+
+test('SPEC 37.7: MODE picks the dev server room mode and rejects unknown modes', async () => {
+  const { loadConfig } = await import('../../src/server/config.js');
+  assert.strictEqual(loadConfig({}).mode, 'dm');
+  assert.strictEqual(loadConfig({ MODE: 'range' }).mode, 'range');
+  assert.throws(() => loadConfig({ MODE: 'ctf' }), /Invalid MODE/);
 });

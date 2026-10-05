@@ -8,8 +8,8 @@ import {
 import { RIFLE } from '../../src/shared/combatData.js';
 import { bandDamage } from '../../src/shared/combat.js';
 
-test('table: five weapons, rifle identical to the milestone 1 rifle', () => {
-  assert.deepEqual(WEAPON_IDS, ['rifle', 'smg', 'shotgun', 'sniper', 'pistol']);
+test('table: eight weapons (SPEC 20 five plus SPEC 38.1 three), rifle identical to the milestone 1 rifle', () => {
+  assert.deepEqual(WEAPON_IDS, ['rifle', 'smg', 'shotgun', 'sniper', 'pistol', 'burst_rifle', 'lmg', 'revolver']);
   assert.equal(WEAPONS.rifle.fireIntervalMs, RIFLE.cooldownMs);
   assert.equal(WEAPONS.rifle.range, RIFLE.range);
   assert.deepEqual(WEAPONS.rifle.bands, RIFLE.bands);

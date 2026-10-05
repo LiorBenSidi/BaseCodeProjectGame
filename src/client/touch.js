@@ -42,6 +42,7 @@ export class TouchControls {
     this.#hold('touch-crouch', (down) => { input.touch.crouch = down; });
     this.#hold('touch-score', (down) => actions.scoreboard(down));
     zone('touch-nade')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.grenade(); });
+    zone('touch-melee')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.melee?.(); }); // SPEC 38.3
     // SPEC 20: reload and weapon swap as taps
     zone('touch-reload')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.reload?.(); });
     zone('touch-swap')?.addEventListener('pointerdown', (e) => { e.preventDefault(); actions.swap?.(); });
