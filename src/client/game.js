@@ -306,7 +306,8 @@ export class Game {
     const held = performance.now() - this.#wheelDownAt;
     this.#wheelDownAt = 0;
     const aim = this.#aimPoint();
-    if (!this.#wheelOpen) { if (held < WHEEL_HOLD_MS) this.sendMark(quickKind(aim.enemy), aim.at); return; }
+    void held;
+    if (!this.#wheelOpen) { this.sendMark(quickKind(aim.enemy), aim.at); return; } // released before the wheel opened: a quick ping, whatever the frame timing
     this.#wheelOpen = false;
     this.#input.onMouseDelta = null;
     this.#hud.wheel(false);
@@ -441,7 +442,7 @@ export class Game {
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id, { onVote: (mapId) => this.#net.send({ t: 'vote', mapId }) }); this.#cue('matchEnd'); this.#endKillcam(); }, // SPEC 22 + PRO-ceremony vote
       // PRO-ceremony begin (SPEC 34)
       matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
-      mark: (m) => { if (m.id !== this.#me.id) this.#hud.killFeed(markFeedText(m.name, m.kind)); else this.#hud.killFeed(markFeedText('You', m.kind)); addMark(this.#markList, { from: m.id, kind: m.kind, pos: m.at }, performance.now()); this.#cue('pickup', { mine: m.id === this.#me.id }); }, // SPEC 39.8
+      mark: (m) => { this.#hud.killFeed(markFeedText(m.id === this.#id ? 'You' : m.name, m.kind)); addMark(this.#markList, { from: m.id, kind: m.kind, pos: m.at }, performance.now()); this.#cue('pickup', { mine: m.id === this.#id }); }, // SPEC 39.8
       flag: (m) => { this.#hud.killFeed(m.text); if (m.type === 'capture') { this.#hud.banner(m.team === this.#myTeam ? 'FLAG CAPTURED' : 'ENEMY CAPTURED'); this.#cue('medal'); } else if (m.by === this.#me.id) this.#cue('pickup', { mine: true }); }, // SPEC 39.3
       vote: (m) => this.#hud.votes(m.counts),
       medal: (m) => { if (m.id === this.#id) { this.#hud.medal(m.medals); this.#cue('kill', { mine: true }); } },

@@ -1,0 +1,8 @@
+[
+ {"goto":"/","wait":3000},
+ {"name":"play (run the server with MODE=ctf)","eval":"(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()"},
+ {"sleep":8000},
+ {"name":"flag line","eval":"JSON.stringify({objective: document.getElementById('match-objective').textContent, teams: document.getElementById('match-teams').textContent, errors: (window.__errors||[]).length})"},
+ {"sleep":60000,"shot":"p9-ctf-flags"},
+ {"name":"after 68 s: flag events in the feed","eval":"JSON.stringify({objective: document.getElementById('match-objective').textContent, teams: document.getElementById('match-teams').textContent, feed: document.getElementById('feed').textContent.slice(0,300), errors: (window.__errors||[]).length})"}
+]

@@ -1,0 +1,8 @@
+[
+ {"goto":"/","wait":3000},
+ {"name":"play (run the server with MODE=koth)","eval":"(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()"},
+ {"sleep":8000},
+ {"name":"objective line and team score","eval":"JSON.stringify({menuHidden: document.getElementById('menu').hidden, objective: document.getElementById('match-objective').textContent, objectiveHidden: document.getElementById('match-objective').hidden, teams: document.getElementById('match-teams').textContent, errors: (window.__errors||[]).length})"},
+ {"sleep":20000,"shot":"p9-koth-hill"},
+ {"name":"after 28 s: bots should have held the hill","eval":"JSON.stringify({objective: document.getElementById('match-objective').textContent, teams: document.getElementById('match-teams').textContent, feed: document.getElementById('feed').textContent.slice(0,200), errors: (window.__errors||[]).length})"}
+]
