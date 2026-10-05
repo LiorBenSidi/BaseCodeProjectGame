@@ -72,6 +72,7 @@ export class Input {
     window.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       this.inputType = 'mouse';
+      if (this.onMouseDelta) { this.onMouseDelta(e.movementX, e.movementY); return; } // SPEC 39.8: the ping wheel borrows the mouse
       this.turn(-e.movementX * this.sensitivity, -e.movementY * this.sensitivity * (this.prefs.invertY ? -1 : 1)); // PRO-menu: invert Y
     });
     // PRO-menu: mouse buttons are keys named Mouse0..Mouse4 so any action can live on the mouse (SPEC 33.2)

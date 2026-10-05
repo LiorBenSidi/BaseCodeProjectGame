@@ -7,6 +7,9 @@ import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
 import { Pickups, pickupText } from './pickups.js';
 import { ObjectiveView } from './objectiveView.js'; // SPEC 39
+import { MarkView } from './markView.js'; // SPEC 39.8
+import { MARK_KINDS, WHEEL_HOLD_MS, quickKind, wheelPick, addMark, markFeedText } from '../shared/comms.js';
+import { castRay, aimDir, playerBox } from '../shared/hitscan.js';
 import { Effects } from './effects.js';
 import { KITS } from '../shared/abilities.js';
 import { PERKS } from '../shared/progression.js';
@@ -59,6 +62,12 @@ export class Game {
   #radarUntil = -Infinity; // SPEC 37.1: the last snapshot said the radar pulse is on
   #objectives = null; // SPEC 39
   #lastObjective = null;
+  #marks = null; // SPEC 39.8
+  #markList = [];
+  #wheelDownAt = 0;
+  #wheelOpen = false;
+  #wheelDx = 0;
+  #wheelDy = 0;
   #sprinting = false; // SPEC 37.3: for the minimap footstep ring
   #protectedSeen = false; // SPEC 37.2
   // PRO-ceremony begin (SPEC 34)
@@ -123,6 +132,7 @@ export class Game {
     this.#grenades = new Grenades(this.#gfx.scene);
     this.#pickups = new Pickups(this.#gfx.scene); // SPEC 21.1
     this.#objectives = new ObjectiveView(this.#gfx.scene); // SPEC 39
+    this.#marks = new MarkView(this.#gfx.scene); // SPEC 39.8
     this.#effects = new Effects(this.#gfx.scene); // SPEC 24.5
     this.#fx = new CombatFx(this.#gfx.scene); // PRO-env
     this.#weaponView = new WeaponView(this.#gfx.camera); // SPEC 29.4
@@ -134,6 +144,7 @@ export class Game {
       if (isBound('station', e.code) && !e.repeat && this.#input.locked) this.cycleStation(); // SPEC 37.7
       if (isBound('grenade', e.code) && !e.repeat && this.#input.locked) this.throwGrenade();
       if (isBound('melee', e.code) && !e.repeat && this.#input.locked) this.melee(); // SPEC 38.3
+      if (isBound('mark', e.code) && !e.repeat && this.#input.locked) this.#markDown(); // SPEC 39.8
       // SPEC 20.3: weapon intents; the server's state machine decides whether they take effect.
       if (isBound('reload', e.code) && !e.repeat && this.#input.locked) this.reload();
       if (isBound('weapon1', e.code) && this.#input.locked) this.switchWeapon('primary');
@@ -157,6 +168,7 @@ export class Game {
     // PRO-menu: the wheel goes through bindings.js (nextWeapon / prevWeapon by default); input.js queues the actions
     window.addEventListener('keyup', (e) => {
       if (isBound('scoreboard', e.code)) this.#hud.setScoreboardVisible(false);
+      if (isBound('mark', e.code)) this.#markUp(); // SPEC 39.8
     });
     this.#touch = new TouchControls(this.#input, {
       grenade: () => this.throwGrenade(),
@@ -264,6 +276,47 @@ export class Game {
 
   fire() {
     return this.#tryFire(performance.now());
+  }
+
+  // SPEC 39.8: ping wheel. Tap: quick ping at the aim point. Hold: the wheel opens, the mouse picks a kind, release sends.
+  #aimPoint() {
+    const origin = [this.#me.x, this.#me.y + eyeOf(this.#me), this.#me.z];
+    const dir = aimDir(this.#input.yaw, this.#input.pitch);
+    const targets = this.#remote.lastPlayers().filter((p) => p.alive !== 0 && p.id !== this.#me.id).map((p) => ({ id: p.id, box: playerBox(p), team: p.tm }));
+    const hit = castRay(origin, dir, 80, this.#map?.boxes ?? [], targets);
+    const t = Math.max(0.5, hit.t - 0.1);
+    const enemyHit = hit.targetId !== null && !(this.#myTeam >= 0 && targets.find((x) => x.id === hit.targetId)?.team === this.#myTeam);
+    return { at: [origin[0] + dir[0] * t, Math.max(0, origin[1] + dir[1] * t), origin[2] + dir[2] * t], enemy: enemyHit };
+  }
+
+  #markDown() {
+    if (!this.joined || !this.#me.alive) return;
+    this.#wheelDownAt = performance.now();
+    this.#wheelDx = 0; this.#wheelDy = 0;
+  }
+
+  #openWheel() {
+    this.#wheelOpen = true;
+    this.#hud.wheel(true, null);
+    this.#input.onMouseDelta = (dx, dy) => { this.#wheelDx += dx; this.#wheelDy += dy; this.#hud.wheel(true, wheelPick(this.#wheelDx, this.#wheelDy)); };
+  }
+
+  #markUp() {
+    if (!this.#wheelDownAt) return;
+    const held = performance.now() - this.#wheelDownAt;
+    this.#wheelDownAt = 0;
+    const aim = this.#aimPoint();
+    if (!this.#wheelOpen) { if (held < WHEEL_HOLD_MS) this.sendMark(quickKind(aim.enemy), aim.at); return; }
+    this.#wheelOpen = false;
+    this.#input.onMouseDelta = null;
+    this.#hud.wheel(false);
+    const kind = wheelPick(this.#wheelDx, this.#wheelDy);
+    if (kind) this.sendMark(kind, aim.at);
+  }
+
+  sendMark(kind, at) {
+    if (!this.joined || !MARK_KINDS[kind]) return;
+    this.#net.send({ t: 'mark', kind, at: at.map((v) => Math.round(v * 10) / 10) });
   }
 
   reload() {
@@ -388,6 +441,7 @@ export class Game {
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id, { onVote: (mapId) => this.#net.send({ t: 'vote', mapId }) }); this.#cue('matchEnd'); this.#endKillcam(); }, // SPEC 22 + PRO-ceremony vote
       // PRO-ceremony begin (SPEC 34)
       matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
+      mark: (m) => { if (m.id !== this.#me.id) this.#hud.killFeed(markFeedText(m.name, m.kind)); else this.#hud.killFeed(markFeedText('You', m.kind)); addMark(this.#markList, { from: m.id, kind: m.kind, pos: m.at }, performance.now()); this.#cue('pickup', { mine: m.id === this.#me.id }); }, // SPEC 39.8
       flag: (m) => { this.#hud.killFeed(m.text); if (m.type === 'capture') { this.#hud.banner(m.team === this.#myTeam ? 'FLAG CAPTURED' : 'ENEMY CAPTURED'); this.#cue('medal'); } else if (m.by === this.#me.id) this.#cue('pickup', { mine: true }); }, // SPEC 39.3
       vote: (m) => this.#hud.votes(m.counts),
       medal: (m) => { if (m.id === this.#id) { this.#hud.medal(m.medals); this.#cue('kill', { mine: true }); } },
@@ -733,7 +787,11 @@ export class Game {
       radar: this.#radarUntil > now, sprinting: this.#sprinting, fov: (this.#fov * Math.PI) / 180, // SPEC 37.1 / 37.3
       footstepRing: this.#prefs.minimapFootsteps !== false, visionCone: this.#prefs.minimapCone !== false,
       objective: this.#lastObjective, // SPEC 39
+      pings: this.#markList, // SPEC 39.8
     });
+    const pnow = performance.now(); // SPEC 39.8: wheel opens after the hold time; marks fade on the same clock
+    if (this.#wheelDownAt && !this.#wheelOpen && pnow - this.#wheelDownAt >= WHEEL_HOLD_MS) this.#openWheel();
+    this.#marks?.update(this.#markList, pnow);
     // PRO-ceremony end
     if (frameDue(this.#lastRenderAt, now, this.#fpsCap)) { this.#lastRenderAt = now; this.#gfx.render(); } // PRO-env post pipeline; SPEC 36.4 frame cap
   }

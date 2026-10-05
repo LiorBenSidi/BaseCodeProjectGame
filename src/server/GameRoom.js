@@ -32,6 +32,7 @@ import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, en
 import { MAP_IDS } from '../shared/maps.js'; // PRO-ceremony: SPEC 34.4 vote candidates
 import { newHillState, stepHill, hillSnapshot, newFlagState, stepFlags, flagsSnapshot, carrying, flagEventText } from '../shared/objectives.js'; // SPEC 39
 import { scoreObjective, TEAM_NAMES, modeDef } from '../shared/modes.js';
+import { sanitizeMark, markAllowed } from '../shared/comms.js'; // SPEC 39.8
 import { newMedalTracker, recordKillMedals, matchEndMedals } from '../shared/medals.js'; // PRO-ceremony: SPEC 34.3
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
@@ -319,6 +320,19 @@ export class GameRoom {
     if (!clean || !chatAllowed(p.lastChatAt ?? -Infinity, now)) return false;
     p.lastChatAt = now;
     this.#broadcast({ t: 'chat', id, name: p.name, team: p.team, text: clean });
+    return true;
+  }
+
+  // SPEC 39.8: a ping wheel mark is relayed to the sender's team (to the sender alone without teams), never stored.
+  handleMark(id, kind, at) {
+    const p = this.#players.get(id);
+    if (!p) return false;
+    const now = this.#now();
+    const clean = sanitizeMark(kind, at);
+    if (!clean || !markAllowed(p.lastMarkAt ?? -Infinity, now)) return false;
+    p.lastMarkAt = now;
+    const msg = { t: 'mark', id, name: p.name, team: p.team, kind: clean.kind, at: clean.at };
+    for (const q of this.#players.values()) if (q === p || (p.team >= 0 && q.team === p.team)) this.#sendTo(q, msg);
     return true;
   }
 

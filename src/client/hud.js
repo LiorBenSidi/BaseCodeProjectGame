@@ -4,6 +4,7 @@
 // All state derivation lives in hudModel.js (pure, unit tested); this file only moves it into the DOM.
 
 import { crosshairStyle } from './prefs.js'; // PRO-menu: SPEC 33.4
+import { WHEEL_ORDER, MARK_KINDS } from '../shared/comms.js'; // SPEC 39.8
 import { introText, podium, mvp, medalLines, voteView, minimapLayout } from './ceremony.js'; // PRO-ceremony: SPEC 34
 import { MEDALS } from '../shared/medals.js'; // PRO-ceremony
 import { MAPS } from '../shared/maps.js'; // PRO-ceremony: vote names
@@ -223,6 +224,24 @@ export class Hud {
     this.#matchRoom.textContent = id ?? '';
   }
 
+  // SPEC 39.8: the ping wheel. show() builds the eight labels once; highlight(kind) lights the hovered one.
+  wheel(open, hot = null) {
+    const el = $('ping-wheel');
+    if (!el) return;
+    if (open && el.childElementCount === 0) {
+      const c = document.createElement('div'); c.className = 'centre'; el.appendChild(c);
+      WHEEL_ORDER.forEach((id, i) => {
+        const seg = document.createElement('div');
+        seg.className = 'seg'; seg.dataset.kind = id; seg.textContent = MARK_KINDS[id].label; seg.style.color = MARK_KINDS[id].color;
+        const a = (i / WHEEL_ORDER.length) * Math.PI * 2;
+        seg.style.transform = `translate(${Math.sin(a) * 92}px, ${-Math.cos(a) * 92}px)`;
+        el.appendChild(seg);
+      });
+    }
+    el.hidden = !open;
+    for (const seg of el.querySelectorAll('.seg')) seg.classList.toggle('hot', seg.dataset.kind === hot);
+  }
+
   killFeed(text, now = Date.now()) {
     this.#killFeed.add(text, now);
     this.#feedDirty = true;
@@ -407,6 +426,7 @@ export class Hud {
     for (const k of lay.marks ?? []) { // SPEC 39: hill ring, bases, flags
       if (k.kind === 'hill') { ctx.strokeStyle = k.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(k.x, k.y, k.r, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = k.fill; ctx.fill(); }
       else if (k.kind === 'base') { ctx.strokeStyle = k.color; ctx.lineWidth = 1.5; ctx.strokeRect(k.x - 5, k.y - 5, 10, 10); }
+      else if (k.kind === 'ping') { ctx.strokeStyle = k.color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(k.x - 4, k.y); ctx.lineTo(k.x + 4, k.y); ctx.moveTo(k.x, k.y - 4); ctx.lineTo(k.x, k.y + 4); ctx.stroke(); }
       else if (k.kind === 'flag') { ctx.fillStyle = k.color; ctx.beginPath(); ctx.moveTo(k.x, k.y - 7); ctx.lineTo(k.x + 6, k.y - 4); ctx.lineTo(k.x, k.y - 1); ctx.closePath(); ctx.fill(); ctx.fillRect(k.x - 1, k.y - 7, 1.5, 10); }
     }
     for (const d of lay.dots) {

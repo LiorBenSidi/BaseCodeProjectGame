@@ -1,6 +1,7 @@
 // Ceremony, medals, kill cam and minimap math (SPEC 34, D-031). Pure: hud.js and game.js apply the numbers.
 import { MEDALS, medalCount } from '../shared/medals.js';
 import { RESPAWN_MS } from '../shared/constants.js';
+import { MARK_KINDS } from '../shared/comms.js'; // SPEC 39.8
 
 // SPEC 34.1: intro countdown text from the seconds left in the snapshot.
 export function introText(left) {
@@ -80,7 +81,7 @@ export const MINIMAP_NEAR_M = 12;
 // zero at 60 m); at 24 m a step is still at half level, which is where a careful listener stops hearing it over the mix.
 export const MINIMAP_FOOTSTEP_M = 24;
 
-export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastShotAt = new Map(), radar = false, sprinting = false, fov = 0, footstepRing = true, visionCone = true, objective = null } = {}) {
+export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastShotAt = new Map(), radar = false, sprinting = false, fov = 0, footstepRing = true, visionCone = true, objective = null, pings = [] } = {}) {
   const half = map?.half ?? 20;
   const s = size / (half * 2);
   const px = (x) => (x + half) * s;
@@ -101,6 +102,7 @@ export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastS
   const ring = footstepRing && sprinting ? MINIMAP_FOOTSTEP_M * s : 0;
   const cone = visionCone && fov > 0 ? Math.min(Math.PI, fov) : 0;
   const marks = objectiveMarks(objective, px, pz, s, team); // SPEC 39
+  for (const m of pings) marks.push({ kind: 'ping', x: px(m.pos[0]), y: pz(m.pos[2]), color: MARK_KINDS[m.kind]?.color ?? '#e6edf3' }); // SPEC 39.8
   return { size, boxes, me: { x: px(me.x), y: pz(me.z), yaw: me.yaw ?? 0 }, dots, ring, cone, radar: !!radar, marks };
 }
 
