@@ -26,7 +26,7 @@ const base = new URL(process.argv[3] ?? 'http://localhost:8820');
 if (base.protocol !== 'http:' && base.protocol !== 'https:') { console.error('base URL must be http or https'); process.exit(2); }
 const SAFE_PATH = /^\/[A-Za-z0-9_\-./?=&%]*$/; // a relative path with a query string, no scheme, no host, no fragment
 const SAFE_NAME = /^[A-Za-z0-9_-]{1,64}$/;
-const clean = (v, max = 600) => String(v ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, max); // no newlines or escapes in the log
+const clean = (v, max = 600) => String(v ?? '').replace(/[\r\n]/g, ' ').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, max); // no newlines or escapes in the log
 const shotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smoke-'), { mode: 0o700 });
 const chrome = spawn(process.env.CHROME || 'google-chrome', ['--headless=new', '--no-sandbox', '--disable-gpu', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required', '--remote-debugging-port=9333', '--window-size=1280,800', 'about:blank'], { stdio: 'ignore' });
 let list = null;
@@ -62,6 +62,6 @@ for (const s of steps) {
   if (s.sleep) await sleep(s.sleep);
   if (s.shot) await shot(s.shot);
 }
-console.log('--- console ---'); for (const l of logs.slice(0, 40)) console.log(clean(l, 220));
+console.log('--- console ---'); for (const l of logs.slice(0, 40)) console.log(JSON.stringify(clean(l, 220))); // page console lines, quoted
 console.log(`screenshots: ${shotDir}`);
 chrome.kill(); process.exit(0);
