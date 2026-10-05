@@ -8,6 +8,10 @@ export const PICKUP_STYLE = Object.freeze({
   smg: Object.freeze({ color: 0x7aa2ff, emissive: 0x1d3a8a, shape: 'gun' }),
   shotgun: Object.freeze({ color: 0xff8a3d, emissive: 0x7a3300, shape: 'gun' }),
   sniper: Object.freeze({ color: 0xe06cff, emissive: 0x5a1a7a, shape: 'gun' }),
+  // SPEC 38.1
+  burst_rifle: Object.freeze({ color: 0x38bdf8, emissive: 0x0c4a6e, shape: 'gun' }),
+  lmg: Object.freeze({ color: 0xeab308, emissive: 0x713f12, shape: 'gun' }),
+  revolver: Object.freeze({ color: 0xf43f5e, emissive: 0x881337, shape: 'gun' }),
 });
 
 const SPIN_RAD_PER_MS = 0.0018;

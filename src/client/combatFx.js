@@ -45,6 +45,17 @@ export class CombatFx {
     }
   }
 
+  // SPEC 38.3: a clash: a white-blue spark where the blades met, shorter and brighter than a boom
+  clash(at, now) {
+    const f = this.#flashes.find((x) => now >= x.until) ?? this.#flashes[0];
+    f.light.position.set(at[0], at[1], at[2]);
+    f.light.color.setHex(0xcfe6ff);
+    f.light.intensity = 60;
+    f.light.distance = 10;
+    f.light.visible = true;
+    f.until = now + 120;
+  }
+
   boom(at, now) {
     const f = this.#flashes.find((x) => now >= x.until) ?? this.#flashes[0];
     f.light.position.set(at[0], at[1] + 0.5, at[2]);

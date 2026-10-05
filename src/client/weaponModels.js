@@ -1,4 +1,4 @@
-// Weapon models shared by the first person view (weaponView.js) and the hands of remote players (remote.js), SPEC 31.1.
+// Weapon models shared by the first person view (weaponView.js) and the hands of remote players (remote.js), SPEC 31.1 & 38.1.
 // Pure table: parts are [w, h, d, x, y, z, material] in weapon space (muzzle toward -Z, grip at the origin),
 // materials are 'body' (dark receiver), 'accent' (per weapon tint), 'wood' (furniture) and 'glass' (optics).
 export const WEAPON_MODELS = Object.freeze({
@@ -50,6 +50,40 @@ export const WEAPON_MODELS = Object.freeze({
       [0.045, 0.06, 0.22, 0, 0.03, -0.04, 'body'], // slide
       [0.04, 0.05, 0.2, 0, -0.01, -0.03, 'accent'], // frame
       [0.04, 0.13, 0.06, 0, -0.1, 0.05, 'body'],
+    ],
+  },
+  burst_rifle: {
+    accent: 0x38bdf8, muzzle: -0.65, parts: [
+      [0.08, 0.1, 0.54, 0, 0.02, -0.14, 'body'],
+      [0.035, 0.035, 0.44, 0, 0.05, -0.54, 'body'],
+      [0.055, 0.085, 0.28, 0, -0.01, -0.4, 'accent'],
+      [0.04, 0.08, 0.22, 0, 0.12, -0.12, 'accent'],
+      [0.035, 0.035, 0.08, 0, 0.12, -0.22, 'glass'],
+      [0.05, 0.22, 0.08, 0, -0.15, -0.1, 'body'],
+      [0.07, 0.09, 0.24, 0, 0.0, 0.25, 'body'],
+      [0.05, 0.15, 0.07, 0, -0.12, 0.02, 'body'],
+    ],
+  },
+  lmg: {
+    accent: 0xeab308, muzzle: -0.92, parts: [
+      [0.11, 0.13, 0.62, 0, 0.03, -0.12, 'body'],
+      [0.045, 0.045, 0.65, 0, 0.05, -0.72, 'body'],
+      [0.07, 0.07, 0.35, 0, 0.05, -0.5, 'accent'],
+      [0.12, 0.18, 0.18, 0.02, -0.16, -0.12, 'accent'],
+      [0.06, 0.07, 0.25, 0, 0.13, -0.15, 'body'],
+      [0.02, 0.14, 0.02, 0, -0.08, -0.65, 'body'],
+      [0.08, 0.11, 0.28, 0, 0.01, 0.28, 'body'],
+      [0.06, 0.16, 0.08, 0, -0.13, 0.04, 'body'],
+    ],
+  },
+  revolver: {
+    accent: 0xf43f5e, muzzle: -0.26, parts: [
+      [0.06, 0.07, 0.09, 0, 0.02, -0.05, 'accent'],
+      [0.045, 0.08, 0.24, 0, 0.02, -0.04, 'body'],
+      [0.038, 0.05, 0.2, 0, 0.04, -0.2, 'body'],
+      [0.02, 0.02, 0.16, 0, 0.075, -0.15, 'accent'],
+      [0.045, 0.14, 0.07, 0, -0.1, 0.05, 'body'],
+      [0.02, 0.03, 0.03, 0, 0.06, 0.06, 'body'],
     ],
   },
 });

@@ -12,7 +12,7 @@ test('steps advance only on their own action, in order; skip ends it; the last s
   assert.equal(advance(t, 'move'), true);
   assert.equal(current(t).id, 'look');
   assert.deepEqual(progress(t), { index: 2, total: STEPS.length });
-  for (const ev of ['look', 'jump', 'slide', 'hit', 'reload', 'switch', 'throw', 'ability']) assert.equal(advance(t, ev), true, ev);
+  for (const ev of ['look', 'jump', 'slide', 'hit', 'reload', 'switch', 'throw', 'melee', 'ability']) assert.equal(advance(t, ev), true, ev);
   assert.equal(current(t).id, 'done');
   assert.equal(t.done, false);
   assert.equal(advance(t, 'move'), false);

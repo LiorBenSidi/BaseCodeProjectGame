@@ -43,6 +43,7 @@ const FOUNDRY = Object.freeze({
     { type: 'ammo', x: 0, z: -20 }, { type: 'ammo', x: 0, z: 20 },
     { type: 'smg', x: -28, z: 30 }, { type: 'shotgun', x: 28, z: -30 },
     { type: 'ammo', x: -28, z: -30 }, { type: 'health', x: 28, z: 30 },
+    { type: 'lmg', x: 0, z: 34 }, { type: 'revolver', x: 0, z: -34 }, // SPEC 38.1
   ],
 });
 
@@ -72,6 +73,7 @@ const CROSSFIRE = Object.freeze({
     { type: 'ammo', x: -14, z: 20 }, { type: 'ammo', x: 14, z: -20 },
     { type: 'smg', x: -34, z: -26 }, { type: 'shotgun', x: 34, z: 26 },
     { type: 'ammo', x: 34, z: -26 }, { type: 'health', x: -34, z: 26 },
+    { type: 'burst_rifle', x: -26, z: 26 }, { type: 'revolver', x: 0, z: 34 }, // SPEC 38.1
   ],
 });
 

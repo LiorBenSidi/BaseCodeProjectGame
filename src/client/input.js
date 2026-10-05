@@ -83,12 +83,14 @@ export class Input {
       if (isBound('crouch', code)) { if (now - this.#lastCrouchTap < DOUBLE_TAP_MS && this.prefs.diveDoubleTap) this.#dive = true; this.#lastCrouchTap = now; }
       if (isBound('dive', code)) this.#dive = true;
       this.#onPress(code, now);
+      // SPEC 38.3: side buttons bound to an edge action (melee, reload, grenade...) share the wheel's edge channel
+      for (const a of ['nextWeapon', 'prevWeapon', 'weapon1', 'weapon2', 'reload', 'grenade', 'melee', 'inspect', 'ability1', 'ability2']) if (isBound(a, code)) this.#mouseEdges.push(a);
     });
     window.addEventListener('mouseup', (e) => { this.#keys.delete(`Mouse${e.button}`); this.#syncMouseState(); });
     window.addEventListener('wheel', (e) => {
       if (!this.locked || e.deltaY === 0) return;
       const code = e.deltaY > 0 ? 'WheelDown' : 'WheelUp';
-      for (const a of ['nextWeapon', 'prevWeapon', 'weapon1', 'weapon2', 'reload', 'grenade', 'jump', 'inspect', 'ability1', 'ability2']) if (isBound(a, code)) this.#mouseEdges.push(a);
+      for (const a of ['nextWeapon', 'prevWeapon', 'weapon1', 'weapon2', 'reload', 'grenade', 'melee', 'jump', 'inspect', 'ability1', 'ability2']) if (isBound(a, code)) this.#mouseEdges.push(a);
       if (isBound('jump', code)) { this.#keys.add(code); setTimeout(() => this.#keys.delete(code), 60); } // a wheel jump is one short press
     }, { passive: true });
     window.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); }); // SPEC 29.3: right mouse aims

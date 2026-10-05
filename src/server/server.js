@@ -233,6 +233,8 @@ export async function startServer(options = {}) {
         room.handleVote(player.id, msg.mapId); // PRO-ceremony: SPEC 34.4
       } else if (player && msg.t === 'ability') {
         room.handleAbility(player.id, msg.slot);
+      } else if (player && msg.t === 'melee') {
+        room.handleMelee(player.id); // SPEC 38.3
       } else if (player && msg.t === 'kit') {
         room.handleKit(player.id, msg.id);
       } else if (player && msg.t === 'perk') {
