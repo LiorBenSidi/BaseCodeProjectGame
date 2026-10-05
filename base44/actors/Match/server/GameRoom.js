@@ -21,7 +21,8 @@ import { sanitizeName } from './security.js';
 import { buildPickups, stepPickups, availableIndices, describePickups } from '../shared/pickups.js';
 import { pickSpawn } from '../shared/spawning.js';
 import { SPAWN } from '../shared/rules.js';
-import { radarActive, cmdIsActive, afkEligible, isAfk } from '../shared/presence.js'; // P7: SPEC 37.1 radar pulse, 37.4 AFK
+import { radarActive, cmdIsActive, afkEligible, isAfk } from '../shared/presence.js';
+import { isStationLevel, newStation, pickTargetSpot, stepStation, recordHit, stationSummary } from '../shared/rangeStation.js'; // SPEC 37.7 // P7: SPEC 37.1 radar pulse, 37.4 AFK
 // SPEC 24 / 25: kits, abilities, effects and in-match progression.
 import { DEFAULT_KIT, KIT_IDS, isKit, newKitState, useAbility, stepEffects, applyGrapple, slowFactor, shieldBoxes, decoyTargets, describeEffects, cooldownLeft } from '../shared/abilities.js';
 import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnapshot, XP } from '../shared/progression.js';
@@ -197,6 +198,7 @@ export class GameRoom {
     for (const [id, brain] of this.#bots) {
       const bot = this.#players.get(id);
       if (!bot) { this.#bots.delete(id); continue; }
+      if (bot.frozen) continue; // SPEC 37.7: the station target stands still
       const r = botStep(brain, bot, all, this.#map, now, this.#botRng, sameTeam);
       this.handleInput(id, [r.cmd]);
       if (r.reload) this.handleReload(id);
@@ -223,6 +225,63 @@ export class GameRoom {
   }
 
   #afkCount = 0;
+
+  // SPEC 37.7: the Range reaction station. One per room (the range is a solo space in practice), range mode only.
+  #station = null;
+  handleStation(id, level) {
+    const p = this.#players.get(id);
+    if (!p || p.bot || this.#match.mode !== 'range') return false;
+    if (level === null || !isStationLevel(level)) {
+      if (this.#station?.ownerId === id) this.#endStation('off');
+      return level === null;
+    }
+    if (this.#station && this.#station.ownerId !== id) return false; // somebody else is using it
+    if (this.#station) this.#releaseTarget();
+    this.#station = newStation(id, level, this.#now());
+    this.#sendTo(p, { t: 'station', on: 1, ...stationSummary(this.#station) });
+    this.#log?.info('station on', { id, level });
+    return true;
+  }
+  #endStation(reason) {
+    const st = this.#station;
+    if (!st) return;
+    this.#releaseTarget();
+    this.#station = null;
+    const owner = this.#players.get(st.ownerId);
+    if (owner) this.#sendTo(owner, { t: 'station', on: 0, reason, ...stationSummary(st) });
+  }
+  #releaseTarget() {
+    const st = this.#station;
+    const bot = st?.targetId !== null ? this.#players.get(st.targetId) : null;
+    if (bot) bot.frozen = false;
+    if (st) st.targetId = null;
+  }
+  #stepStation(now) {
+    const st = this.#station;
+    if (!st) return;
+    const owner = this.#players.get(st.ownerId);
+    if (!owner) { this.#station = null; return; }
+    const r = stepStation(st, now);
+    if (!r) return;
+    if (r.done) { this.#endStation('done'); return; }
+    if (r.miss) { this.#releaseTarget(); this.#sendTo(owner, { t: 'station', on: 1, miss: 1, ...stationSummary(st) }); return; }
+    // show: the first bot becomes the target, teleported to a spot in the level's band, frozen, at full health
+    const bot = [...this.#bots.keys()].map((bid) => this.#players.get(bid)).find((b) => b);
+    const spot = pickTargetSpot(this.#map.spawns, owner, st.level, this.#botRng);
+    if (!bot || !spot) { st.nextAt = now + 1000; return; }
+    Object.assign(bot, { x: spot.x, y: 0, z: spot.z, vx: 0, vy: 0, vz: 0, onGround: true, alive: true, hp: MAX_HP, respawnAt: Infinity, frozen: true, h: PLAYER.height, slide: 0 });
+    bot.yaw = Math.atan2(-(owner.x - bot.x), -(owner.z - bot.z)); // face the owner
+    st.targetId = bot.id; st.shownAt = now;
+    this.#sendTo(owner, { t: 'station', on: 1, target: bot.id, ...stationSummary(st) });
+  }
+  // Called from the fire path: a hit by the owner on the current target closes the round.
+  #stationHit(shooter, victim, now) {
+    const st = this.#station;
+    if (!st || st.targetId !== victim.id || st.ownerId !== shooter.id) return;
+    const ms = recordHit(st, now);
+    this.#releaseTarget();
+    this.#sendTo(shooter, { t: 'station', on: 1, hit: 1, ms, ...stationSummary(st) });
+  }
   #setAfk(p, on) {
     if (p.afk === on) return;
     p.afk = on;
@@ -236,6 +295,7 @@ export class GameRoom {
   removePlayer(id) {
     const leaving = this.#players.get(id);
     if (leaving?.afk) this.#afkCount -= 1; // SPEC 37.4
+    if (this.#station && (this.#station.ownerId === id || this.#station.targetId === id)) this.#endStation('left'); // SPEC 37.7
     const removed = this.#players.delete(id);
     if (removed) this.#log?.info('player left', { id, players: this.#players.size });
     if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
@@ -324,6 +384,7 @@ export class GameRoom {
 
     this.#stepBots(now); // PRO-audio: SPEC 35.3
     this.#stepAfk(now); // SPEC 37.4
+    this.#stepStation(now); // SPEC 37.7
     for (const p of this.#players.values()) this.#runCommands(p);
     this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
@@ -550,6 +611,7 @@ export class GameRoom {
       const victim = this.#players.get(id);
       const r = this.#protected(victim, now) || sameTeam(p, victim) ? { applied: 0, killed: false } : applyDamage(victim, acc.damage * victim.progress.mods.dmgTakenMul);
       this.#award(p, recordDamage(p.progress, victim.progress, p.id, victim.id, r.applied, now));
+      if (r.applied > 0) this.#stationHit(p, victim, now); // SPEC 37.7
       this.#sendTo(p, { t: 'hit', id: victim.id });
       if (r.killed) killed.push(victim);
       if (best === null || r.applied > best.applied) best = { victim, zone: acc.zone, dist: acc.dist, applied: r.applied, kill: r.killed };

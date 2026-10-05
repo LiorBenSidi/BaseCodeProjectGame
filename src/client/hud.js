@@ -73,6 +73,7 @@ export class Hud {
   #dead = $('dead');
   #notice = $('notice');
   #protect = $('protect'); // SPEC 37.2
+  #station = $('station'); // SPEC 37.7
   #damageArc = $('damage-indicator');
   #damageFlash = $('damage-flash');
 
@@ -423,6 +424,16 @@ export class Hud {
   }
   // PRO-ceremony end
 
+  // SPEC 37.7: Range reaction station readout. `m` is the server's station message; null hides the line.
+  station(m) {
+    const el = this.#station;
+    if (!el) return;
+    if (!m || m.on !== 1) { el.hidden = !m || m.on !== 0; if (m && m.on === 0) { el.textContent = stationText(m); el.classList.remove('live'); } return; }
+    el.hidden = false;
+    el.textContent = stationText(m);
+    el.classList.toggle('live', typeof m.target === 'number');
+  }
+
   // SPEC 37.2: spawn protection marker
   protection(on) {
     if (this.#protect) this.#protect.hidden = !on;
@@ -499,4 +510,16 @@ function cell(className, text) {
   span.className = className;
   span.textContent = text;
   return span;
+}
+
+// SPEC 37.7: one line for the station readout, pure so it can be tested.
+export function stationText(m) {
+  if (!m) return '';
+  const stats = `${m.hits} hit${m.hits === 1 ? '' : 's'} / ${m.misses} miss${m.misses === 1 ? '' : 'es'}`;
+  const times = m.avgMs !== null && m.avgMs !== undefined ? `, last ${m.lastMs} ms, avg ${m.avgMs} ms, best ${m.bestMs} ms` : '';
+  if (m.on === 0) return `Reaction (${m.level}) over: ${stats}${times}`;
+  if (typeof m.target === 'number') return `TARGET UP (${m.level})  ${stats}${times}`;
+  if (m.hit === 1) return `HIT ${m.ms} ms (${m.level})  ${stats}${times}`;
+  if (m.miss === 1) return `MISS (${m.level})  ${stats}${times}`;
+  return `Reaction (${m.level}) armed: ${stats}${times}  [T cycles level]`;
 }

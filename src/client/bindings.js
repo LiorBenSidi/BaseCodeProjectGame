@@ -25,6 +25,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   inspect: 'KeyF',
   scoreboard: 'Tab',
   chat: 'Enter',
+  station: 'KeyT', // SPEC 37.7: Range reaction station (off -> easy -> medium -> hard -> off)
   // SPEC 33.2: mouse actions live in the same table, as pseudo codes Mouse0..Mouse4, WheelUp, WheelDown
   fire: 'Mouse0',
   ads: 'Mouse2',
@@ -39,7 +40,7 @@ export const ACTION_LABELS = Object.freeze({
   fire: ['Fire', 'combat'], ads: ['Aim down sights', 'combat'], reload: ['Reload', 'combat'], weapon1: ['Primary weapon', 'combat'], weapon2: ['Sidearm', 'combat'],
   nextWeapon: ['Next weapon', 'combat'], prevWeapon: ['Previous weapon', 'combat'], grenade: ['Grenade', 'combat'], inspect: ['Inspect weapon', 'combat'],
   ability1: ['Ability 1', 'kit'], ability2: ['Ability 2', 'kit'], perk1: ['Pick perk 1', 'kit'], perk2: ['Pick perk 2', 'kit'],
-  scoreboard: ['Scoreboard', 'interface'], chat: ['Chat', 'interface'],
+  scoreboard: ['Scoreboard', 'interface'], chat: ['Chat', 'interface'], station: ['Range reaction station', 'interface'],
 });
 export const ACTION_GROUPS = Object.freeze(['movement', 'combat', 'kit', 'interface']);
 export const REBINDABLE = Object.freeze(Object.keys(ACTION_LABELS));
