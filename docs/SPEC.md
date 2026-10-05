@@ -1211,3 +1211,8 @@ Z (rebindable, action `mark`). Tap: a quick ping at the aim point, `enemy` when 
 
 ### 39.9 Verification
 Unit: `objectives`, `gameRoomObjectives`, `objectiveClient`, `botsObjective`, `comms`. Headless smokes `docs/smoke/p9-koth.json` (HILL HELD BY RED, Red 11 after 28 s), `p9-ctf.json` (Red 1 capture after 68 s), `p9-ping.json` (tap, cancelled wheel, wheel pick, feed line).
+
+## 40. Cosmetics, Arms Race and crosshair codes (Pro batch P10, D-039)
+
+### 40.4 Crosshair share codes (`src/shared/crosshairCode.js`, `src/client/settingsPanel.js`)
+A crosshair is seven prefs (style, colour, size, gap, thickness, outline, dynamic). `encode(prefs)` packs them into `BCA-XXXX-XXXX`: a version nibble, the two enum indexes, the three numbers, the two flags and eleven reserved bits, in a 32 letter alphabet without 0, O, 1 and I, plus one check character. `decode(text)` is tolerant of case, spaces and missing dashes and answers `{ok, values}` or `{ok:false, reason}` with `Bad prefix`, `Bad length`, `Bad character`, `Bad check`, `Bad version` or `Out of range`. The enum lists live in the codec and `prefs.js` imports them, so the order is shared and append only: a code written today keeps its meaning when a style is added. `PRESETS` holds four named codes (Classic, Dot, Precision, Dynamic T). Settings, HUD tab, under the crosshair fields: the current code (read only, refreshed live as the sliders move) with Copy, a paste field with Apply (all seven prefs go through the normal prefs save path, so the live crosshair and the preview update), the four presets, and one status line (`Copied`, `Crosshair applied`, `Code rejected: <reason>`). Settings search answers `share`, `code` and `preset` with the same row.

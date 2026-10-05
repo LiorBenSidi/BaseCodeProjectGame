@@ -341,3 +341,10 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 #ping-wheel .seg { position: absolute; left: 50%; top: 50%; width: 92px; margin-left: -46px; margin-top: -12px; text-align: center; font-size: 12px; letter-spacing: 0.06em; color: rgba(230, 237, 243, 0.8); transform-origin: center; }
 #ping-wheel .seg.hot { color: #fff; font-weight: 600; text-shadow: 0 0 8px currentColor; }
 #ping-wheel .centre { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; border: 1px solid rgba(230, 237, 243, 0.35); }
+
+/* SPEC 40.4 crosshair share code */
+.share-code { border-top: 1px solid var(--line, rgba(255,255,255,0.08)); margin-top: 8px; padding-top: 8px; }
+.share-code .code-field { display: inline-flex; gap: 6px; align-items: center; }
+.share-code input[type="text"] { font: inherit; font-variant-numeric: tabular-nums; letter-spacing: 0.08em; text-transform: uppercase; width: 11.5em; padding: 4px 8px; background: var(--panel-2, rgba(255,255,255,0.06)); color: inherit; border: 1px solid var(--line, rgba(255,255,255,0.12)); border-radius: 6px; }
+.share-code input[readonly] { opacity: 0.9; }
+.share-code .share-note { display: block; min-height: 1.2em; margin-top: 4px; font-size: 12px; }

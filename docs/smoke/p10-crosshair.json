@@ -1,0 +1,36 @@
+[
+ {
+  "goto": "/",
+  "wait": 3500,
+  "name": "lobby",
+  "eval": "document.getElementById('menu')?.hidden"
+ },
+ {
+  "name": "open settings, HUD tab",
+  "eval": "(()=>{document.getElementById('settings-open').click(); const t=[...document.querySelectorAll('#settings [role=tab]')].find(t=>/hud/i.test(t.textContent)); t.click(); return JSON.stringify({open: !document.getElementById('settings').hidden, tab: t.textContent});})()",
+  "sleep": 500,
+  "shot": "01-hud-tab"
+ },
+ {
+  "name": "share row present with the current code",
+  "eval": "JSON.stringify({code: document.getElementById('crosshair-code')?.value, presets: [...document.querySelectorAll('#crosshair-share .presets button')].map(b=>b.textContent), input: !!document.getElementById('crosshair-code-input')})"
+ },
+ {
+  "name": "move the size slider to 22: the code changes live",
+  "eval": "(()=>{const before=document.getElementById('crosshair-code').value; const s=document.getElementById('pref-crosshairSize'); s.value='22'; s.dispatchEvent(new Event('input',{bubbles:true})); const after=document.getElementById('crosshair-code').value; return JSON.stringify({before, after, changed: before!==after, size: getComputedStyle(document.getElementById('crosshair')).getPropertyValue('--ch-size').trim()});})()"
+ },
+ {
+  "name": "apply the Dot preset through the input",
+  "eval": "(()=>{const preset=[...document.querySelectorAll('#crosshair-share .presets button')].find(b=>b.textContent==='Dot'); const code=preset.title; const i=document.getElementById('crosshair-code-input'); i.value=code.toLowerCase(); [...document.querySelectorAll('#crosshair-share button')].find(b=>b.textContent==='Apply').click(); return JSON.stringify({code, note: document.getElementById('crosshair-code-note')?.textContent, style: document.querySelector('#pref-crosshairStyle [aria-checked=true]')?.textContent, size: document.getElementById('pref-crosshairSize')?.value, current: document.getElementById('crosshair-code')?.value});})()",
+  "sleep": 300,
+  "shot": "02-dot-applied"
+ },
+ {
+  "name": "a typo is rejected with a reason",
+  "eval": "(()=>{const i=document.getElementById('crosshair-code-input'); i.value='BCA-42CA-G22X'; [...document.querySelectorAll('#crosshair-share button')].find(b=>b.textContent==='Apply').click(); return document.getElementById('crosshair-code-note').textContent;})()"
+ },
+ {
+  "name": "search finds the share row",
+  "eval": "(()=>{const i=document.querySelector('.settings-search'); i.value='share'; i.dispatchEvent(new Event('input',{bubbles:true})); return JSON.stringify({rows: document.querySelectorAll('.tab-body [data-tab]').length, share: !!document.querySelector('.tab-body #crosshair-share')});})()"
+ }
+]

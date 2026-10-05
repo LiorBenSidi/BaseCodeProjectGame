@@ -1,6 +1,7 @@
 // Settings (SPEC 33). DOM glue only: values, clamping and persistence live in settings.js, prefs.js and bindings.js,
 // which the unit tests cover. The panel is a tabbed modal: Controls, Keybinds (table + keyboard and mouse maps with
 // click to rebind), Video, Audio, HUD. Every change applies live through game.applyPrefs and persists at once.
+import { encode as encodeCrosshair, decode as decodeCrosshair, crosshairSubset, PRESETS as CROSSHAIR_PRESETS, CROSSHAIR_FIELDS } from '../shared/crosshairCode.js';
 import { getFov, getSensitivity, getShowFps, getSound, getTouchControls, setFov, setSensitivity, setShowFps, setSound, setTouchControls } from './settings.js';
 import { PREFS_SCHEMA, TABS, fieldsFor, searchFields, loadPrefs, savePrefs, defaults as prefDefaults, keyLabel, KEYBOARD_ROWS, isMouseCode } from './prefs.js';
 import { ACTION_LABELS, ACTION_GROUPS, REBINDABLE, bind, setBinding, resetBindings, getAllBindings, loadBindings, conflicts } from './bindings.js';
@@ -54,7 +55,43 @@ export function bindSettingsPanel(doc, game) {
   const commit = (key, value) => {
     prefs = savePrefs({ ...prefs, [key]: value });
     game.applyPrefs(prefs);
+    if (codeOut && CROSSHAIR_FIELDS.includes(key)) codeOut.value = encodeCrosshair(crosshairSubset(prefs));
   };
+  let codeOut = null; // SPEC 40.4: the read only share code field, refreshed on every crosshair change
+
+  // ---- SPEC 40.4 crosshair share code: current code, copy, apply a pasted code, presets
+  function shareCodeRow() {
+    const wrap = el(doc, 'div', { class: 'share-code', id: 'crosshair-share' });
+    const current = el(doc, 'div', { class: 'row' });
+    codeOut = el(doc, 'input', { id: 'crosshair-code', type: 'text', readonly: '', 'aria-label': 'Your crosshair code' });
+    codeOut.value = encodeCrosshair(crosshairSubset(prefs));
+    const note = el(doc, 'span', { class: 'muted share-note', id: 'crosshair-code-note', role: 'status' });
+    const copy = el(doc, 'button', { type: 'button', class: 'ghost', text: 'Copy', onclick: async () => {
+      try { await navigator.clipboard.writeText(codeOut.value); note.textContent = 'Copied'; } catch { codeOut.select(); note.textContent = 'Copy failed, select the text'; }
+    } });
+    current.append(el(doc, 'label', { for: 'crosshair-code', text: 'Share code' }), el(doc, 'span', { class: 'code-field' }, [codeOut, copy]));
+    const apply = el(doc, 'div', { class: 'row' });
+    const input = el(doc, 'input', { id: 'crosshair-code-input', type: 'text', placeholder: 'BCA-XXXX-XXXX', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Paste a crosshair code' });
+    const applyCode = (text) => {
+      const r = decodeCrosshair(text);
+      if (!r.ok) { note.textContent = `Code rejected: ${r.reason}`; return false; }
+      prefs = savePrefs({ ...prefs, ...r.values });
+      game.applyPrefs(prefs);
+      render(); // rebuilds the tab, so the note is looked up again
+      const fresh = doc.getElementById('crosshair-code-note');
+      if (fresh) fresh.textContent = 'Crosshair applied';
+      return true;
+    };
+    const applyBtn = el(doc, 'button', { type: 'button', text: 'Apply', onclick: () => applyCode(input.value) });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCode(input.value); });
+    apply.append(el(doc, 'label', { for: 'crosshair-code-input', text: 'Apply a code' }), el(doc, 'span', { class: 'code-field' }, [input, applyBtn]));
+    const presets = el(doc, 'div', { class: 'row presets' });
+    const seg = el(doc, 'div', { class: 'segment', role: 'group', 'aria-label': 'Crosshair presets' });
+    for (const pr of CROSSHAIR_PRESETS) seg.append(el(doc, 'button', { type: 'button', text: pr.name, title: pr.code, onclick: () => applyCode(pr.code) }));
+    presets.append(el(doc, 'label', { text: 'Presets' }), seg);
+    wrap.append(current, apply, presets, note);
+    return wrap;
+  }
 
   // ---- generic controls from the schema
   function control(key) {
@@ -234,8 +271,9 @@ export function bindSettingsPanel(doc, game) {
       tabsBar.replaceChildren();
       const hits = searchFields(query);
       const frag = doc.createDocumentFragment();
-      if (hits.length === 0) frag.append(el(doc, 'p', { class: 'muted', text: `No settings match "${query.trim()}"` }));
+      if (hits.length === 0 && !/share|code|preset/i.test(query)) frag.append(el(doc, 'p', { class: 'muted', text: `No settings match "${query.trim()}"` }));
       for (const k of hits) { const row = control(k); row.dataset.tab = PREFS_SCHEMA[k].tab; frag.append(row); }
+      if (/share|code|preset/i.test(query)) { const row = shareCodeRow(); row.dataset.tab = 'hud'; frag.append(row); } // SPEC 40.4
       body.replaceChildren(frag);
       return;
     }
@@ -257,6 +295,7 @@ export function bindSettingsPanel(doc, game) {
     } else if (tab === 'hud') {
       frag.append(el(doc, 'div', { class: 'ch-preview', 'aria-label': 'Crosshair preview' }, [el(doc, 'div', { id: 'ch-preview-mark', class: 'crosshair-mark' })]));
       for (const k of fieldsFor('hud')) frag.append(control(k));
+      frag.append(shareCodeRow());
       frag.append(el(doc, 'div', { class: 'bind-actions' }, [el(doc, 'button', { type: 'button', class: 'ghost', text: 'Reset HUD to defaults', onclick: () => { const d = prefDefaults(); prefs = savePrefs({ ...prefs, ...Object.fromEntries(fieldsFor('hud').map((k) => [k, d[k]])) }); game.applyPrefs(prefs); render(); } })]));
     }
     body.replaceChildren(frag);
