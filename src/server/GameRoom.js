@@ -30,6 +30,7 @@ import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnaps
 // SPEC 22: match modes (DM / TDM), timer, end screen, restart.
 import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot, updateIntroPhase, recordVote, tallyVotes, voteCandidatesFor, voteCounts } from '../shared/modes.js';
 import { MAP_IDS } from '../shared/maps.js'; // PRO-ceremony: SPEC 34.4 vote candidates
+import { armsKill, armsLoadoutIds, stageText } from '../shared/armsRace.js'; // SPEC 40.3
 import { newHillState, stepHill, hillSnapshot, newFlagState, stepFlags, flagsSnapshot, carrying, flagEventText } from '../shared/objectives.js'; // SPEC 39
 import { scoreObjective, TEAM_NAMES, modeDef } from '../shared/modes.js';
 import { sanitizeMark, markAllowed } from '../shared/comms.js'; // SPEC 39.8
@@ -49,7 +50,7 @@ export class GameRoom {
   #nextGrenadeId = 1;
   #map = MAPS[mapForMatch(1)];
   #objective = null; // SPEC 39: hill or flag state for the current match, null outside objective modes
-  #pickups = buildPickups(this.#map.pickups);
+  #pickups = buildPickups(this.#map.pickups); // rebuilt once the mode is known (SPEC 40.3: Arms Race has none)
   #fx = []; // SPEC 24 active effects: shields, decoys, heal zones, stasis fields
   #nextFxId = 1;
   #now;
@@ -83,6 +84,7 @@ export class GameRoom {
     this.#log = logger;
     this.#maxPlayers = maxPlayers;
     this.#match = newMatch(mode); // throws RangeError on an unknown mode, before any player can join
+    if (this.#match.arms) this.#pickups = buildPickups([]); // SPEC 40.3
   }
 
   get mode() {
@@ -125,7 +127,7 @@ export class GameRoom {
       grenades: GRENADE.perLife,
       respawnAt: 0,
       // SPEC 20: two slots, one in hand; reload and switch arrive as intents and apply on the next tick
-      loadout: newLoadout(),
+      loadout: newLoadout(), // SPEC 40.3: replaced by the stage weapon below once the team is known
       wantsReload: false,
       wantsSwitch: null,
       protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
@@ -147,6 +149,7 @@ export class GameRoom {
       progress: newProgress(),
     };
     this.#place(p);
+    if (this.#match.arms && p.team >= 0) p.loadout = newLoadout(armsLoadoutIds(this.#match.arms, p.team)); // SPEC 40.3
     this.#players.set(id, p);
     this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), map: describeMap(this.#map), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
@@ -565,7 +568,7 @@ export class GameRoom {
     this.#mapForNumber = matchNumber;
     if (next === this.#map) return;
     this.#map = next;
-    this.#pickups = buildPickups(this.#map.pickups);
+    this.#pickups = buildPickups(this.#match.arms ? [] : this.#map.pickups);
     this.#grenades = [];
   }
 
@@ -766,6 +769,7 @@ export class GameRoom {
     const killer = this.#players.get(killerId);
     if (killer && killer !== victim) killer.kills += 1;
     scoreKill(this.#match, killer, victim);
+    if (this.#match.arms && killer && killer !== victim && !sameTeam(killer, victim)) this.#armsKill(killer.team, now); // SPEC 40.3
     // PRO-ceremony (SPEC 34.3): medals are judged here, where the kill is authoritative, and broadcast with the kill
     const awarded = recordKillMedals(this.#medals, { killerId, victimId: victim.id, isHeadshot: zone === 'head', nowMs: now, dist });
     if (awarded.length) this.#broadcast({ t: 'medal', id: killerId, name: killerName, medals: awarded });
@@ -793,6 +797,21 @@ export class GameRoom {
     return now < p.protectedUntil;
   }
 
+  // SPEC 40.3: one enemy kill on the arms ladder. A stage change re-arms every living teammate at once (full
+  // magazine and reserve, melee untouched) and is announced to everyone; the win is read by endReason next tick.
+  #armsKill(team, now) {
+    const r = armsKill(this.#match.arms, team);
+    if (!r.advanced) return;
+    for (const p of this.#players.values()) {
+      if (p.team !== team || !p.alive) continue;
+      p.loadout = newLoadout(armsLoadoutIds(this.#match.arms, team));
+      p.wantsReload = false;
+      p.wantsSwitch = null;
+    }
+    this.#broadcast({ t: 'stage', team, stage: r.stage, weapon: r.weapon, text: stageText(team, r.stage) });
+    void now;
+  }
+
   #respawn(p, now) {
     this.#place(p);
     p.protectedUntil = now + SPAWN.protectMs;
@@ -800,7 +819,7 @@ export class GameRoom {
     p.alive = true;
     p.melee = null; p.staggerUntil = -Infinity; // SPEC 38.3
     p.grenades = GRENADE.perLife + p.progress.mods.grenades; // SPEC 25.2 Grenadier
-    p.loadout = newLoadout();
+    p.loadout = this.#match.arms && p.team >= 0 ? newLoadout(armsLoadoutIds(this.#match.arms, p.team)) : newLoadout(); // SPEC 40.3
     if (p.nextKit) { p.kitState = newKitState(p.nextKit); p.nextKit = null; } // SPEC 24.1 kit change on spawn
     p.grapple = null;
     p.dash = 0;

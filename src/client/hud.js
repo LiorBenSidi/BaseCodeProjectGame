@@ -253,7 +253,7 @@ export class Hud {
     if (this.#chat.length && this.#chat[0].at + 12_000 < now) { this.#chat = this.#chat.filter((l) => now - l.at < 12_000); this.#renderChat(now); }
     this.#renderHealth(me.hp);
     this.#renderAmmo(me);
-    this.#renderMatch(match);
+    this.#renderMatch(match, me.tm ?? -1);
     this.intro(match, now); // PRO-ceremony
     this.#renderKit(self);
     this.#renderRespawn(me, now);
@@ -262,8 +262,8 @@ export class Hud {
   }
 
   // SPEC 22: timer and team scores at the top; the end screen shows while the match is ending.
-  #renderMatch(match) {
-    const st = deriveMatchStatus(match);
+  #renderMatch(match, myTeam = -1) {
+    const st = deriveMatchStatus(match, myTeam);
     const line = `${st.timer}|${st.teams}|${st.ending}|${st.objective}`;
     if (line === this.#lastMatchLine) return;
     this.#lastMatchLine = line;

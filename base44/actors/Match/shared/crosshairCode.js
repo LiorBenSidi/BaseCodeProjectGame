@@ -1,15 +1,15 @@
-// Crosshair share code encoder and decoder (SPEC 40.4).
-// Compact text serialization for the seven crosshair preference fields in prefs.js.
+// Crosshair share code encoder and decoder (SPEC 40.4). Pure: no DOM.
+// A code is BCA-XXXX-XXXX: 7 payload characters (35 bits: version nibble, style, colour, size, gap, thickness,
+// outline, dynamic, 11 reserved bits) plus one check character, in a 32 letter alphabet without 0/O and 1/I.
+// prefs.js imports CROSSHAIR_STYLES and CROSSHAIR_COLOR_KEYS from here, so the enum order lives in one place.
+// Both lists are append only: an index written into a code today must mean the same thing next year.
 
 export const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+export const CODE_VERSION = 1;
 
-export const CROSSHAIR_STYLES = Object.freeze([
-  'cross', 'dot', 'circle', 'tee', 'cross-dot',
-]);
-
-export const CROSSHAIR_COLORS_KEYS = Object.freeze([
-  'green', 'cyan', 'white', 'yellow', 'magenta', 'red',
-]);
+export const CROSSHAIR_STYLES = Object.freeze(['cross', 'dot', 'circle', 'tee', 'cross-dot']);
+export const CROSSHAIR_COLOR_KEYS = Object.freeze(['green', 'cyan', 'white', 'yellow', 'magenta', 'red']);
+export const CROSSHAIR_FIELDS = Object.freeze(['crosshairStyle', 'crosshairColor', 'crosshairSize', 'crosshairGap', 'crosshairThickness', 'crosshairOutline', 'crosshairDynamic']);
 
 export const DEFAULT_CROSSHAIR_PREFS = Object.freeze({
   crosshairStyle: 'cross',
@@ -23,7 +23,7 @@ export const DEFAULT_CROSSHAIR_PREFS = Object.freeze({
 
 export function encode(prefsSubset = {}) {
   const style = CROSSHAIR_STYLES.includes(prefsSubset.crosshairStyle) ? prefsSubset.crosshairStyle : DEFAULT_CROSSHAIR_PREFS.crosshairStyle;
-  const color = CROSSHAIR_COLORS_KEYS.includes(prefsSubset.crosshairColor) ? prefsSubset.crosshairColor : DEFAULT_CROSSHAIR_PREFS.crosshairColor;
+  const color = CROSSHAIR_COLOR_KEYS.includes(prefsSubset.crosshairColor) ? prefsSubset.crosshairColor : DEFAULT_CROSSHAIR_PREFS.crosshairColor;
   const sizeNum = prefsSubset.crosshairSize !== undefined ? Number(prefsSubset.crosshairSize) : DEFAULT_CROSSHAIR_PREFS.crosshairSize;
   const size = Math.min(30, Math.max(4, Number.isFinite(sizeNum) ? Math.round(sizeNum) : DEFAULT_CROSSHAIR_PREFS.crosshairSize));
   const gapNum = prefsSubset.crosshairGap !== undefined ? Number(prefsSubset.crosshairGap) : DEFAULT_CROSSHAIR_PREFS.crosshairGap;
@@ -34,11 +34,11 @@ export function encode(prefsSubset = {}) {
   const dynamic = Boolean(prefsSubset.crosshairDynamic ?? DEFAULT_CROSSHAIR_PREFS.crosshairDynamic);
 
   const styleIdx = CROSSHAIR_STYLES.indexOf(style);
-  const colorIdx = CROSSHAIR_COLORS_KEYS.indexOf(color);
+  const colorIdx = CROSSHAIR_COLOR_KEYS.indexOf(color);
   const sizeVal = size - 4; // 0..26
   const gapVal = gap; // 0..12
   const thickVal = thickness - 1; // 0..4
-  const version = 1;
+  const version = CODE_VERSION;
 
   let bits = 0n;
   bits = (bits << 4n) | BigInt(version & 0xF);
@@ -67,7 +67,7 @@ export function encode(prefsSubset = {}) {
 }
 
 export function decode(code) {
-  if (typeof code !== 'string') return { ok: false, reason: 'Bad length' };
+  if (typeof code !== 'string') return { ok: false, reason: 'Bad prefix' };
   const clean = code.trim().toUpperCase().replace(/[\s\-]/g, '');
   if (!clean.startsWith('BCA')) return { ok: false, reason: 'Bad prefix' };
   const body = clean.slice(3);
@@ -76,7 +76,7 @@ export function decode(code) {
   const indices = [];
   for (let i = 0; i < 8; i++) {
     const idx = ALPHABET.indexOf(body[i]);
-    if (idx === -1) return { ok: false, reason: 'Bad check' };
+    if (idx === -1) return { ok: false, reason: 'Bad character' };
     indices.push(idx);
   }
 
@@ -108,9 +108,9 @@ export function decode(code) {
   bits = bits >> 3n;
   const version = Number(bits & 0xFn);
 
-  if (version !== 1) return { ok: false, reason: 'Bad version' };
+  if (version !== CODE_VERSION) return { ok: false, reason: 'Bad version' };
 
-  if (styleIdx >= CROSSHAIR_STYLES.length || colorIdx >= CROSSHAIR_COLORS_KEYS.length) {
+  if (styleIdx >= CROSSHAIR_STYLES.length || colorIdx >= CROSSHAIR_COLOR_KEYS.length) {
     return { ok: false, reason: 'Out of range' };
   }
 
@@ -126,7 +126,7 @@ export function decode(code) {
     ok: true,
     values: {
       crosshairStyle: CROSSHAIR_STYLES[styleIdx],
-      crosshairColor: CROSSHAIR_COLORS_KEYS[colorIdx],
+      crosshairColor: CROSSHAIR_COLOR_KEYS[colorIdx],
       crosshairSize: size,
       crosshairGap: gap,
       crosshairThickness: thickness,
@@ -137,6 +137,16 @@ export function decode(code) {
 }
 
 export const DEFAULT_CODE = encode(DEFAULT_CROSSHAIR_PREFS);
+
+// The seven crosshair fields of a prefs object, nothing else (what encode reads and what Apply writes).
+export function crosshairSubset(prefs) {
+  const out = {};
+  for (const k of CROSSHAIR_FIELDS) out[k] = prefs[k];
+  return out;
+}
+
+// True when the text looks like a code at all (used to tell a stray paste from a typo).
+export const looksLikeCode = (text) => typeof text === 'string' && /^\s*bca/i.test(text);
 
 export const PRESETS = Object.freeze([
   {

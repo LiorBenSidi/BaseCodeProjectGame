@@ -8,6 +8,7 @@ import { Grenades } from './grenades.js';
 import { Pickups, pickupText } from './pickups.js';
 import { ObjectiveView } from './objectiveView.js'; // SPEC 39
 import { MarkView } from './markView.js'; // SPEC 39.8
+import { ownStageBanner, ENEMY_STAGE_BANNER } from '../shared/armsRace.js'; // SPEC 40.3
 import { MARK_KINDS, WHEEL_HOLD_MS, quickKind, wheelPick, addMark, markFeedText } from '../shared/comms.js';
 import { castRay, aimDir, playerBox } from '../shared/hitscan.js';
 import { Effects } from './effects.js';
@@ -443,6 +444,7 @@ export class Game {
       // PRO-ceremony begin (SPEC 34)
       matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
       mark: (m) => { this.#hud.killFeed(markFeedText(m.id === this.#id ? 'You' : m.name, m.kind)); addMark(this.#markList, { from: m.id, kind: m.kind, pos: m.at }, performance.now()); this.#cue('pickup', { mine: m.id === this.#id }); }, // SPEC 39.8
+      stage: (m) => { this.#hud.killFeed(m.text); this.#hud.banner(m.team === this.#myTeam ? ownStageBanner(m.stage) : ENEMY_STAGE_BANNER); this.#cue('matchStart'); }, // SPEC 40.3
       flag: (m) => { this.#hud.killFeed(m.text); if (m.type === 'capture') { this.#hud.banner(m.team === this.#myTeam ? 'FLAG CAPTURED' : 'ENEMY CAPTURED'); this.#cue('medal'); } else if (m.by === this.#me.id) this.#cue('pickup', { mine: true }); }, // SPEC 39.3
       vote: (m) => this.#hud.votes(m.counts),
       medal: (m) => { if (m.id === this.#id) { this.#hud.medal(m.medals); this.#cue('kill', { mine: true }); } },
