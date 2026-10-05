@@ -331,3 +331,6 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 /* SPEC 37.7: Range reaction station readout */
 #station { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); font-size: 13px; font-variant-numeric: tabular-nums; color: #e6edf3; text-shadow: 0 1px 2px rgba(0,0,0,0.6); pointer-events: none; }
 #station.live { color: #ffd84a; }
+
+/* SPEC 39: objective line */
+#match-objective { display: block; font-size: 12px; letter-spacing: 0.08em; color: rgba(230, 237, 243, 0.85); margin-top: 2px; }

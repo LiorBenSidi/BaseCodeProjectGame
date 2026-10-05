@@ -45,6 +45,8 @@ const FOUNDRY = Object.freeze({
     { type: 'ammo', x: -28, z: -30 }, { type: 'health', x: 28, z: 30 },
     { type: 'lmg', x: 0, z: 34 }, { type: 'revolver', x: 0, z: -34 }, // SPEC 38.1
   ],
+  hills: [{ x: 0, z: -22 }, { x: 0, z: 22 }, { x: -22, z: 10 }], // SPEC 39: lanes and the west deck foot, all on the floor
+  bases: [{ x: -30, z: -30 }, { x: 30, z: 30 }],
 });
 
 // Crossfire: a plus-shaped set of walls splitting the arena into four rooms around an open hub.
@@ -75,12 +77,84 @@ const CROSSFIRE = Object.freeze({
     { type: 'ammo', x: 34, z: -26 }, { type: 'health', x: -34, z: 26 },
     { type: 'burst_rifle', x: -26, z: 26 }, { type: 'revolver', x: 0, z: 34 }, // SPEC 38.1
   ],
+  hills: [{ x: 0, z: 10 }, { x: -20, z: -8 }, { x: 20, z: 8 }], // SPEC 39: hub edge and two rooms
+  bases: [{ x: -32, z: -32 }, { x: 32, z: 32 }],
+});
+
+// SPEC 39 (D-038): Summit, a terraced plateau. A raised centre with ramps on four sides (1.25 m steps a player
+// walks up), two long flanking galleries and low cover rings; built for KOTH: the hill rotates between the summit
+// and the two galleries.
+const SUMMIT_HALF = 40;
+const SUMMIT = Object.freeze({
+  id: 'summit',
+  name: 'Summit',
+  half: SUMMIT_HALF,
+  boxes: [
+    ...perimeter(SUMMIT_HALF),
+    box(0, 0, 14, 14, 1.25), // summit plateau (one step up: walkable)
+    box(-11, 0, 8, 6, 1.25), box(11, 0, 8, 6, 1.25), // side plateaus (same height, same step)
+    box(0, -24, 20, 1, 3), box(0, 24, 20, 1, 3), // gallery back walls
+    box(-14, -24, 1, 8, 3), box(14, -24, 1, 8, 3), box(-14, 24, 1, 8, 3), box(14, 24, 1, 8, 3), // gallery ends
+    box(-28, -12, 3, 3, 3), box(28, 12, 3, 3, 3), box(28, -12, 3, 3, 3), box(-28, 12, 3, 3, 3), // pillars
+    box(-30, 0, 1, 10, 2.5), box(30, 0, 1, 10, 2.5), // flank walls
+    box(-20, -34, 6, 2, 1.25), box(20, 34, 6, 2, 1.25), box(20, -34, 6, 2, 1.25), box(-20, 34, 6, 2, 1.25), // corner cover
+  ],
+  spawns: [
+    { x: -34, z: -34, yaw: -Math.PI * 0.75 }, { x: 34, z: -34, yaw: Math.PI * 0.75 },
+    { x: -34, z: 34, yaw: -Math.PI * 0.25 }, { x: 34, z: 34, yaw: Math.PI * 0.25 },
+    { x: 0, z: -36, yaw: Math.PI }, { x: 0, z: 36, yaw: 0 },
+    { x: -36, z: 0, yaw: -Math.PI / 2 }, { x: 36, z: 0, yaw: Math.PI / 2 },
+  ],
+  pickups: [
+    { type: 'sniper', x: 0, y: 1.25, z: 0 },
+    { type: 'health', x: 0, z: -20 }, { type: 'health', x: 0, z: 20 },
+    { type: 'ammo', x: -22, z: 0 }, { type: 'ammo', x: 22, z: 0 },
+    { type: 'smg', x: -34, z: -20 }, { type: 'shotgun', x: 34, z: 20 },
+    { type: 'lmg', x: 34, z: -20 }, { type: 'burst_rifle', x: -34, z: 20 },
+    { type: 'revolver', x: 0, z: 30 },
+  ],
+  hills: [{ x: 0, z: 0 }, { x: 0, z: -20 }, { x: 0, z: 20 }], // the summit (1.25 m up, walkable), then each gallery
+  bases: [{ x: -34, z: -34 }, { x: 34, z: 34 }],
+});
+
+// SPEC 39 (D-038): Canal, two shores split by a dry canal with three crossings. Built for CTF: each team's base
+// sits on its shore; the carrier must cross at a bridge or run the canal bed in the open.
+const CANAL_HALF = 44;
+const CANAL = Object.freeze({
+  id: 'canal',
+  name: 'Canal',
+  half: CANAL_HALF,
+  boxes: [
+    ...perimeter(CANAL_HALF),
+    box(-7, 0, 1, 88, 1.25), box(7, 0, 1, 88, 1.25), // canal edges (low: a player steps over them, into the bed)
+    box(0, -28, 14, 4, 1.25), box(0, 0, 14, 4, 1.25), box(0, 28, 14, 4, 1.25), // three bridges across the canal
+    box(-24, -14, 10, 1, 3), box(24, 14, 10, 1, 3), box(-24, 14, 10, 1, 3), box(24, -14, 10, 1, 3), // shore walls
+    box(-16, -34, 1, 8, 3), box(16, 34, 1, 8, 3), box(16, -34, 1, 8, 3), box(-16, 34, 1, 8, 3), // approach walls
+    box(-36, 0, 4, 4, 3), box(36, 0, 4, 4, 3), // shore pillars
+    box(-30, -30, 3, 3, 1.25), box(30, 30, 3, 3, 1.25), box(30, -30, 3, 3, 1.25), box(-30, 30, 3, 3, 1.25), // ledges
+  ],
+  spawns: [
+    { x: -38, z: -38, yaw: -Math.PI * 0.75 }, { x: -38, z: 38, yaw: -Math.PI * 0.25 }, { x: -38, z: 0, yaw: -Math.PI / 2 }, { x: -26, z: -26, yaw: -Math.PI / 2 },
+    { x: 38, z: 38, yaw: Math.PI * 0.25 }, { x: 38, z: -38, yaw: Math.PI * 0.75 }, { x: 38, z: 0, yaw: Math.PI / 2 }, { x: 26, z: 26, yaw: Math.PI / 2 },
+  ],
+  pickups: [
+    { type: 'sniper', x: 0, y: 1.25, z: 0 },
+    { type: 'health', x: 0, z: -14 }, { type: 'health', x: 0, z: 14 },
+    { type: 'ammo', x: -20, z: 0 }, { type: 'ammo', x: 20, z: 0 },
+    { type: 'smg', x: -30, z: -20 }, { type: 'shotgun', x: 30, z: 20 },
+    { type: 'lmg', x: 30, z: -20 }, { type: 'burst_rifle', x: -30, z: 20 },
+    { type: 'revolver', x: 0, z: -40 },
+  ],
+  hills: [{ x: 0, z: 0 }, { x: 0, z: -28 }, { x: 0, z: 28 }], // the three bridges
+  bases: [{ x: -38, z: 0 }, { x: 38, z: 0 }],
 });
 
 export const MAPS = Object.freeze({
   arena: Object.freeze({ id: 'arena', name: 'Arena', ...MAP }),
   foundry: FOUNDRY,
   crossfire: CROSSFIRE,
+  summit: SUMMIT, // SPEC 39
+  canal: CANAL,
 });
 export const MAP_IDS = Object.freeze(Object.keys(MAPS));
 export const DEFAULT_MAP = 'arena';
@@ -97,4 +171,4 @@ export const isMap = (id) => typeof id === 'string' && Object.hasOwn(MAPS, id);
 export const mapForMatch = (number) => MAP_IDS[((Math.max(1, number | 0) - 1) % MAP_IDS.length)];
 
 // Compact description for welcome / matchStart.
-export const describeMap = (m) => ({ id: m.id, name: m.name, half: m.half, boxes: m.boxes });
+export const describeMap = (m) => ({ id: m.id, name: m.name, half: m.half, boxes: m.boxes, hills: m.hills ?? [], bases: m.bases ?? [] }); // SPEC 39: objectives travel with the map

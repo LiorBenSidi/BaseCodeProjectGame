@@ -6,6 +6,7 @@ import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
 import { Grenades } from './grenades.js';
 import { Pickups, pickupText } from './pickups.js';
+import { ObjectiveView } from './objectiveView.js'; // SPEC 39
 import { Effects } from './effects.js';
 import { KITS } from '../shared/abilities.js';
 import { PERKS } from '../shared/progression.js';
@@ -56,6 +57,8 @@ export class Game {
   #name = '';
   #me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, alive: false };
   #radarUntil = -Infinity; // SPEC 37.1: the last snapshot said the radar pulse is on
+  #objectives = null; // SPEC 39
+  #lastObjective = null;
   #sprinting = false; // SPEC 37.3: for the minimap footstep ring
   #protectedSeen = false; // SPEC 37.2
   // PRO-ceremony begin (SPEC 34)
@@ -119,6 +122,7 @@ export class Game {
     this.#remote = new RemotePlayers(this.#gfx.scene);
     this.#grenades = new Grenades(this.#gfx.scene);
     this.#pickups = new Pickups(this.#gfx.scene); // SPEC 21.1
+    this.#objectives = new ObjectiveView(this.#gfx.scene); // SPEC 39
     this.#effects = new Effects(this.#gfx.scene); // SPEC 24.5
     this.#fx = new CombatFx(this.#gfx.scene); // PRO-env
     this.#weaponView = new WeaponView(this.#gfx.camera); // SPEC 29.4
@@ -384,6 +388,7 @@ export class Game {
       matchEnd: (m) => { this.#hud.matchEnd(m, this.#id, { onVote: (mapId) => this.#net.send({ t: 'vote', mapId }) }); this.#cue('matchEnd'); this.#endKillcam(); }, // SPEC 22 + PRO-ceremony vote
       // PRO-ceremony begin (SPEC 34)
       matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
+      flag: (m) => { this.#hud.killFeed(m.text); if (m.type === 'capture') { this.#hud.banner(m.team === this.#myTeam ? 'FLAG CAPTURED' : 'ENEMY CAPTURED'); this.#cue('medal'); } else if (m.by === this.#me.id) this.#cue('pickup', { mine: true }); }, // SPEC 39.3
       vote: (m) => this.#hud.votes(m.counts),
       medal: (m) => { if (m.id === this.#id) { this.#hud.medal(m.medals); this.#cue('kill', { mine: true }); } },
       // PRO-ceremony end
@@ -419,6 +424,8 @@ export class Game {
     if (!mine) return;
     if (typeof mine.tm === 'number' && mine.tm !== this.#myTeam) { this.#myTeam = mine.tm; this.#remote.setOutline(this.#prefs.enemyOutline ?? 'off', mine.tm); } // PRO-ceremony: minimap ally / enemy; SPEC 37.5 outline side
     if (snap.radar === 1) this.#radarUntil = performance.now() + 200; // SPEC 37.1: holds across the snapshot gap
+    this.#lastObjective = snap.match?.obj ?? null; // SPEC 39
+    this.#objectives?.update(this.#lastObjective, performance.now());
     // SPEC 37.2: a visible marker while spawn protection holds; shooting or an ability ends it on the server
     const prot = mine.sp === 1 && mine.alive === 1;
     if (prot !== this.#protectedSeen) { this.#protectedSeen = prot; this.#hud.protection(prot); }
@@ -725,6 +732,7 @@ export class Game {
       now, team: this.#myTeam, lastShotAt: this.#lastShotAt,
       radar: this.#radarUntil > now, sprinting: this.#sprinting, fov: (this.#fov * Math.PI) / 180, // SPEC 37.1 / 37.3
       footstepRing: this.#prefs.minimapFootsteps !== false, visionCone: this.#prefs.minimapCone !== false,
+      objective: this.#lastObjective, // SPEC 39
     });
     // PRO-ceremony end
     if (frameDue(this.#lastRenderAt, now, this.#fpsCap)) { this.#lastRenderAt = now; this.#gfx.render(); } // PRO-env post pipeline; SPEC 36.4 frame cap

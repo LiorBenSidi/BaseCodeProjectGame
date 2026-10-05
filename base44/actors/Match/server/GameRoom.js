@@ -30,6 +30,8 @@ import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnaps
 // SPEC 22: match modes (DM / TDM), timer, end screen, restart.
 import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot, updateIntroPhase, recordVote, tallyVotes, voteCandidatesFor, voteCounts } from '../shared/modes.js';
 import { MAP_IDS } from '../shared/maps.js'; // PRO-ceremony: SPEC 34.4 vote candidates
+import { newHillState, stepHill, hillSnapshot, newFlagState, stepFlags, flagsSnapshot, carrying, flagEventText } from '../shared/objectives.js'; // SPEC 39
+import { scoreObjective, TEAM_NAMES, modeDef } from '../shared/modes.js';
 import { newMedalTracker, recordKillMedals, matchEndMedals } from '../shared/medals.js'; // PRO-ceremony: SPEC 34.3
 
 export const MAX_CMDS_PER_TICK = 4; // 60 Hz client cmds at a 30 Hz tick = 2 on average; 4 absorbs jitter
@@ -45,6 +47,7 @@ export class GameRoom {
   #grenades = [];
   #nextGrenadeId = 1;
   #map = MAPS[mapForMatch(1)];
+  #objective = null; // SPEC 39: hill or flag state for the current match, null outside objective modes
   #pickups = buildPickups(this.#map.pickups);
   #fx = []; // SPEC 24 active effects: shields, decoys, heal zones, stasis fields
   #nextFxId = 1;
@@ -498,6 +501,7 @@ export class GameRoom {
       this.#roster();
     }
     if (this.#match.phase !== 'playing') { this.#stepRestart(now); return; }
+    this.#stepObjective(now); // SPEC 39
     const reason = endReason(this.#match, this.#players.values(), now);
     if (reason !== null) {
       const medals = matchEndMedals(this.#medals, this.#players.values()); // PRO-ceremony: flawless and the medal totals
@@ -564,10 +568,47 @@ export class GameRoom {
     }
   }
 
+  // SPEC 39: objective state follows the mode and the map of the current match.
+  #resetObjective(now) {
+    const kind = modeDef(this.#match.mode).objective ?? null;
+    if (kind === 'hill') this.#objective = { kind, state: newHillState(this.#map, now) };
+    else if (kind === 'flags') this.#objective = { kind, state: newFlagState(this.#map) };
+    else this.#objective = null;
+  }
+
+  #stepObjective(now) {
+    const o = this.#objective;
+    if (!o) return;
+    const players = [...this.#players.values()];
+    if (o.kind === 'hill') {
+      const pts = stepHill(o.state, players, now, TICK_MS);
+      if (pts[0] || pts[1]) scoreObjective(this.#match, pts);
+      return;
+    }
+    const { points, events } = stepFlags(o.state, players, now);
+    if (points[0] || points[1]) scoreObjective(this.#match, points);
+    for (const e of events) {
+      this.#broadcast({ t: 'flag', ...e, text: flagEventText(e, TEAM_NAMES) });
+      if (e.type === 'capture') this.#log?.info('capture', { by: e.by, team: e.team });
+    }
+  }
+
+  #objectiveSnapshot(now) {
+    const o = this.#objective;
+    if (!o) return null;
+    return o.kind === 'hill' ? hillSnapshot(o.state, now) : flagsSnapshot(o.state);
+  }
+
+  // SPEC 39: read-only view for the bot brains and tests.
+  get objective() {
+    return this.#objective ? { kind: this.#objective.kind, ...this.#objectiveSnapshot(this.#now()) } : null;
+  }
+
   #startMatch(now, intro = false) {
     this.#fx = []; // SPEC 24: no effects carry over
     startMatch(this.#match, now, { intro });
     this.#switchMap(this.#match.number);
+    this.#resetObjective(now); // SPEC 39
     this.#log?.info('match start', { mode: this.#match.mode, number: this.#match.number });
     this.#broadcast({ t: 'matchStart', ...matchSnapshot(this.#match, now), number: this.#match.number, map: describeMap(this.#map), pickups: describePickups(this.#pickups) });
     this.#roster();
@@ -788,11 +829,12 @@ export class GameRoom {
         sc: radar || now < p.scannedUntil ? 1 : 0, // SPEC 24.3 revealed by a scan, SPEC 37.1 or by the radar pulse
         ...(p.afk ? { afk: 1 } : {}), // SPEC 37.4
         ml: snapshotMelee(p), // SPEC 38.3: melee phase (0 none, 1 windup, 2 active, 3 recovery, 4 clash)
+        ...(this.#objective?.kind === 'flags' && carrying(this.#objective.state, p.id) ? { fl: 1 } : {}), // SPEC 39.3: carrying a flag
       });
     }
     const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));
     const items = availableIndices(this.#pickups, now);
-    const match = matchSnapshot(this.#match, now);
+    const match = { ...matchSnapshot(this.#match, now), obj: this.#objectiveSnapshot(now) }; // SPEC 39: objective state rides on the match block
     const fx = describeEffects(this.#fx, now);
     for (const p of this.#players.values()) {
       // SPEC 24.5: the recipient's private block: cooldowns, dash state for prediction, progression

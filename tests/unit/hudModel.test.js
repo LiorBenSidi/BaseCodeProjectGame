@@ -183,9 +183,9 @@ test('deriveTeamColor follows the server team when present', () => {
 });
 
 test('deriveMatchStatus formats the timer and team scores; deriveMatchEndText names the winner', () => {
-  assert.deepEqual(deriveMatchStatus({ mode: 'dm', phase: 'playing', left: 125, ts: null }), { timer: '2:05', teams: '', ending: false });
-  assert.deepEqual(deriveMatchStatus({ mode: 'tdm', phase: 'ending', left: 0, ts: [3, 5] }), { timer: '', teams: 'Blue 3  Red 5', ending: true });
-  assert.deepEqual(deriveMatchStatus(null), { timer: '', teams: '', ending: false });
+  assert.deepEqual(deriveMatchStatus({ mode: 'dm', phase: 'playing', left: 125, ts: null }), { timer: '2:05', teams: '', ending: false, objective: '' });
+  assert.deepEqual(deriveMatchStatus({ mode: 'tdm', phase: 'ending', left: 0, ts: [3, 5] }), { timer: '', teams: 'Blue 3  Red 5', ending: true, objective: '' });
+  assert.deepEqual(deriveMatchStatus(null), { timer: '', teams: '', ending: false, objective: '' });
   assert.equal(deriveMatchEndText({ winner: { type: 'player', id: 4, name: 'Zed' } }, 4), 'Victory');
   assert.equal(deriveMatchEndText({ winner: { type: 'player', id: 4, name: 'Zed' } }, 1), 'Zed wins');
   assert.equal(deriveMatchEndText({ winner: { type: 'team', team: 1, name: 'Red' } }, 1), 'Red team wins');

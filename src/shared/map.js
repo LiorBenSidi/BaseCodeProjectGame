@@ -57,4 +57,6 @@ export const MAP = {
     { type: 'burst_rifle', x: -26, z: 26 }, // SPEC 38.1
     { type: 'health', x: -26, z: 26 },
   ],
+  hills: [{ x: 0, z: -16 }, { x: 0, z: 16 }, { x: -20, z: 0 }], // SPEC 39: open floor between the platform and the lanes
+  bases: [{ x: -32, z: -32 }, { x: 32, z: 32 }],
 };

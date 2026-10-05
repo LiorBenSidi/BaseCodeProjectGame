@@ -5,6 +5,9 @@ export const MODES = Object.freeze({
   tdm: Object.freeze({ id: 'tdm', name: 'Team Deathmatch', teams: true, timeLimitMs: 480_000, scoreLimit: 50 }),
   // PRO-audio (SPEC 35.3): the practice range never ends; dummies walk the map and never shoot
   range: Object.freeze({ id: 'range', name: 'Practice Range', teams: false, timeLimitMs: Infinity, scoreLimit: Infinity, practice: true }),
+  // SPEC 39 (D-038): objective modes. Kills do not score; the objective does.
+  koth: Object.freeze({ id: 'koth', name: 'King of the Hill', teams: true, timeLimitMs: 480_000, scoreLimit: 150, objective: 'hill' }),
+  ctf: Object.freeze({ id: 'ctf', name: 'Capture the Flag', teams: true, timeLimitMs: 600_000, scoreLimit: 3, objective: 'flags' }),
 });
 export const MODE_IDS = Object.freeze(Object.keys(MODES));
 export const DEFAULT_MODE = 'dm';
@@ -15,6 +18,8 @@ export const BOT_CONFIG = Object.freeze({
   dm: Object.freeze({ fill: 2, difficulty: 'medium' }),
   tdm: Object.freeze({ fill: 4, difficulty: 'medium' }),
   range: Object.freeze({ fill: 4, difficulty: 'dummy' }),
+  koth: Object.freeze({ fill: 6, difficulty: 'medium' }), // SPEC 39
+  ctf: Object.freeze({ fill: 6, difficulty: 'medium' }),
 });
 export const botConfigFor = (modeId) => BOT_CONFIG[modeId] ?? Object.freeze({ fill: 0, difficulty: 'medium' });
 
@@ -133,10 +138,19 @@ export const sameTeam = (a, b) => a.team >= 0 && a.team === b.team;
 // Scores a kill. A kill on a teammate or on yourself does not score; in TDM a teammate kill costs the team a point.
 export function scoreKill(m, killer, victim) {
   if (!killer || killer === victim) return;
-  if (modeDef(m.mode).teams) {
+  const mode = modeDef(m.mode);
+  if (mode.objective) return; // SPEC 39: in objective modes only the objective scores
+  if (mode.teams) {
     if (sameTeam(killer, victim)) m.teamScores[killer.team] = Math.max(0, m.teamScores[killer.team] - 1);
     else m.teamScores[killer.team] += 1;
   }
+}
+
+// SPEC 39: objective points land here; the score limit check in endReason sees them.
+export function scoreObjective(m, points) {
+  if (!modeDef(m.mode).teams) return;
+  m.teamScores[0] += points[0] | 0;
+  m.teamScores[1] += points[1] | 0;
 }
 
 // Why the match should end now, or null.

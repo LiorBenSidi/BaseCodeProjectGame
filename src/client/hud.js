@@ -245,11 +245,13 @@ export class Hud {
   // SPEC 22: timer and team scores at the top; the end screen shows while the match is ending.
   #renderMatch(match) {
     const st = deriveMatchStatus(match);
-    const line = `${st.timer}|${st.teams}|${st.ending}`;
+    const line = `${st.timer}|${st.teams}|${st.ending}|${st.objective}`;
     if (line === this.#lastMatchLine) return;
     this.#lastMatchLine = line;
     if (this.#matchTimer) { this.#matchTimer.textContent = st.timer; this.#matchTimer.hidden = !st.timer; }
     if (this.#matchTeams) { this.#matchTeams.textContent = st.teams; this.#matchTeams.hidden = !st.teams; }
+    const objEl = $('match-objective'); // SPEC 39
+    if (objEl) { objEl.textContent = st.objective; objEl.hidden = !st.objective; }
     if (this.#endScreen && !st.ending) this.#endScreen.hidden = true;
     if (!st.ending) this.setScoreboardVisible(false);
   }
@@ -401,6 +403,11 @@ export class Hud {
     if (lay.radar) { // SPEC 37.1: a sweep ring while the pulse shows
       ctx.strokeStyle = 'rgba(92,225,255,0.55)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(size / 2, size / 2, size * (0.2 + 0.3 * ((opts?.now ?? 0) % 1500) / 1500), 0, Math.PI * 2); ctx.stroke();
+    }
+    for (const k of lay.marks ?? []) { // SPEC 39: hill ring, bases, flags
+      if (k.kind === 'hill') { ctx.strokeStyle = k.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(k.x, k.y, k.r, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = k.fill; ctx.fill(); }
+      else if (k.kind === 'base') { ctx.strokeStyle = k.color; ctx.lineWidth = 1.5; ctx.strokeRect(k.x - 5, k.y - 5, 10, 10); }
+      else if (k.kind === 'flag') { ctx.fillStyle = k.color; ctx.beginPath(); ctx.moveTo(k.x, k.y - 7); ctx.lineTo(k.x + 6, k.y - 4); ctx.lineTo(k.x, k.y - 1); ctx.closePath(); ctx.fill(); ctx.fillRect(k.x - 1, k.y - 7, 1.5, 10); }
     }
     for (const d of lay.dots) {
       ctx.fillStyle = d.kind === 'ally' ? '#5ce1ff' : '#ff5252';

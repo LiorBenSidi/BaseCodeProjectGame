@@ -16,7 +16,8 @@ test('parseRoomId accepts <mode>-<code>, the legacy room and diag rooms; rejects
   assert.deepEqual(parseRoomId(makeRoomId('dm', 'q2w3e4')), { mode: 'dm', code: 'q2w3e4' });
   assert.deepEqual(parseRoomId(LEGACY_ROOM_ID), { mode: 'dm', code: 'arena-1' });
   assert.equal(parseRoomId('diag-live-6').mode, 'dm');
-  assert.equal(parseRoomId('ctf-abc234'), null);
+  assert.deepEqual(parseRoomId('ctf-abc234'), { mode: 'ctf', code: 'abc234' }); // SPEC 39
+  assert.equal(parseRoomId('nope-abc234'), null);
   assert.equal(parseRoomId('dm-ABC'), null);
   assert.equal(parseRoomId('dm-'), null);
   assert.equal(parseRoomId('a/b'), null);
