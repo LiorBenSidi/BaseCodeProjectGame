@@ -1128,3 +1128,7 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 
 ### 36.9 Live check for the Pro program
 `ACTOR_BUILD = "4.0"`. `npm run actor-probe -- <app-id> diag-live-7 12 --inputs --diag` must report build 4.0 and a diag frame; a lone human in a `dm-` room must see a `[BOT]` row on the scoreboard; a `range-` room must show the tutorial and never shoot back.
+
+Mobile smoke (D1 touch gating, SPEC 33 layout): `docs/smoke/mobile.json` uses the driver's `emulate` step (`phone` = 390x844 touch device with a mobile user agent, `landscape` = 844x390, `desktop` clears it) and checks that the touch controls appear only under touch emulation, that the HUD and menu fit the viewport (no element past the right edge, no horizontal overflow) in portrait and landscape, and takes screenshots of the lobby, the match and the landscape match.
+Live result 2026-10-05 against the Pro build: touch detected, menu fits (0 overflowing elements), in match the touch root shows the 8 controls (menu, reload, weapon swap, grenade, jump, run, crouch, fire), HUD visible, status `100 HP Rifle 30 / 90 / READY`, landscape keeps the HP bar on screen with no horizontal overflow.
+
