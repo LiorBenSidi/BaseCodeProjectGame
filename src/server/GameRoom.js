@@ -21,6 +21,7 @@ import { sanitizeName } from './security.js';
 import { buildPickups, stepPickups, availableIndices, describePickups } from '../shared/pickups.js';
 import { pickSpawn } from '../shared/spawning.js';
 import { SPAWN } from '../shared/rules.js';
+import { radarActive, cmdIsActive, afkEligible, isAfk } from '../shared/presence.js'; // P7: SPEC 37.1 radar pulse, 37.4 AFK
 // SPEC 24 / 25: kits, abilities, effects and in-match progression.
 import { DEFAULT_KIT, KIT_IDS, isKit, newKitState, useAbility, stepEffects, applyGrapple, slowFactor, shieldBoxes, decoyTargets, describeEffects, cooldownLeft } from '../shared/abilities.js';
 import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnapshot, XP } from '../shared/progression.js';
@@ -122,6 +123,10 @@ export class GameRoom {
       wantsReload: false,
       wantsSwitch: null,
       protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
+      lastActiveAt: this.#now(), // SPEC 37.4: last command that did something (move, jump, turn); zero commands do not count
+      afk: false, // SPEC 37.4: a bot brain drives the body while true
+      afkBrain: null,
+      humanYaw: 0, humanPitch: 0, // SPEC 37.4: the human's own last look, so a brain turning the body never counts as their activity
       team: assignTeam(this.#match, this.#players.values()), // SPEC 22: -1 in DM, 0 Blue / 1 Red in TDM
       // SPEC 24: kit and cooldowns; a kit change applies on the next spawn. SPEC 25: XP, level, perks.
       userId: typeof userId === 'string' && userId.length > 0 && userId.length <= 64 ? userId : null, // SPEC 27: platform-verified, never from the payload
@@ -198,9 +203,39 @@ export class GameRoom {
       if (r.shoot) this.handleShoot(id);
     }
   }
+
+  // SPEC 37.4: a human idle for AFK.idleMs in dm or tdm is marked AFK and a bot brain takes the body over;
+  // the first active command hands it back. The player keeps their seat, score and name.
+  #stepAfk(now) {
+    if (!afkEligible(this.#match.mode)) return;
+    const all = this.#afkCount > 0 ? [...this.#players.values()] : null;
+    for (const p of this.#players.values()) {
+      if (p.bot) continue;
+      if (!p.afk) {
+        if (this.#match.phase === 'playing' && isAfk(p.lastActiveAt, now)) this.#setAfk(p, true);
+        continue;
+      }
+      const r = botStep(p.afkBrain, p, all, this.#map, now, this.#botRng, sameTeam);
+      this.handleInput(p.id, [r.cmd], true);
+      if (r.reload) this.handleReload(p.id);
+      if (r.shoot) this.handleShoot(p.id);
+    }
+  }
+
+  #afkCount = 0;
+  #setAfk(p, on) {
+    if (p.afk === on) return;
+    p.afk = on;
+    p.afkBrain = on ? newBrain('easy', this.#botSeed + p.id) : null;
+    this.#afkCount += on ? 1 : -1;
+    if (!on) p.lastActiveAt = this.#now();
+    this.#log?.info(on ? 'player afk' : 'player back', { id: p.id });
+  }
   // PRO-audio end
 
   removePlayer(id) {
+    const leaving = this.#players.get(id);
+    if (leaving?.afk) this.#afkCount -= 1; // SPEC 37.4
     const removed = this.#players.delete(id);
     if (removed) this.#log?.info('player left', { id, players: this.#players.size });
     if (removed && this.#players.size === 0) this.#match = newMatch(this.#match.mode); // SPEC 22: an empty room waits
@@ -221,11 +256,24 @@ export class GameRoom {
     return true;
   }
 
-  handleInput(id, cmds) {
+  handleInput(id, cmds, fromBrain = false) {
     const p = this.#players.get(id);
     if (!p || !Array.isArray(cmds)) return;
+    if (p.afk && !fromBrain) {
+      // SPEC 37.4: while a bot drives the body, human commands are ignored until one of them is active
+      if (!cmds.some((c) => cmdIsActive(c, p.humanYaw, p.humanPitch))) return;
+      this.#setAfk(p, false);
+    }
     for (const c of cmds) {
+      if (fromBrain) {
+        p.queue.push({ ...c, seq: p.lastQueuedSeq }); // the brain never advances the human's sequence, so their ack stays theirs
+        continue;
+      }
       if (c.seq > p.lastQueuedSeq) {
+        if (!p.bot) {
+          if (cmdIsActive(c, p.humanYaw, p.humanPitch)) p.lastActiveAt = this.#now();
+          p.humanYaw = c.yaw; p.humanPitch = c.pitch;
+        }
         p.queue.push(c);
         p.lastQueuedSeq = c.seq;
       }
@@ -275,6 +323,7 @@ export class GameRoom {
     const now = this.#now();
 
     this.#stepBots(now); // PRO-audio: SPEC 35.3
+    this.#stepAfk(now); // SPEC 37.4
     for (const p of this.#players.values()) this.#runCommands(p);
     this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
@@ -332,7 +381,7 @@ export class GameRoom {
       if (this.#match.phase !== 'playing') continue;
       const others = [...this.#players.values()];
       const r = useAbility(p, slot, { nowMs: now, boxes: this.#map.boxes, half: this.#map.half, players: others, fx: this.#fx, nextFxId: () => this.#nextFxId++, cdMul: p.progress.mods.cdMul });
-      if (r.ok) this.#broadcast({ t: 'ability', id: p.id, ability: r.ability, slot, cd: r.cooldownMs });
+      if (r.ok) { p.protectedUntil = -Infinity; this.#broadcast({ t: 'ability', id: p.id, ability: r.ability, slot, cd: r.cooldownMs }); } // SPEC 37.2: an ability ends spawn protection like a shot
       else this.#sendTo(p, { t: 'ability', id: p.id, slot, denied: r.reason });
     }
   }
@@ -608,6 +657,8 @@ export class GameRoom {
 
   #broadcastSnapshot(now) {
     const players = [];
+    // SPEC 37.1: deathmatch radar pulse, on the match clock so the client's ring and the reveal agree
+    const radar = this.#match.phase === 'playing' && radarActive(this.#match.mode, now - this.#match.startedAt);
     for (const p of this.#players.values()) {
       const ws = activeWeapon(p.loadout);
       players.push({
@@ -622,7 +673,8 @@ export class GameRoom {
         sp: this.#protected(p, now) ? 1 : 0, // SPEC 21.2 spawn protection
         tm: p.team, // SPEC 22: -1 in DM, 0 / 1 in TDM
         kt: KIT_IDS.indexOf(p.kitState.kit), lv: p.progress.level, // SPEC 24 / 25: kit index into KIT_IDS, level
-        sc: now < p.scannedUntil ? 1 : 0, // SPEC 24.3 revealed by a scan
+        sc: radar || now < p.scannedUntil ? 1 : 0, // SPEC 24.3 revealed by a scan, SPEC 37.1 or by the radar pulse
+        ...(p.afk ? { afk: 1 } : {}), // SPEC 37.4
       });
     }
     const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));
@@ -632,7 +684,7 @@ export class GameRoom {
     for (const p of this.#players.values()) {
       // SPEC 24.5: the recipient's private block: cooldowns, dash state for prediction, progression
       const self = { cd: [cooldownLeft(p.kitState, 0, now), cooldownLeft(p.kitState, 1, now)], kit: p.kitState.kit, ...(p.dash > 0 ? { dash: round3(p.dash), dashDx: round3(p.dashDx), dashDz: round3(p.dashDz) } : {}), ...(p.grapple ? { grapple: 1 } : {}), ...progressSnapshot(p.progress) };
-      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items, match, fx, self });
+      this.#sendTo(p, { t: 'snap', tick: this.#tick, ack: p.lastSeq, players, nades, items, match, fx, self, ...(radar ? { radar: 1 } : {}) });
     }
   }
 
