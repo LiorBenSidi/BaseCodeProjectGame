@@ -2,6 +2,7 @@
 // It never throws, and the returned message is rebuilt from whitelisted fields only, so
 // unexpected properties (__proto__, isAdmin, hp, ...) can never reach game logic.
 
+import { sanitizeWish } from '../shared/cosmetics.js'; // SPEC 40.1
 import { sanitizeName } from './security.js';
 import { isKit } from '../shared/abilities.js';
 
@@ -40,7 +41,8 @@ function validateObject(data) {
   switch (data.t) {
     case 'join':
       // SPEC 24.1: an optional kit id; anything else falls back to the default kit in the room.
-      return { ok: true, msg: { t: 'join', name: sanitizeName(data.name), ...(isKit(data.kit) ? { kit: data.kit } : {}) } };
+      // SPEC 40.1: an optional cosmetics wish; the room resolves it against the stats row it loads itself.
+      return { ok: true, msg: { t: 'join', name: sanitizeName(data.name), ...(isKit(data.kit) ? { kit: data.kit } : {}), ...(isPlainObject(data.cosmetics) ? { cosmetics: sanitizeWish(data.cosmetics) } : {}) } };
     case 'shoot':
       return { ok: true, msg: { t: 'shoot' } };
     case 'throw':
@@ -71,6 +73,9 @@ function validateObject(data) {
       // SPEC 34.4: next-map vote; the room checks the id against the open candidates
       if (typeof data.mapId !== 'string' || data.mapId.length === 0 || data.mapId.length > 32) return fail('bad_vote');
       return { ok: true, msg: { t: 'vote', mapId: data.mapId } };
+    case 'cosmetics':
+      if (!isPlainObject(data.cosmetics)) return fail('bad_cosmetics'); // SPEC 40.1
+      return { ok: true, msg: { t: 'cosmetics', cosmetics: sanitizeWish(data.cosmetics) } };
     case 'mark':
       // SPEC 39.8: ping wheel mark; kind and point are checked here, the room rate-limits and relays to the team
       if (typeof data.kind !== 'string' || data.kind.length > 16 || !Array.isArray(data.at) || data.at.length !== 3 || !data.at.every(isNum)) return fail('bad_mark');

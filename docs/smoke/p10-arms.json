@@ -1,0 +1,22 @@
+[
+ {
+  "goto": "/",
+  "wait": 3000
+ },
+ {
+  "name": "menu offers Arms Race",
+  "eval": "JSON.stringify([...document.querySelectorAll('#create-mode option')].map(o=>o.value+':'+o.textContent))"
+ },
+ {
+  "name": "play (run the server with MODE=arms)",
+  "eval": "(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()"
+ },
+ {
+  "sleep": 8000,
+  "shot": "01-arms-in-match"
+ },
+ {
+  "name": "arms line, team score, pistol in hand",
+  "eval": "JSON.stringify({menuHidden: document.getElementById('menu').hidden, objective: document.getElementById('match-objective').textContent, objectiveHidden: document.getElementById('match-objective').hidden, teams: document.getElementById('match-teams')?.textContent, weapon: document.getElementById('weapon-name')?.textContent || document.querySelector('.ammo .name, #ammo-weapon, #weapon')?.textContent})"
+ }
+]

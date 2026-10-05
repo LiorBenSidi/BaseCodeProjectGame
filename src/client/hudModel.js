@@ -1,3 +1,4 @@
+import { armsLine } from '../shared/armsRace.js'; // SPEC 40.3
 import { WEAPONS } from '../shared/weapons.js';
 import { RESPAWN_MS } from '../shared/constants.js';
 import { TEAM_NAMES } from '../shared/modes.js'; // SPEC 39
@@ -87,14 +88,14 @@ export function deriveTeamColor(playerId, team = -1) {
 }
 
 // SPEC 22: top-centre match line. { timer: 'm:ss', teams: 'Blue 3  Red 5' | '', ending: bool }
-export function deriveMatchStatus(match) {
+export function deriveMatchStatus(match, myTeam = -1) {
   if (!match) return { timer: '', teams: '', ending: false, objective: '' };
   const endless = match.left < 0; // PRO-audio: practice range
   const left = Math.max(0, match.left | 0);
   const mm = Math.floor(left / 60);
   const ss = String(left % 60).padStart(2, '0');
   const teams = Array.isArray(match.ts) ? `Blue ${match.ts[0]}  Red ${match.ts[1]}` : '';
-  return { timer: match.phase === 'playing' && !endless ? `${mm}:${ss}` : '', teams, ending: match.phase === 'ending', objective: deriveObjectiveLine(match.obj, match.ts) };
+  return { timer: match.phase === 'playing' && !endless ? `${mm}:${ss}` : '', teams, ending: match.phase === 'ending', objective: match.arms ? armsLine(match.arms, myTeam) : deriveObjectiveLine(match.obj, match.ts, myTeam) }; // SPEC 40.3 the arms ladder takes the objective line
 }
 
 // SPEC 39: the objective line under the score. KOTH: who holds the hill and when it moves. CTF: where each flag is.

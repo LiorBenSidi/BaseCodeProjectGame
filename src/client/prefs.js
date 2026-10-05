@@ -3,6 +3,8 @@
 // The legacy keys from settings.js (sensitivity, fov, fps, sound, touch, quality) stay the source for those five
 // values so earlier players keep what they chose; prefs.js adds everything a modern FPS exposes.
 
+import { CROSSHAIR_STYLES, CROSSHAIR_COLOR_KEYS } from '../shared/crosshairCode.js';
+
 export const PREFS_KEY = 'bca.prefs';
 
 // type: 'range' { min, max, step }, 'bool', 'enum' { values }, 'color' (one of CROSSHAIR_COLORS keys)
@@ -43,8 +45,8 @@ export const PREFS_SCHEMA = Object.freeze({
   hitSound: { tab: 'audio', label: 'Hit marker sound', type: 'bool', def: true },
   footsteps: { tab: 'audio', label: 'Footsteps', type: 'bool', def: true },
   // HUD
-  crosshairStyle: { tab: 'hud', label: 'Crosshair style', type: 'enum', values: ['cross', 'dot', 'circle', 'tee', 'cross-dot'], def: 'cross' },
-  crosshairColor: { tab: 'hud', label: 'Crosshair color', type: 'enum', values: Object.keys(CROSSHAIR_COLORS), def: 'green' },
+  crosshairStyle: { tab: 'hud', label: 'Crosshair style', type: 'enum', values: CROSSHAIR_STYLES, def: 'cross' },
+  crosshairColor: { tab: 'hud', label: 'Crosshair color', type: 'enum', values: CROSSHAIR_COLOR_KEYS, def: 'green' }, // SPEC 40.4: order shared with the share code
   crosshairSize: { tab: 'hud', label: 'Crosshair size', type: 'range', min: 4, max: 30, step: 1, def: 14 },
   crosshairGap: { tab: 'hud', label: 'Crosshair gap', type: 'range', min: 0, max: 12, step: 1, def: 4 },
   crosshairThickness: { tab: 'hud', label: 'Crosshair thickness', type: 'range', min: 1, max: 5, step: 1, def: 2 },

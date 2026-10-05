@@ -121,7 +121,7 @@ export class MatchSession {
     }
     if (msg.t === 'join') {
       if (s.player) return;
-      const player = this.#room.addPlayer({ name: msg.name, kit: msg.kit, userId: s.conn.userId ?? null, send: (obj) => s.conn.send(obj) }); // SPEC 27: userId comes from the transport, never the payload
+      const player = this.#room.addPlayer({ name: msg.name, kit: msg.kit, cosmetics: msg.cosmetics, userId: s.conn.userId ?? null, send: (obj) => s.conn.send(obj) }); // SPEC 27: userId comes from the transport, never the payload
       if (!player) {
         s.conn.send({ t: 'error', reason: 'room_full' });
         this.#drop(s, 'room_full');
@@ -140,6 +140,8 @@ export class MatchSession {
       this.#room.handleAbility(s.player.id, msg.slot);
     } else if (s.player && msg.t === 'melee') {
       this.#room.handleMelee(s.player.id); // SPEC 38.3
+    } else if (s.player && msg.t === 'cosmetics') {
+      this.#room.handleCosmetics(s.player.id, msg.cosmetics); // SPEC 40.1
     } else if (s.player && msg.t === 'kit') {
       this.#room.handleKit(s.player.id, msg.id);
     } else if (s.player && msg.t === 'perk') {

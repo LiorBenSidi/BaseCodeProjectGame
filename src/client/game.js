@@ -8,6 +8,8 @@ import { Grenades } from './grenades.js';
 import { Pickups, pickupText } from './pickups.js';
 import { ObjectiveView } from './objectiveView.js'; // SPEC 39
 import { MarkView } from './markView.js'; // SPEC 39.8
+import { ownStageBanner, ENEMY_STAGE_BANNER } from '../shared/armsRace.js'; // SPEC 40.3
+import { unpackCosmetics, tracerHex, sanitizeWish } from '../shared/cosmetics.js'; // SPEC 40.1
 import { MARK_KINDS, WHEEL_HOLD_MS, quickKind, wheelPick, addMark, markFeedText } from '../shared/comms.js';
 import { castRay, aimDir, playerBox } from '../shared/hitscan.js';
 import { Effects } from './effects.js';
@@ -89,6 +91,8 @@ export class Game {
   #weapon = WEAPONS.rifle; // SPEC 20: the weapon the server says is in hand; paces our shoot intents and recoil
   #recoil = { pitch: 0, yaw: 0 }; // SPEC 20: client-only camera kick, recovers over a few frames
   #tracers = [];
+  #cosmetics = null; // SPEC 40.1: my wish, sent with join and on change
+  #csById = new Map(); // SPEC 40.1: id -> unpacked cosmetics from the latest snapshot, for tracer colours
   #pickups;
   #effects;
   #fx = null; // PRO-env: SPEC 30.6 muzzle flashes, sparks, explosion light
@@ -365,6 +369,12 @@ export class Game {
   }
 
   // SPEC 24.1: a kit change applies on the next spawn.
+  // SPEC 40.1: a cosmetics wish; the server answers with what actually resolved
+  selectCosmetics(cs) {
+    this.#cosmetics = sanitizeWish(cs);
+    if (this.joined) this.#net.send({ t: 'cosmetics', cosmetics: this.#cosmetics });
+  }
+
   selectKit(id) {
     if (!KITS[id]) return;
     this.#kit = id;
@@ -443,6 +453,7 @@ export class Game {
       // PRO-ceremony begin (SPEC 34)
       matchLive: () => { this.#hud.banner('GO'); this.#cue('matchStart'); },
       mark: (m) => { this.#hud.killFeed(markFeedText(m.id === this.#id ? 'You' : m.name, m.kind)); addMark(this.#markList, { from: m.id, kind: m.kind, pos: m.at }, performance.now()); this.#cue('pickup', { mine: m.id === this.#id }); }, // SPEC 39.8
+      stage: (m) => { this.#hud.killFeed(m.text); this.#hud.banner(m.team === this.#myTeam ? ownStageBanner(m.stage) : ENEMY_STAGE_BANNER); this.#cue('matchStart'); }, // SPEC 40.3
       flag: (m) => { this.#hud.killFeed(m.text); if (m.type === 'capture') { this.#hud.banner(m.team === this.#myTeam ? 'FLAG CAPTURED' : 'ENEMY CAPTURED'); this.#cue('medal'); } else if (m.by === this.#me.id) this.#cue('pickup', { mine: true }); }, // SPEC 39.3
       vote: (m) => this.#hud.votes(m.counts),
       medal: (m) => { if (m.id === this.#id) { this.#hud.medal(m.medals); this.#cue('kill', { mine: true }); } },
@@ -456,7 +467,8 @@ export class Game {
       error: (m) => this.#hud.notice(m.reason === 'room_full' ? 'Room is full' : 'Server error'),
       close: () => { this.#id = null; this.#hud.notice('Disconnected. Reload to rejoin.'); },
       // Actor transport only: the room woke up without our seat, or the link went quiet.
-      rejoin: () => { this.#id = null; this.#net.send({ t: 'join', name: this.#name, kit: this.#kit }); },
+      rejoin: () => { this.#id = null; this.#net.send({ t: 'join', name: this.#name, kit: this.#kit, ...(this.#cosmetics ? { cosmetics: this.#cosmetics } : {}) }); },
+      cosmetics: (m) => { document.dispatchEvent(new CustomEvent('bca:cosmetics', { detail: { cosmetics: m.cosmetics, stats: m.stats } })); }, // SPEC 40.1
       stale: () => { if (this.#id !== null) this.#hud.notice('Connection unstable, reconnecting...'); },
     };
     // VITE_BASE44_APP_ID is set by the Base44 build environment (the app sandbox exports it; `base44 build`
@@ -465,7 +477,7 @@ export class Game {
     this.#net = appId
       ? new ActorNetwork(handlers, { appId, roomId: this.#roomId, client: this.lobbyClient() })
       : new Network(handlers);
-    this.#net.connect(name, this.#kit);
+    this.#net.connect(name, this.#kit, this.#cosmetics);
   }
 
   #onSnapshot(snap) {
@@ -500,6 +512,7 @@ export class Game {
     this.#weaponView?.setWeapon(this.#weapon.id);
     if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#cue('reload'); this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
     this.#onDamage(mine);
+    for (const p of snap.players) this.#csById.set(p.id, p.cs ? unpackCosmetics(p.cs) : null); // SPEC 40.1
     this.#hud.update(mine, snap.players, Date.now(), snap.match, snap.self);
   }
 
@@ -524,7 +537,7 @@ export class Game {
   #addTracer(m) {
     const { THREE, scene } = this.#gfx;
     const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...m.from), new THREE.Vector3(...m.to)]);
-    const material = new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true });
+    const material = new THREE.LineBasicMaterial({ color: tracerHex(this.#csById.get(m.id)), transparent: true }); // SPEC 40.1 the shooter's tracer colour
     const line = new THREE.Line(geometry, material);
     scene.add(line);
     this.#tracers.push({ line, born: performance.now() });

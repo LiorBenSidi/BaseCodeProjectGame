@@ -38,7 +38,7 @@ Types-only, no build step, refactor-only PRs guarded by the existing tests. Plan
 - ~~Sign-in binding, match results, lifetime stats and leaderboard.~~ Done 2026-10-04 (D-024).
 - ~~Content: map registry with rotation (Arena, Foundry, Crossfire), kit avatars, procedural sound.~~ Done 2026-10-04 (D-025).
 - ~~Genre parity pass: text chat, streaks, ADS and FOV, weapon view model, footsteps (docs/COMPETITIVE_AUDIT.md).~~ Done 2026-10-04 (D-026).
-- Post-V1 backlog from the audit: kill cam, CTF or King of the Hill, two more maps, bots for empty rooms, cosmetics tied to PlayerStats.
+- Post-V1 backlog from the audit: kill cam, CTF or King of the Hill, two more maps, bots for empty rooms, cosmetics tied to PlayerStats. All shipped by P10 (SPEC 34, 39, 40.1).
 
 ## Phase 3 - Rooms and lobby
 - Multiple `GameRoom` instances, lobby list, matchmaking by capacity.
@@ -73,6 +73,6 @@ Weekly dependency PRs, monthly independent security review recorded in `docs/HAR
 - Done in P7 (SPEC 37.5): enemy outline colours as an inverted hull (`enemyOutline` pref).
 - Crosshair RGB picker and import / export share codes (CS2).
 - Server side snapshot occlusion culling (Valorant fog of war): visibility test per viewer in GameRoom snapshots; anti wallhack and bandwidth.
-- From the Valorant research, deferred after P7 (SPEC 37.8): TDM weapon stages and spawner orbs, ping wheel with world markers, crosshair share codes.
+- From the Valorant research, deferred after P7 (SPEC 37.8): TDM weapon stages and spawner orbs, ping wheel with world markers, crosshair share codes. Shipped since: ping wheel (P9, SPEC 39.8), weapon stages as Arms Race and crosshair share codes (P10, SPEC 40.3, 40.4); spawner orbs stay deferred.
 - Node version matrix in CI once a second runtime target exists.
 - After P8 (SPEC 38): per weapon reload variants (shell by shell for the shotgun, bolt cycle for the sniper), a melee-only mode, third person weapon swap animation.

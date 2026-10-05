@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { thirdPersonMelee } from './animClips.js'; // SPEC 38.2
 import { KIT_IDS } from '../shared/abilities.js';
 import { NAME_TAG, nameTagLayout, teamColorHex } from './arenaStyle.js';
+import { unpackCosmetics, displayName, accentHex } from '../shared/cosmetics.js'; // SPEC 40.1
 import { OUTLINE_SCALE, outlineColorHex, isEnemyOf } from './outline.js'; // SPEC 37.5
 import { applyKitAccent } from './avatars.js';
 import { PLAYER } from '../shared/constants.js';
@@ -20,9 +21,10 @@ const lerpAngle = (a, b, k) => {
 // Name tags are sprites with a canvas texture, one texture per distinct name (SPEC 19.3). The name
 // is drawn with fillText, never injected into the DOM, so a hostile name is just pixels.
 const tagTextures = new Map();
-function nameTagTexture(name) {
+function nameTagTexture(name, accent = null) {
   const layout = nameTagLayout(name);
-  let entry = tagTextures.get(layout.text);
+  const key = accent ? `${layout.text}|${accent}` : layout.text; // SPEC 40.1: one texture per text and colour
+  let entry = tagTextures.get(key);
   if (entry) return entry;
   const canvas = document.createElement('canvas');
   canvas.width = layout.width;
@@ -36,12 +38,12 @@ function nameTagTexture(name) {
   ctx.font = NAME_TAG.font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#e6edf3';
+  ctx.fillStyle = accent ?? '#e6edf3'; // SPEC 40.1 accent colours the name
   ctx.fillText(layout.text, layout.width / 2, layout.height / 2 + 1, layout.width - NAME_TAG.padX);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   entry = { texture, scale: layout.scale };
-  tagTextures.set(layout.text, entry);
+  tagTextures.set(key, entry);
   return entry;
 }
 
@@ -153,7 +155,8 @@ export class RemotePlayers {
         mesh.position.y = y - dp.sink;
       }
       if (mesh.userData.w !== pb.w && typeof pb.w === 'string') this.#setWeapon(mesh, pb.w);
-      if (mesh.userData.name !== pb.name) this.#setTag(mesh, pb.name);
+      const tagKey = `${pb.name}|${pb.cs ? pb.cs.join(',') : ''}`; // SPEC 40.1: badge and accent are part of the tag
+      if (mesh.userData.tagKey !== tagKey) this.#setTag(mesh, pb.name, pb.cs ? unpackCosmetics(pb.cs) : null, tagKey);
       if (mesh.userData.team !== pb.tm) this.#setTeam(mesh, id, pb.tm);
       // SPEC 23: a crouched or sliding body is squashed to its hitbox height; the tag stays above the head.
       const hk = typeof pb.h === 'number' ? Math.max(0.3, pb.h / PLAYER.height) : 1;
@@ -319,11 +322,12 @@ export class RemotePlayers {
     return out;
   }
 
-  #setTag(group, name) {
+  #setTag(group, name, cs = null, tagKey = name) {
     group.userData.name = name;
+    group.userData.tagKey = tagKey;
     const old = group.getObjectByName('tag');
     if (old) group.remove(old);
-    const { texture, scale } = nameTagTexture(name);
+    const { texture, scale } = nameTagTexture(displayName(name, cs), accentHex(cs)); // SPEC 40.1
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthWrite: false, fog: false }));
     sprite.name = 'tag';
     sprite.scale.set(...scale);

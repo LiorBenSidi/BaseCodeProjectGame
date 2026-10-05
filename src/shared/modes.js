@@ -8,6 +8,8 @@ export const MODES = Object.freeze({
   // SPEC 39 (D-038): objective modes. Kills do not score; the objective does.
   koth: Object.freeze({ id: 'koth', name: 'King of the Hill', teams: true, timeLimitMs: 480_000, scoreLimit: 150, objective: 'hill' }),
   ctf: Object.freeze({ id: 'ctf', name: 'Capture the Flag', teams: true, timeLimitMs: 600_000, scoreLimit: 3, objective: 'flags' }),
+  // SPEC 40.3 (D-039): Arms Race. Team kills climb a weapon ladder; the ladder, not the kill count, ends the match.
+  arms: Object.freeze({ id: 'arms', name: 'Arms Race', teams: true, timeLimitMs: 600_000, scoreLimit: Infinity, arms: true }),
 });
 export const MODE_IDS = Object.freeze(Object.keys(MODES));
 export const DEFAULT_MODE = 'dm';
@@ -20,6 +22,7 @@ export const BOT_CONFIG = Object.freeze({
   range: Object.freeze({ fill: 4, difficulty: 'dummy' }),
   koth: Object.freeze({ fill: 6, difficulty: 'medium' }), // SPEC 39
   ctf: Object.freeze({ fill: 6, difficulty: 'medium' }),
+  arms: Object.freeze({ fill: 6, difficulty: 'medium' }), // SPEC 40.3
 });
 export const botConfigFor = (modeId) => BOT_CONFIG[modeId] ?? Object.freeze({ fill: 0, difficulty: 'medium' });
 
@@ -45,8 +48,14 @@ export function newMatch(modeId = DEFAULT_MODE) {
     number: 0,
     voteCandidates: [],
     votes: {},
+    arms: mode.arms ? newArmsState() : null, // SPEC 40.3
   };
 }
+
+// SPEC 40.3: the arms ladder lives on the match so endReason, endMatch and the snapshot see it. Kept here (not
+// imported from armsRace.js) to avoid a cycle: armsRace.js imports TEAM_NAMES from this file.
+const newArmsState = () => ({ stages: [0, 0], progress: [0, 0], won: -1 });
+const armsCompare = (m) => (m.arms.stages[0] - m.arms.stages[1]) || (m.arms.progress[0] - m.arms.progress[1]) || (m.teamScores[0] - m.teamScores[1]);
 
 // PRO-CEREMONY begin: Match intro and voting helpers
 export function startIntro(m, nowMs) {
@@ -60,6 +69,7 @@ export function startIntro(m, nowMs) {
   m.number += 1;
   m.voteCandidates = [];
   m.votes = {};
+  m.arms = mode.arms ? newArmsState() : null; // SPEC 40.3: every match starts on the first stage
 }
 
 export function updateIntroPhase(m, nowMs) {
@@ -108,6 +118,7 @@ export function startMatch(m, nowMs, { intro = false } = {}) {
   m.number += 1;
   m.voteCandidates = [];
   m.votes = {};
+  m.arms = mode.arms ? newArmsState() : null; // SPEC 40.3: every match starts on the first stage
 }
 
 // SPEC 34.4: two candidates for the next map vote, never the map just played, in rotation order after it.
@@ -158,6 +169,7 @@ export function endReason(m, players, nowMs) {
   if (m.phase !== 'playing') return null;
   const mode = modeDef(m.mode);
   if (nowMs >= m.endsAt) return 'time';
+  if (mode.arms) return m.arms?.won >= 0 ? 'score' : null; // SPEC 40.3: the ladder ends it
   if (mode.teams) return m.teamScores.some((s) => s >= mode.scoreLimit) ? 'score' : null;
   for (const p of players) if (p.kills >= mode.scoreLimit) return 'score';
   return null;
@@ -178,7 +190,10 @@ export function endMatch(m, players, nowMs, reason, voteCandidates = []) {
   m.votes = {};
   const ranked = ranking(players);
   let winner = null;
-  if (mode.teams) {
+  if (mode.arms && m.arms) { // SPEC 40.3: the winner is the team that finished the ladder, else the higher rung, then kills on it, then kills
+    const c = m.arms.won >= 0 ? (m.arms.won === 0 ? 1 : -1) : armsCompare(m);
+    winner = c === 0 ? { type: 'draw' } : { type: 'team', team: c > 0 ? 0 : 1, name: TEAM_NAMES[c > 0 ? 0 : 1] };
+  } else if (mode.teams) {
     const [a, b] = m.teamScores;
     winner = a === b ? { type: 'draw' } : { type: 'team', team: a > b ? 0 : 1, name: TEAM_NAMES[a > b ? 0 : 1] };
   } else if (ranked.length > 0) {
@@ -215,6 +230,7 @@ export function matchSnapshot(m, nowMs) {
     phase: m.phase,
     left,
     ts: modeDef(m.mode).teams ? [...m.teamScores] : null,
+    ...(m.arms ? { arms: { stages: [...m.arms.stages], progress: [...m.arms.progress] } } : {}), // SPEC 40.3
     ...(m.phase === 'ending' ? { voteCandidates: m.voteCandidates ?? [] } : {}),
   };
 }

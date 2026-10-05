@@ -212,6 +212,7 @@ export async function startServer(options = {}) {
         player = room.addPlayer({
           name: msg.name,
           kit: msg.kit,
+          cosmetics: msg.cosmetics, // SPEC 40.1
           send: (obj) => { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); },
         });
         if (!player) {
@@ -240,6 +241,8 @@ export async function startServer(options = {}) {
         room.handleAbility(player.id, msg.slot);
       } else if (player && msg.t === 'melee') {
         room.handleMelee(player.id); // SPEC 38.3
+      } else if (player && msg.t === 'cosmetics') {
+        room.handleCosmetics(player.id, msg.cosmetics); // SPEC 40.1
       } else if (player && msg.t === 'kit') {
         room.handleKit(player.id, msg.id);
       } else if (player && msg.t === 'perk') {

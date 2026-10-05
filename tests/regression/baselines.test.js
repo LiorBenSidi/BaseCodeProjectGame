@@ -26,7 +26,7 @@ test('weapon table baseline: fire interval, magazine, reload and ADS per weapon'
 test('match flow baseline: 5 s intro, 15 s ending, bot seats per mode, every mode has a duration or is endless', () => {
   assert.equal(INTRO_MS, 5000);
   assert.equal(ENDING_MS, 15000);
-  assert.deepEqual(BOT_CONFIG, { dm: { fill: 2, difficulty: 'medium' }, tdm: { fill: 4, difficulty: 'medium' }, range: { fill: 4, difficulty: 'dummy' }, koth: { fill: 6, difficulty: 'medium' }, ctf: { fill: 6, difficulty: 'medium' } }); // SPEC 39
+  assert.deepEqual(BOT_CONFIG, { dm: { fill: 2, difficulty: 'medium' }, tdm: { fill: 4, difficulty: 'medium' }, range: { fill: 4, difficulty: 'dummy' }, koth: { fill: 6, difficulty: 'medium' }, ctf: { fill: 6, difficulty: 'medium' }, arms: { fill: 6, difficulty: 'medium' } }); // SPEC 39
   for (const [id, m] of Object.entries(MODES)) assert.ok(Number.isFinite(m.timeLimitMs) ? m.timeLimitMs > 0 : id === 'range', `${id} time limit`);
   assert.equal(MODES.dm.timeLimitMs, 300_000); assert.equal(MODES.tdm.timeLimitMs, 480_000); assert.equal(MODES.dm.scoreLimit, 25); assert.equal(MODES.tdm.scoreLimit, 50);
 });

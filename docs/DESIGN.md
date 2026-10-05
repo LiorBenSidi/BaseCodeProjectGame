@@ -359,3 +359,13 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Source: Lior, 2026-10-05 ~20:45 IL, picked from the P9 candidates (KOTH/CTF, more maps, ping wheel); cosmetics from PlayerStats, TDM weapon stages and crosshair share codes stay on the roadmap.
 - Affects: docs/SPEC.md section 39; `src/shared/{objectives,modes,maps,bots,comms,rooms}.js`, `src/server/{GameRoom,protocol,server,matchSession,config}.js`, `src/client/{objectiveView,markView,hudModel,hud,ceremony,game,input,bindings,themes}.js`, `index.html`, `docs/smoke/p9-*.json`.
 - Alternatives: domination (three points) instead of a rotating hill: rejected for 16 seats, a single hill concentrates the fight; voice chat instead of a ping wheel: rejected, no media servers and no moderation surface in this project.
+
+### D-039 (P10) Cosmetics from PlayerStats, Arms Race, crosshair share codes
+- Status: decided
+- Date: 2026-10-05
+- Decision: cosmetics (badge, name accent, tracer colour) unlocked by lifetime PlayerStats and validated by the server against the row it loads itself, never by the client; Arms Race as a team mode where three kills climb an eight-weapon ladder and the ladder, not the kill count, ends the match, with no pickups; crosshair share codes (`BCA-` prefix, check character, presets) so a crosshair travels as text.
+- Source: Lior, 2026-10-05 ~23:45 IL, "Continue" after the three remaining roadmap items were offered together.
+- Affects: docs/SPEC.md section 40; `src/shared/{cosmetics,armsRace,crosshairCode,modes}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{cosmeticsUi,settingsPanel,remote,hud,hudModel,game,main,net,netActor}.js`, `base44/actors/Match/{persistence,matchHost}.js`, menu markup and styles.
+- Alternatives: client-trusted cosmetics: rejected, a locked badge would be one devtools call away; a store or currency: rejected, the game stays free of purchases, stats are the only key; a per-player weapon ladder (Gun Game) instead of a team ladder: rejected for TDM-size rooms, a team ladder keeps the fight shared and the re-arm moment loud; stage weapons as the primary only with a fixed sidearm: rejected, swapping to a pistol would hide the stage.
+- Consequences: the actor exposes `statsFor` (read only) and the join path becomes two-phase (guest, then resolved); the catalog is append only; `match.arms` rides on the match block and `arms` is the sixth mode id (bot fill 6); the crosshair settings row gains Share code copy and paste.
+
