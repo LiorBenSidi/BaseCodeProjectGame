@@ -200,6 +200,7 @@ export class Game {
     this.#audio.setLevel('ui', (prefs.uiVolume ?? 80) / 100);
     // SPEC 36: research polish, D-033
     this.#audio.setMix?.(prefs.audioMix ?? 'default');
+    this.#audio.setSpatialMode?.(prefs.spatialAudio ?? 'stereo'); // SPEC 37.6
     this.#remote.setOutline(prefs.enemyOutline ?? 'off', this.#myTeam); // SPEC 37.5
     this.#gfx.setRenderScale?.(prefs.renderScale ?? 100);
     this.#fpsCap = prefs.fpsCap && prefs.fpsCap !== 'off' ? Number(prefs.fpsCap) : 0;

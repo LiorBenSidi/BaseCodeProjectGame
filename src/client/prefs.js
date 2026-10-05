@@ -25,6 +25,7 @@ export const PREFS_SCHEMA = Object.freeze({
   aimAssist: { tab: 'controls', label: 'Aim assist (controller and touch only)', type: 'bool', def: true },
   // Video
   quality: { tab: 'video', label: 'Graphics quality', type: 'enum', values: ['auto', 'low', 'medium', 'high'], def: 'auto' },
+  spatialAudio: { tab: 'audio', label: 'Spatial audio', type: 'enum', values: ['stereo', 'hrtf'], def: 'stereo' }, // SPEC 37.6
   enemyOutline: { tab: 'video', label: 'Enemy outline', type: 'enum', values: ['off', 'yellow', 'red', 'purple'], def: 'off' }, // SPEC 37.5
   renderScale: { tab: 'video', label: 'Render scale (%)', type: 'range', min: 50, max: 100, step: 5, def: 100 }, // SPEC 36.4
   fpsCap: { tab: 'video', label: 'Frame rate limit', type: 'enum', values: ['off', '30', '60', '120', '144'], def: 'off' }, // SPEC 36.4
