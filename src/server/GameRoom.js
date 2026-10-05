@@ -204,7 +204,8 @@ export class GameRoom {
       const bot = this.#players.get(id);
       if (!bot) { this.#bots.delete(id); continue; }
       if (bot.frozen) continue; // SPEC 37.7: the station target stands still
-      const r = botStep(brain, bot, all, this.#map, now, this.#botRng, sameTeam);
+      const obj = this.#objective ? { ...this.#objectiveSnapshot(now), carrying: this.#objective.kind === 'flags' && !!carrying(this.#objective.state, id) } : null; // SPEC 39.5
+      const r = botStep(brain, bot, all, this.#map, now, this.#botRng, sameTeam, obj);
       this.handleInput(id, [r.cmd]);
       if (r.reload) this.handleReload(id);
       if (r.shoot) this.handleShoot(id);
