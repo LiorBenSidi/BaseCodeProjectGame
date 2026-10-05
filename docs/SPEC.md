@@ -1186,3 +1186,28 @@ The clash is the unique rule: when two enemies swing into each other and both co
 
 ### 38.4 Sound
 New cues: `shot_burst_rifle`, `shot_lmg`, `shot_revolver`, `melee` (swing, placed at the swinger), `melee_hit`, `clash` (ducking, placed at the clash point).
+
+## 39. Objective modes, two maps and the ping wheel (Pro batch P9, D-038)
+
+Two team objective modes join deathmatch, team deathmatch and the Range; two maps join the rotation; a ping wheel gives teams a way to talk without typing. Kills never score in the objective modes: the scoreboard still counts them, but the team score is the objective alone.
+
+### 39.1 Objective rules (`src/shared/objectives.js`)
+Pure functions, no clock of their own. `hillInit(map, nowMs)` picks the first hill of the map; `hillStep(state, players, nowMs, dtMs)` counts the alive players of each team inside the radius: one team alone inside holds the hill and earns `HILL_POINTS_PER_SEC` (1) per second it holds; both teams inside is contested and nobody scores; the hill moves to the next spot every `HILL_ROTATE_MS` (60 s) and the snapshot carries `next`, the seconds until it moves. `flagsInit(map)` places one flag per team at its base; `flagsStep` handles take (an enemy within `FLAG_PICKUP_M` of a flag at home or dropped), carry (the flag follows its carrier), drop (the carrier dies or leaves), return (a teammate touches a dropped flag, or `FLAG_RETURN_MS` 20 s pass) and capture (the carrier touches its own base while its own flag is home). Every transition is reported as an event `{type, team, by, text}`.
+
+### 39.2 Modes (`src/shared/modes.js`, `src/shared/maps.js`, `src/server/GameRoom.js`)
+`koth`: 8 minutes, first team to 150 points. `ctf`: 10 minutes, first team to 3 captures. Both fill six bot seats. `scoreObjective(match, team, points)` is the only path that moves `ts` in these modes; `recordKill` leaves `ts` alone. Every map now declares `hills` (3 to 4 spots with a radius) and `bases` (two, one per team, each with a radius); `MAP` descriptors on the wire carry both. `GameRoom` steps the objective each tick after the players moved, broadcasts `flag` events with their text, puts `match.obj` in every snapshot (hill: `x z r holder contested next`; flags: `bases`, `flags[] {team state x z carrier}`), and marks the carrier's snapshot row with `fl: 1`. `MODE=koth` / `MODE=ctf` on the dev server; the menu lists both; room ids `koth-<code>` and `ctf-<code>` parse.
+
+### 39.3 Maps Summit and Canal (`src/shared/maps.js`, `src/client/themes.js`)
+Summit: a terraced plateau, the central hill sits two steps up with four ramps, bases in opposite corners behind low walls. Canal: two shores and three bridges over a sunken channel; the channel is walkable but exposed; bases sit on each shore. Both get a theme (alpine dawn, overcast harbour) that never borrows the team colours, and both join the vote rotation.
+
+### 39.4 Presentation (`src/client/objectiveView.js`, `src/client/hudModel.js`, `src/client/ceremony.js`, `src/client/hud.js`)
+In the world: the hill is a floor ring plus a thin post, white when open, amber when contested, team colour when held, pulsing; flags are a pole with a cloth that stands at the base, shrinks and rides at hip height when carried, lies tilted when dropped; each base is a low pad. Under the score, `deriveObjectiveLine` reads `HILL OPEN  moves in 42s`, `HILL HELD BY YOU`, `HILL CONTESTED`, or `Blue flag home  Red flag TAKEN`. The minimap draws the hill ring, a square per base and a pennant per flag. A capture shows `FLAG CAPTURED` or `ENEMY CAPTURED` with the medal cue; every flag event goes through the feed.
+
+### 39.5 Bots on the objective (`src/shared/bots.js`)
+`objectiveGoal(obj, bot, brain)` is the bot's target position. KOTH: everybody goes to the hill, spread on an inner ring by seed. CTF: a carrier runs home and never fights; when the own flag is away, odd-seeded bots chase it and everybody recovers a dropped flag; while a teammate carries, the rest cover the base; otherwise they go for the enemy flag. The goal is the waypoint; a stuck bot detours 2.5 s and comes back. On arrival the bot holds, shuffles sideways and scans. A far enemy is shot at on the way while the legs keep walking (the wish vector is expressed in the facing frame). Measured on arena with six medium bots: 32% of hill time held and 56 points in 3 minutes; three captures in 4 minutes.
+
+### 39.8 Ping wheel (`src/shared/comms.js`, `src/client/markView.js`, `src/server/GameRoom.js`)
+Z (rebindable, action `mark`). Tap: a quick ping at the aim point, `enemy` when an enemy is under the crosshair, `watch` otherwise. Hold `WHEEL_HOLD_MS` (220 ms): the wheel opens with eight kinds clockwise from the top (`go enemy danger attack thanks defend help watch`); the mouse picks a segment, release sends; release inside the dead zone cancels. The server validates kind and point, allows one mark per `MARK_MIN_INTERVAL_MS` (700 ms) per player, relays `{t:'mark', id, name, team, kind, at}` to the sender's team only (to the sender alone without teams) and stores nothing. The client keeps at most `MARK_MAX_LIVE` (3) marks per sender with a kind-specific ttl, draws a beam and a floor disc in the world, a cross on the minimap and a `Name: text` feed line.
+
+### 39.9 Verification
+Unit: `objectives`, `gameRoomObjectives`, `objectiveClient`, `botsObjective`, `comms`. Headless smokes `docs/smoke/p9-koth.json` (HILL HELD BY RED, Red 11 after 28 s), `p9-ctf.json` (Red 1 capture after 68 s), `p9-ping.json` (tap, cancelled wheel, wheel pick, feed line).
