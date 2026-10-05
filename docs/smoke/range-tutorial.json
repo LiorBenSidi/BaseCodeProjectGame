@@ -1,5 +1,5 @@
 [
- {"goto":"http://localhost:8820/","wait":3000},
+ {"goto":"/","wait":3000},
  {"name":"reset tutorial + pick range","eval":"(()=>{for (const k of Object.keys(localStorage)) if (/tut/i.test(k)) localStorage.removeItem(k); document.getElementById('create-mode').value='range'; document.getElementById('create-room').click(); return 'room-line: '+document.getElementById('room-line').textContent.trim().slice(0,80)+' | hidden='+document.getElementById('room-line').hidden;})()","sleep":500},
  {"name":"play range","eval":"(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()","sleep":4000,"shot":"11-range"},
  {"name":"range state","eval":"JSON.stringify({hudHidden: document.getElementById('hud').hidden, tutorial: document.getElementById('tutorial').hidden ? 'hidden' : document.getElementById('tutorial').textContent.replace(/\\s+/g,' ').trim().slice(0,140), status: document.getElementById('status').textContent.replace(/\\s+/g,' ').trim().slice(0,80), scoreboard: (document.getElementById('scoreboard').textContent.match(/\\[BOT\\]/g)||[]).length+' bots', skipBtn: !!document.querySelector('#tutorial button')})"},
