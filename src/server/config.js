@@ -1,6 +1,8 @@
 // Environment parsing. Pure: takes an env-like object, never reads process.env itself,
 // so it can be unit-tested and so no other module depends on ambient global state.
 
+import { DEFAULT_MODE, MODE_IDS } from '../shared/modes.js'; // SPEC 37.7 MODE
+
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'];
 
 export function loadConfig(env = {}) {
@@ -23,7 +25,12 @@ export function loadConfig(env = {}) {
   const botFillRaw = env.BOT_FILL === undefined || env.BOT_FILL === '' ? null : String(env.BOT_FILL).trim();
   if (botFillRaw !== null && !/^\d{1,2}$/.test(botFillRaw)) throw new Error('Invalid BOT_FILL: must be an integer between 0 and 99');
 
+  // SPEC 37.7: MODE picks the dev server's single room mode (dm, tdm, range); the actor derives it from the room id
+  const modeRaw = env.MODE === undefined || env.MODE === '' ? DEFAULT_MODE : String(env.MODE).trim();
+  if (!MODE_IDS.includes(modeRaw)) throw new Error(`Invalid MODE: must be one of ${MODE_IDS.join(', ')}`);
+
   return {
+    mode: modeRaw,
     botFill: botFillRaw === null ? null : Number(botFillRaw),
     port,
     host: env.HOST ? String(env.HOST) : '0.0.0.0',

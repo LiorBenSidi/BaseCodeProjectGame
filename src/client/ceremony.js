@@ -76,21 +76,29 @@ export function trimHistory(history, now, keepMs = 6000) {
 // Enemies appear only when `revealed` (fired within the last 2 s or within 12 m); allies always.
 export const MINIMAP_REVEAL_MS = 2000;
 export const MINIMAP_NEAR_M = 12;
-export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastShotAt = new Map() } = {}) {
+// SPEC 37.3: the footstep ring. Remote steps are cued at 0.35 volume with falloff(d) (audioModel.js, full to 4 m,
+// zero at 60 m); at 24 m a step is still at half level, which is where a careful listener stops hearing it over the mix.
+export const MINIMAP_FOOTSTEP_M = 24;
+
+export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastShotAt = new Map(), radar = false, sprinting = false, fov = 0, footstepRing = true, visionCone = true } = {}) {
   const half = map?.half ?? 20;
   const s = size / (half * 2);
   const px = (x) => (x + half) * s;
   const pz = (z) => (z + half) * s;
   // boxes are { min: [x, y, z], max: [x, y, z] } (map.js); low props stay off the map, tall cover is drawn darker
-  const boxes = (map?.boxes ?? []).filter((b) => b.max[1] - b.min[1] >= 0.8).map((b) => ({ x: px(b.min[0]), y: pz(b.min[2]), w: (b.max[0] - b.min[0]) * s, h: (b.max[2] - b.min[2]) * s, tall: b.max[1] - b.min[1] >= 2.5 }));
+  const boxes = (map?.boxes ?? []).filter((b) => b.max[1] - b.min[1] >= 0.8).map((b) => ({ x: px(b.min[0]), y: pz(b.min[2]), w: (b.max[0] - b.min[0]) * s, h: (b.max[2] - b.min[2]) * s, tall: b.max[1] - b.min[1] >= 1.8 }));
   const dots = [];
   for (const o of others) {
     if (o.alive === 0) continue;
     const ally = team >= 0 && o.team === team;
     const near = Math.hypot(o.x - me.x, o.z - me.z) <= MINIMAP_NEAR_M;
     const fired = now - (lastShotAt.get(o.id) ?? -Infinity) <= MINIMAP_REVEAL_MS;
-    if (!ally && !near && !fired) continue;
-    dots.push({ id: o.id, x: px(o.x), y: pz(o.z), kind: ally ? 'ally' : 'enemy', yaw: o.yaw ?? 0 });
+    const revealed = o.sc === 1; // SPEC 24.3 scan or SPEC 37.1 radar pulse
+    if (!ally && !near && !fired && !revealed) continue;
+    dots.push({ id: o.id, x: px(o.x), y: pz(o.z), kind: ally ? 'ally' : 'enemy', yaw: o.yaw ?? 0, ...(revealed && !ally && !near && !fired ? { pulse: true } : {}) });
   }
-  return { size, boxes, me: { x: px(me.x), y: pz(me.z), yaw: me.yaw ?? 0 }, dots };
+  // SPEC 37.3: own footstep audibility while sprinting, and the field of view as a wedge (radians, 0 hides it)
+  const ring = footstepRing && sprinting ? MINIMAP_FOOTSTEP_M * s : 0;
+  const cone = visionCone && fov > 0 ? Math.min(Math.PI, fov) : 0;
+  return { size, boxes, me: { x: px(me.x), y: pz(me.z), yaw: me.yaw ?? 0 }, dots, ring, cone, radar: !!radar };
 }

@@ -4,7 +4,7 @@
 // panned from the listener's point of view, lowpassed with distance, with a distant variant for far gunfire and a
 // ducking stage so your own shot sits on top of the mix. `cueFor` and the math in audioModel.js are the pure part;
 // `Audio` plays recipes, creates the context on the first user gesture, and stays silent without an AudioContext.
-import { panFor, falloff as falloffM, isDistant, BUSES, DEFAULT_LEVELS, busGain, clampLevel, cutoffFor, DUCK } from './audioModel.js';
+import { panFor, falloff as falloffM, isDistant, BUSES, DEFAULT_LEVELS, busGain, clampLevel, cutoffFor, DUCK, hrtfLocalPosition } from './audioModel.js';
 
 export { panFor };
 
@@ -100,6 +100,7 @@ export class Audio {
   #noise = null;
   #levels = { ...DEFAULT_LEVELS };
   #listener = { x: 0, z: 0, yaw: 0 };
+  #spatial = 'stereo'; // SPEC 37.6: stereo pan (default) or HRTF through a PannerNode
   #comp = null;
   #mix = 'default';
   #active = 0;
@@ -158,6 +159,12 @@ export class Audio {
   }
 
   // Where the player's ears are, for panning. Call once per frame.
+  // SPEC 37.6: 'hrtf' uses a PannerNode per cue with the HRTF model; anything else keeps the stereo panner.
+  setSpatialMode(mode) {
+    this.#spatial = mode === 'hrtf' ? 'hrtf' : 'stereo';
+  }
+  get spatialMode() { return this.#spatial; }
+
   setListener(x, z, yaw) {
     this.#listener = { x, z, yaw };
   }
@@ -205,7 +212,17 @@ export class Audio {
     const out = ctx.createGain();
     out.gain.value = volume;
     let head = out;
-    if (at && typeof ctx.createStereoPanner === 'function') {
+    if (at && this.#spatial === 'hrtf' && typeof ctx.createPanner === 'function') {
+      // SPEC 37.6: HRTF with no distance model of its own; falloff and the lowpass below stay in charge of distance
+      const pan = ctx.createPanner();
+      pan.panningModel = 'HRTF';
+      pan.distanceModel = 'linear';
+      pan.rolloffFactor = 0;
+      const [lx, ly, lz] = hrtfLocalPosition(this.#listener, at);
+      pan.positionX.value = lx; pan.positionY.value = ly; pan.positionZ.value = lz;
+      out.connect(pan);
+      head = pan;
+    } else if (at && typeof ctx.createStereoPanner === 'function') {
       const pan = ctx.createStereoPanner();
       pan.pan.value = panFor(this.#listener, at);
       out.connect(pan);

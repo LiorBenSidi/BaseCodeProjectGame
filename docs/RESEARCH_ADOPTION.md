@@ -66,3 +66,15 @@ where it lives in the game, or why it waits.
 | Per zoom sensitivity | Done in P3 (ADS sensitivity multiplier, SPEC 32.4) |
 | Tooltips with visual previews | Deferred (crosshair preview exists) |
 | Subtitles | Not applicable (no voice lines) |
+
+## Valorant pass (research/valorant-references.md), adopted in P7 (SPEC 37, D-036)
+| Item | Research section | Adoption | Where |
+|---|---|---|---|
+| Deathmatch radar pulse | 5.2 | ADAPT: 5 s period, 1.5 s reveal, match clock | SPEC 37.1 |
+| Respawn protection with break conditions | 5.3 | FIT: shot or ability ends it, HUD marker | SPEC 37.2 |
+| Minimap audio ring and vision cone | 3.3 | ADAPT: ring from our footstep falloff, cone from the live fov | SPEC 37.3 |
+| AFK handling | 5.1 | ADAPT: bot takeover instead of a kick, 60 s | SPEC 37.4 |
+| Enemy highlight colours | 3.1 | ADAPT: inverted hull, three colours | SPEC 37.5 |
+| HRTF audio | 6 (audio) | FIT: PannerNode HRTF toggle | SPEC 37.6 |
+| Range with reaction bots | Range notes | ADAPT: one frozen dummy, three windows, 30 rounds | SPEC 37.7 |
+| Crosshair share codes, TDM weapon stages, ping wheel, occlusion culling | 3.2, 5.4 to 5.6, 2.x | SKIP for now | ROADMAP |

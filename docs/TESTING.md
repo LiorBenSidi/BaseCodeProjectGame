@@ -103,9 +103,13 @@ CI wiring (owner step: the agent's GitHub token has no `workflow` scope, so this
 ## Browser smoke run (SPEC 36.8)
 
 ```bash
+env -u VITE_BASE44_APP_ID npm run build   # a build with the app id baked in talks to the live actor, not this server
 PORT=8820 ALLOWED_ORIGINS=http://localhost:8820 NODE_ENV=production node src/server/index.js &
 node scripts/smoke-browser.mjs docs/smoke/settings.json
 node scripts/smoke-browser.mjs docs/smoke/deathmatch.json
-node scripts/smoke-browser.mjs docs/smoke/range-tutorial.json https://<live host>   # actor only
+MODE=range PORT=8821 ALLOWED_ORIGINS=http://localhost:8821 NODE_ENV=production node src/server/index.js &
+node scripts/smoke-browser.mjs docs/smoke/range-tutorial.json http://localhost:8821   # SPEC 37.7 station: MODE=range on the dev server
+node scripts/smoke-browser.mjs docs/smoke/range-tutorial.json https://<live host>     # actor: the room id in the URL picks the mode
 ```
 Each step prints a JSON line of what it read from the page; screenshots land in /tmp/smoke. Needs google-chrome.
+`MODE` (dm, tdm, range) sets the dev server's single room mode (SPEC 37.7); the actor derives the mode from the room id.
