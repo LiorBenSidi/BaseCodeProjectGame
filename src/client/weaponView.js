@@ -1,12 +1,19 @@
-// First-person weapon view model (SPEC 29.4): a few boxes per weapon parented to the camera, with
+// First-person weapon view model (SPEC 29.4 & 38.2): a few boxes per weapon parented to the camera, with
 // recoil kick, reload dip, ADS pull-in and walk sway. Layout is a pure table; `WeaponView` is Three.js.
 import * as THREE from 'three';
 import { weaponModel, MATERIALS } from './weaponModels.js';
 
-// SPEC 31.1: the parts come from weaponModels.js (shared with the third person hands); WEAPON_VIEW keeps the
+// SPEC 31.1 & 38.1: the parts come from weaponModels.js (shared with the third person hands); WEAPON_VIEW keeps the
 // per weapon hold tweaks (pistols sit closer and higher).
 export const WEAPON_VIEW = Object.freeze({
-  rifle: { hold: [0, 0, 0] }, smg: { hold: [0, 0, 0.05] }, shotgun: { hold: [0, -0.02, -0.05] }, sniper: { hold: [0, 0, -0.1] }, pistol: { hold: [-0.04, 0.04, 0.15] },
+  rifle: { hold: [0, 0, 0] },
+  smg: { hold: [0, 0, 0.05] },
+  shotgun: { hold: [0, -0.02, -0.05] },
+  sniper: { hold: [0, 0, -0.1] },
+  pistol: { hold: [-0.04, 0.04, 0.15] },
+  burst_rifle: { hold: [0, 0, -0.02] },
+  lmg: { hold: [0.02, -0.04, -0.08] },
+  revolver: { hold: [-0.03, 0.03, 0.12] },
 });
 export const INSPECT_MS = 1400; // SPEC 31.1: F turns the weapon over and back
 export const REST = Object.freeze({ x: 0.28, y: -0.24, z: -0.5 }); // hip position in camera space

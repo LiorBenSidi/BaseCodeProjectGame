@@ -1,4 +1,4 @@
-// Weapons table and the per-player weapon state machine (docs/SPEC.md section 20, D-019).
+// Weapons table and the per-player weapon state machine (docs/SPEC.md section 20 & 38, D-019, D-037).
 // Pure and deterministic: time comes in as `nowMs`, randomness as an injected `random()`.
 // The server is the only place that decides whether a shot happens; the client reads this
 // table for the fire interval it uses to pace its own `shoot` intents and for recoil.
@@ -18,37 +18,89 @@ export const WEAPONS = Object.freeze({
     magSize: 30, reserve: 90, reloadMs: 2000, switchMs: 400, pellets: 1,
     spreadBase: 0, spreadPerShot: 0.006, spreadDecayPerMs: 0.00005, spreadMax: 0.06,
     recoilPitch: 0.02, recoilYaw: 0.005, bands: RIFLE.bands,
-    adsMs: 250, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
+    adsMs: 250, adsSensMul: 0.8,
   }),
   smg: W({
     id: 'smg', name: 'SMG', slot: 'primary', fireIntervalMs: 90, range: 60,
     magSize: 35, reserve: 105, reloadMs: 1600, switchMs: 300, pellets: 1,
     spreadBase: 0.012, spreadPerShot: 0.006, spreadDecayPerMs: 0.00006, spreadMax: 0.08,
     recoilPitch: 0.012, recoilYaw: 0.008, bands: [{ below: 12, damage: 18 }, { below: 25, damage: 14 }, { below: 60, damage: 9 }],
-    adsMs: 180, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
+    adsMs: 180, adsSensMul: 0.8,
   }),
   shotgun: W({
     id: 'shotgun', name: 'Shotgun', slot: 'primary', fireIntervalMs: 800, range: 35,
     magSize: 8, reserve: 32, reloadMs: 2500, switchMs: 500, pellets: 8,
     spreadBase: 0.08, spreadPerShot: 0.02, spreadDecayPerMs: 0.00004, spreadMax: 0.12,
     recoilPitch: 0.06, recoilYaw: 0.015, bands: [{ below: 10, damage: 12 }, { below: 20, damage: 7 }, { below: 35, damage: 3 }],
-    adsMs: 220, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
+    adsMs: 220, adsSensMul: 0.8,
   }),
   sniper: W({
     id: 'sniper', name: 'Sniper', slot: 'primary', fireIntervalMs: 1200, range: 200,
     magSize: 5, reserve: 20, reloadMs: 3000, switchMs: 600, pellets: 1, scoped: true,
     spreadBase: 0.001, spreadPerShot: 0.05, spreadDecayPerMs: 0.00003, spreadMax: 0.1,
     recoilPitch: 0.08, recoilYaw: 0.002, bands: [{ below: 50, damage: 85 }, { below: 100, damage: 75 }, { below: 200, damage: 65 }],
-    adsMs: 320, adsSensMul: 0.65, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
+    adsMs: 320, adsSensMul: 0.65,
   }),
   pistol: W({
     id: 'pistol', name: 'Pistol', slot: 'sidearm', fireIntervalMs: 220, range: 70,
     magSize: 12, reserve: 48, reloadMs: 1400, switchMs: 250, pellets: 1,
     spreadBase: 0.006, spreadPerShot: 0.012, spreadDecayPerMs: 0.00007, spreadMax: 0.05,
     recoilPitch: 0.025, recoilYaw: 0.004, bands: [{ below: 15, damage: 22 }, { below: 30, damage: 16 }, { below: 70, damage: 10 }],
-    adsMs: 160, adsSensMul: 0.8, // SPEC 32.4: ADS transition time and ADS sensitivity multiplier (D-029)
+    adsMs: 160, adsSensMul: 0.8,
+  }),
+  burst_rifle: W({
+    id: 'burst_rifle', name: 'Burst Rifle', slot: 'primary', fireIntervalMs: 450, range: 85,
+    magSize: 30, reserve: 90, reloadMs: 2200, switchMs: 380, pellets: 1, burstCount: 3, burstIntervalMs: 70, // SPEC 38.1: one pull, three rounds 70 ms apart, 450 ms between pulls
+    spreadBase: 0.003, spreadPerShot: 0.007, spreadDecayPerMs: 0.00006, spreadMax: 0.05,
+    recoilPitch: 0.022, recoilYaw: 0.004, bands: [{ below: 20, damage: 28 }, { below: 45, damage: 22 }, { below: 85, damage: 15 }],
+    adsMs: 220, adsSensMul: 0.8,
+  }),
+  lmg: W({
+    id: 'lmg', name: 'LMG', slot: 'primary', fireIntervalMs: 100, range: 90,
+    magSize: 75, reserve: 150, reloadMs: 4200, switchMs: 650, pellets: 1,
+    spreadBase: 0.015, spreadPerShot: 0.004, spreadDecayPerMs: 0.00004, spreadMax: 0.09,
+    recoilPitch: 0.028, recoilYaw: 0.012, bands: [{ below: 25, damage: 24 }, { below: 50, damage: 19 }, { below: 90, damage: 14 }],
+    adsMs: 350, adsSensMul: 0.7,
+  }),
+  revolver: W({
+    id: 'revolver', name: 'Revolver', slot: 'sidearm', fireIntervalMs: 380, range: 65,
+    magSize: 6, reserve: 36, reloadMs: 2200, switchMs: 280, pellets: 1,
+    spreadBase: 0.004, spreadPerShot: 0.02, spreadDecayPerMs: 0.00008, spreadMax: 0.06,
+    recoilPitch: 0.045, recoilYaw: 0.008, bands: [{ below: 15, damage: 52 }, { below: 35, damage: 38 }, { below: 65, damage: 26 }],
+    adsMs: 180, adsSensMul: 0.8,
   }),
 });
+
+export const MELEE_STYLES = Object.freeze({
+  vanguard: Object.freeze({
+    id: 'vanguard', name: 'Shock Baton', kit: 'vanguard',
+    damage: 50, range: 2.8, angleRad: Math.PI / 3,
+    windupMs: 150, activeMs: 200, recoveryMs: 350,
+    lungeSpeed: 8, lungeMaxDist: 2.5, knockback: 6,
+  }),
+  phantom: Object.freeze({
+    id: 'phantom', name: 'Energy Blade', kit: 'phantom',
+    damage: 45, range: 3.2, angleRad: Math.PI / 3.5,
+    windupMs: 100, activeMs: 180, recoveryMs: 280,
+    lungeSpeed: 10, lungeMaxDist: 3.0, knockback: 2,
+  }),
+  engineer: Object.freeze({
+    id: 'engineer', name: 'Tactical Stun Blade', kit: 'engineer',
+    damage: 55, range: 2.9, angleRad: Math.PI / 3,
+    windupMs: 140, activeMs: 200, recoveryMs: 320,
+    lungeSpeed: 8, lungeMaxDist: 2.6, knockback: 4,
+  }),
+  medic: Object.freeze({
+    id: 'medic', name: 'Dual Combat Knives', kit: 'medic',
+    damage: 38, range: 2.5, angleRad: Math.PI / 2.5,
+    windupMs: 80, activeMs: 160, recoveryMs: 220,
+    lungeSpeed: 9, lungeMaxDist: 2.4, knockback: 1,
+  }),
+});
+
+export function meleeStyle(kitId) {
+  return MELEE_STYLES[kitId] ?? MELEE_STYLES.vanguard;
+}
 
 export const WEAPON_IDS = Object.freeze(Object.keys(WEAPONS));
 export const SLOTS = Object.freeze(['primary', 'sidearm']);
@@ -62,7 +114,7 @@ export function weaponDef(id) {
 
 export function newWeaponState(id) {
   const d = weaponDef(id);
-  return { id, mag: d.magSize, reserve: d.reserve, spread: d.spreadBase, reloadingUntil: -Infinity, lastShotAt: -Infinity };
+  return { id, mag: d.magSize, reserve: d.reserve, spread: d.spreadBase, reloadingUntil: -Infinity, lastShotAt: -Infinity, burstLeft: 0, burstNextAt: -Infinity };
 }
 
 // A player's two slots plus which one is in hand. switchingUntil is shared: you switch the hands, not a gun.
@@ -74,23 +126,41 @@ export const activeWeapon = (lo) => lo[lo.active];
 export const isReloading = (ws, nowMs) => nowMs < ws.reloadingUntil;
 
 // null when the trigger may fire now, otherwise the reason it may not (reported, never guessed).
-export function fireBlock(lo, nowMs) {
+// `burst` marks a follow-up round of a burst (SPEC 38.1): it skips the trigger interval but still needs a round.
+export function fireBlock(lo, nowMs, burst = false) {
   const ws = activeWeapon(lo);
   const d = weaponDef(ws.id);
   if (nowMs < lo.switchingUntil) return 'switching';
   if (isReloading(ws, nowMs)) return 'reloading';
   if (ws.mag <= 0) return 'empty';
-  if (nowMs - ws.lastShotAt < d.fireIntervalMs) return 'interval';
+  if (!burst && (ws.burstLeft ?? 0) > 0) return 'burst';
+  if (!burst && nowMs - ws.lastShotAt < d.fireIntervalMs) return 'interval';
   return null;
 }
 
+// SPEC 38.1: a burst weapon's follow-up round is due.
+export const burstDue = (ws, nowMs) => (ws.burstLeft ?? 0) > 0 && nowMs >= ws.burstNextAt;
+export const burstCountOf = (d) => d.burstCount ?? 1;
+
 export const canFire = (lo, nowMs) => fireBlock(lo, nowMs) === null;
 
-export function recordShot(ws, nowMs) {
+export function recordShot(ws, nowMs, burst = false) {
   const d = weaponDef(ws.id);
   ws.lastShotAt = nowMs;
   ws.mag -= 1;
   ws.spread = Math.min(d.spreadMax, ws.spread + d.spreadPerShot);
+  // SPEC 38.1: the first round of a burst queues the rest; each follow-up schedules the next; an empty mag ends it
+  if (burstCountOf(d) > 1) {
+    ws.burstLeft = burst ? Math.max(0, ws.burstLeft - 1) : burstCountOf(d) - 1;
+    if (ws.mag <= 0) ws.burstLeft = 0;
+    ws.burstNextAt = ws.burstLeft > 0 ? nowMs + (d.burstIntervalMs ?? 70) : -Infinity;
+  }
+}
+
+// SPEC 38.1: reloads and switches cancel a burst in progress.
+export function cancelBurst(ws) {
+  ws.burstLeft = 0;
+  ws.burstNextAt = -Infinity;
 }
 
 export function decaySpread(ws, dtMs) {
@@ -104,6 +174,7 @@ export function startReload(lo, nowMs) {
   const d = weaponDef(ws.id);
   if (nowMs < lo.switchingUntil || isReloading(ws, nowMs)) return false;
   if (ws.mag >= d.magSize || ws.reserve <= 0) return false;
+  cancelBurst(ws); // SPEC 38.1
   ws.reloadingUntil = nowMs + d.reloadMs;
   return true;
 }
@@ -123,6 +194,7 @@ export function finishReloadIfDue(ws, nowMs) {
 export function switchSlot(lo, slot, nowMs) {
   if (!SLOTS.includes(slot) || slot === lo.active || nowMs < lo.switchingUntil) return false;
   activeWeapon(lo).reloadingUntil = -Infinity;
+  cancelBurst(activeWeapon(lo)); // SPEC 38.1
   lo.active = slot;
   lo.switchingUntil = nowMs + weaponDef(activeWeapon(lo).id).switchMs;
   return true;

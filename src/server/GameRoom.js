@@ -14,7 +14,7 @@ import { aimDir } from '../shared/hitscan.js';
 import { applyDamage, resolveShot } from '../shared/combat.js';
 import { GRENADE } from '../shared/combatData.js';
 // SPEC 20 weapons: table, loadout state machine, server-side spread.
-import { newLoadout, activeWeapon, weaponDef, fireBlock, recordShot, decaySpread, startReload, finishReloadIfDue, switchSlot, spreadDir, isReloading } from '../shared/weapons.js';
+import { newLoadout, activeWeapon, weaponDef, fireBlock, recordShot, decaySpread, startReload, finishReloadIfDue, switchSlot, spreadDir, isReloading, burstDue } from '../shared/weapons.js';
 import { blastDamage, launchGrenade, stepGrenade } from '../shared/projectile.js';
 import { sanitizeName } from './security.js';
 // SPEC 21: pickups, safest spawn, spawn protection.
@@ -279,6 +279,7 @@ export class GameRoom {
     this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
     for (const p of this.#players.values()) {
+      if (p.alive && burstDue(activeWeapon(p.loadout), now)) this.#fire(p, now, true); // SPEC 38.1: burst follow-up rounds
       if (!p.wantsShot) continue;
       p.wantsShot = false;
       this.#fire(p, now);
@@ -453,12 +454,12 @@ export class GameRoom {
     this.#roster();
   }
 
-  #fire(p, now) {
-    if (!p.alive || this.#match.phase !== 'playing' || fireBlock(p.loadout, now) !== null) return;
+  #fire(p, now, burst = false) {
+    if (!p.alive || this.#match.phase !== 'playing' || fireBlock(p.loadout, now, burst) !== null) return;
     const ws = activeWeapon(p.loadout);
     const weapon = weaponDef(ws.id);
     const spread = ws.spread;
-    recordShot(ws, now);
+    recordShot(ws, now, burst);
     p.protectedUntil = -Infinity; // SPEC 21.2: shooting ends spawn protection
 
     const origin = [p.x, p.y + eyeOf(p), p.z];
