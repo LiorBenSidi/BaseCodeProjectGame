@@ -1128,3 +1128,34 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 
 ### 36.9 Live check for the Pro program
 `ACTOR_BUILD = "4.0"`. `npm run actor-probe -- <app-id> diag-live-7 12 --inputs --diag` must report build 4.0 and a diag frame; a lone human in a `dm-` room must see a `[BOT]` row on the scoreboard; a `range-` room must show the tutorial and never shoot back.
+
+## 37. Valorant polish (Pro batch P7, D-036)
+
+Seven items adopted from the Valorant read-only research (research/valorant-references.md, sections 3.1, 3.3, 5.2, 5.3, plus the Range notes), adapted to a browser arena with kits. Everything here is data in `src/shared/presence.js` and `src/shared/rangeStation.js` so the client and the server share one clock and one table.
+
+### 37.1 Deathmatch radar pulse (`src/shared/presence.js`)
+`RADAR = { periodMs: 5000, showMs: 1500 }`. In `dm` only, while the match is `playing`, the server marks every player `sc: 1` during the last 1.5 s of each 5 s period of the match clock (`now - match.startedAt`), and the snapshot carries `radar: 1`. The first pulse comes 3.5 s after the match goes live, never at the spawn. The client draws a sweep ring on the minimap while `radar` holds (200 ms grace across the snapshot gap) and shows revealed far enemies with a pulse halo (`dots[].pulse`). `tdm` and `range` never pulse. `radarActive(modeId, elapsedMs)`, `radarNextIn(elapsedMs)`.
+
+### 37.2 Spawn protection marker and break conditions
+`SPAWN.protectMs` stays 2000 ms (SPEC 21.2). It ends early on the player's first shot (existing) and now also on any ability use. While `sp: 1` the HUD shows a pulsing `SHIELDED` label above the health bar (`#protect`).
+
+### 37.3 Minimap footstep ring and vision cone (`src/client/ceremony.js` minimapLayout)
+`MINIMAP_FOOTSTEP_M = 24`: remote steps are cued at 0.35 volume with `falloff(d)` (full to 4 m, zero at 60 m), so at 24 m a step is still at half level, the distance a careful listener stops hearing it over the mix. While the local player sprints the minimap draws a dashed ring of that radius around them; a wedge of the current camera field of view is drawn ahead of the player marker. Both have prefs: `minimapFootsteps`, `minimapCone` (HUD tab, default on).
+
+### 37.4 AFK detection with bot takeover
+`AFK.idleMs = 60000`. A command counts as activity when it moves, jumps, sprints, crouches, dives, tac-sprints, or turns relative to the player's own last look (`cmdIsActive(cmd, prevYaw, prevPitch)`); the 60 Hz zero commands an idle client keeps sending do not count. In `dm` and `tdm`, while the match is `playing`, a human idle for 60 s is marked `afk` and an `easy` bot brain drives the body (same seat, name and score). Brain commands never advance the human's sequence, so their `ack` stays theirs. The first active human command hands the body back. The snapshot carries `afk: 1`; the scoreboard shows `[AFK]`. Never in the range.
+
+### 37.5 Enemy outline (`src/client/outline.js`, `remote.js`)
+Pref `enemyOutline`: `off` (default), `yellow`, `red`, `purple` (video tab). Implemented as an inverted hull: every body part of a remote figure carries a back-face `MeshBasicMaterial` copy scaled by `OUTLINE_SCALE = 1.08`, hidden unless the setting is on and the figure is an enemy (`isEnemyOf(team, selfTeam)`: everybody in DM, the other team in TDM). No extra render pass, works at every quality tier. Not an x-ray: the hull is occluded like the body.
+
+### 37.6 Spatial audio (`src/client/audioModel.js`, `audio.js`)
+Pref `spatialAudio`: `stereo` (default, the existing StereoPanner path) or `hrtf`. In HRTF mode every positioned cue goes through a `PannerNode` with `panningModel = 'HRTF'`, `distanceModel = 'linear'`, `rolloffFactor = 0`, positioned in the listener's own frame by `hrtfLocalPosition(listener, at)` (right = +x, ahead = -z, Web Audio's default listener orientation), so no listener orientation updates are needed. Distance stays with the existing `falloff` and lowpass.
+
+### 37.7 Range reaction station (`src/shared/rangeStation.js`)
+Range mode only. The `station` key (default `T`) cycles off, easy, medium, hard, off; the client sends `{ t: 'station', level }` (`null` = off). Levels: easy 2500 ms window, 8 to 22 m; medium 1500 ms, 10 to 28 m; hard 900 ms, 12 to 34 m. The first dummy becomes the target: teleported to a spawn in the level's distance band from the owner (fallback: any spawn more than 2 m away), frozen (`frozen` skips its brain), full health, facing the owner. A hit by the owner with damage closes the round and records `now - shownAt`; the window closing is a miss; 500 ms gap between rounds; 30 rounds end the session. Server messages `{ t: 'station', on, target | hit, ms | miss | reason, level, hits, misses, rounds, avgMs, bestMs, lastMs }` drive the `#station` HUD line (`stationText`). One station per room; another player's request is refused while it runs; it ends when the owner or the target leaves. Refused outside the range.
+
+### 37.8 Live check for P7
+`ACTOR_BUILD = "4.1"`. `npm run actor-probe -- <app-id> diag-live-8 12 --inputs --diag` must report build 4.1. Then in a `range-` room press `T` and see `Reaction (easy) armed`; in a `dm-` room watch the minimap sweep every 5 s.
+
+### 37.9 Deferred from the Valorant research
+Crosshair share codes, TDM weapon stages, ping wheel, server side occlusion culling (see docs/ROADMAP.md).
