@@ -1128,3 +1128,8 @@ Inner and outer deadzones (`applyDeadzones`: inner removes drift and rescales fr
 
 ### 36.9 Live check for the Pro program
 `ACTOR_BUILD = "4.0"`. `npm run actor-probe -- <app-id> diag-live-7 12 --inputs --diag` must report build 4.0 and a diag frame; a lone human in a `dm-` room must see a `[BOT]` row on the scoreboard; a `range-` room must show the tutorial and never shoot back.
+
+Live result 2026-10-05 (build 4.0 deployed 00:14Z, Publish 00:33Z, bundle index-DsNFpo3s.js):
+- `actor-probe diag-live-7`: build 4.0, diag frames, 26 snaps/s, p90 gap 35 ms.
+- `scripts/live-rooms-check.mjs`: dm room gives a lone human one bot (Rook) that fires; range room is mode range with three dummies (Rook, Mirage, Havoc) and zero shots in 12 s; tdm room is mode tdm with three bots, 67 shots, a kill and a medal between them.
+- Browser smoke against the live site (headless Chrome): settings tabs and search, deathmatch join with HUD, telemetry row, scoreboard showing `Rook [BOT]`, minimap; range room shows the tutorial (Step 1 of 10), skip works, HP stays 100. Headless swiftshader renders at 2 to 3 FPS, so the telemetry ping and loss numbers in that run reflect the slow render loop, not the server (the SDK probe measured 33 ms gaps at the same time).
