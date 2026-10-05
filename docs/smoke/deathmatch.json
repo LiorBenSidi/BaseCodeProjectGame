@@ -1,7 +1,7 @@
 [
- {"goto":"http://localhost:8820/","wait":3000},
+ {"goto":"/","wait":3000},
  {"name":"enable telemetry + minimap prefs","eval":"(()=>{const p=JSON.parse(localStorage.getItem('bca.prefs')||'{}'); p.telemetry=true; localStorage.setItem('bca.prefs', JSON.stringify(p)); return 'ok';})()"},
- {"goto":"http://localhost:8820/","wait":3000},
+ {"goto":"/","wait":3000},
  {"name":"play","eval":"(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()","sleep":2500,"shot":"06-intro"},
  {"name":"after join","eval":"JSON.stringify({menuHidden: document.getElementById('menu').hidden, hudHidden: document.getElementById('hud').hidden, intro: document.getElementById('intro').hidden ? 'hidden' : document.getElementById('intro').textContent.trim().slice(0,60), status: document.getElementById('status').textContent.replace(/\\s+/g,' ').trim().slice(0,120), tutorial: document.getElementById('tutorial').hidden ? 'hidden' : document.getElementById('tutorial').textContent.replace(/\\s+/g,' ').trim().slice(0,100)})"},
  {"sleep":6000,"shot":"07-live"},
