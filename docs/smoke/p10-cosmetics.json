@@ -1,0 +1,28 @@
+[
+ {
+  "goto": "/",
+  "wait": 3000
+ },
+ {
+  "name": "picker: three rows, one free item per row, the rest locked with their unlock text",
+  "eval": "(()=>{document.getElementById('cosmetics').open=true; const rows=[...document.querySelectorAll('#cosmetics-picker .cosmetic-row')]; return JSON.stringify(rows.map(r=>({slot:r.dataset.slot, total:r.querySelectorAll('button').length, open:[...r.querySelectorAll('button:not([disabled])')].map(b=>b.dataset.id), checked:[...r.querySelectorAll('button[aria-checked=\"true\"]')].map(b=>b.dataset.id), lockedSample:r.querySelector('button[disabled]')?.title})));})()"
+ },
+ {
+  "shot": "01-cosmetics-picker"
+ },
+ {
+  "name": "a locked item cannot be chosen; the free item stays checked and the stored wish is unchanged",
+  "eval": "(()=>{const b=document.querySelector('#cosmetics-picker .cosmetic-row[data-slot=badge] button[data-id=ace]'); b.click(); return JSON.stringify({checked:[...document.querySelectorAll('#cosmetics-picker .cosmetic-row[data-slot=badge] button[aria-checked=\"true\"]')].map(x=>x.dataset.id), stored: localStorage.getItem('bca.cosmetics')});})()"
+ },
+ {
+  "name": "play",
+  "eval": "(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()"
+ },
+ {
+  "sleep": 6000
+ },
+ {
+  "name": "in match as a guest: menu hidden, HUD shown, no cosmetics answer expected from the dev server",
+  "eval": "JSON.stringify({menuHidden: document.getElementById('menu').hidden, hudShown: !document.getElementById('hud').hidden})"
+ }
+]

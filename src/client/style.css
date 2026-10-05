@@ -348,3 +348,14 @@ button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 .share-code input[type="text"] { font: inherit; font-variant-numeric: tabular-nums; letter-spacing: 0.08em; text-transform: uppercase; width: 11.5em; padding: 4px 8px; background: var(--panel-2, rgba(255,255,255,0.06)); color: inherit; border: 1px solid var(--line, rgba(255,255,255,0.12)); border-radius: 6px; }
 .share-code input[readonly] { opacity: 0.9; }
 .share-code .share-note { display: block; min-height: 1.2em; margin-top: 4px; font-size: 12px; }
+/* SPEC 40.2 cosmetics picker */
+.cosmetics { margin: 10px 0 4px; }
+.cosmetics summary { cursor: pointer; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
+.cosmetic-title { margin: 8px 0 4px; }
+.cosmetic-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.cosmetic-row .cosmetic { font: inherit; font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cosmetic-row .cosmetic[aria-checked="true"] { border-color: var(--accent, #3ddc84); box-shadow: 0 0 0 1px var(--accent, #3ddc84) inset; }
+.cosmetic-row .cosmetic.swatch::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--swatch, linear-gradient(90deg, #4f8cff, #ff5252)); display: inline-block; }
+.cosmetic-row .cosmetic.locked { opacity: 0.45; cursor: not-allowed; }
+.cosmetic-row .cosmetic small { font-size: 10px; opacity: 0.8; }
+.cosmetics-note { font-size: 12px; margin: 6px 0 0; }

@@ -3,6 +3,7 @@
 // player named "<img src=x onerror=...>" from becoming stored XSS in everyone else's browser.
 // All state derivation lives in hudModel.js (pure, unit tested); this file only moves it into the DOM.
 
+import { unpackCosmetics, displayName } from '../shared/cosmetics.js'; // SPEC 40.1
 import { crosshairStyle } from './prefs.js'; // PRO-menu: SPEC 33.4
 import { WHEEL_ORDER, MARK_KINDS } from '../shared/comms.js'; // SPEC 39.8
 import { introText, podium, mvp, medalLines, voteView, minimapLayout } from './ceremony.js'; // PRO-ceremony: SPEC 34
@@ -513,7 +514,7 @@ export class Hud {
       const chipCell = document.createElement('span');
       chipCell.className = 'col-chip';
       chipCell.append(chip);
-      row.append(chipCell, cell('col-name', p.bot === 1 ? `${p.name} [BOT]` : p.afk === 1 ? `${p.name} [AFK]` : p.name), cell('col-k', String(p.k)), cell('col-d', String(p.d))); // PRO-audio: SPEC 35.3
+      row.append(chipCell, cell('col-name', p.bot === 1 ? `${p.name} [BOT]` : p.afk === 1 ? `${p.name} [AFK]` : displayName(p.name, p.cs ? unpackCosmetics(p.cs) : null)), cell('col-k', String(p.k)), cell('col-d', String(p.d))); // PRO-audio: SPEC 35.3
       return row;
     });
     const head = document.createElement('div');

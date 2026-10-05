@@ -148,3 +148,22 @@ Branch `feat/pro-p8-weapons-hands-melee` on `main`.
 - Branch base is PR #43 (pro-stack-p7-p8). Tail-of-file appends only in SPEC, DESIGN and this file.
 - `GameRoom` snapshot entry gained `fl` and `match.obj`; the contract test lists both. New client message `mark`, new server messages `mark` and `flag`.
 - Headless Chrome renders a frame in about a second, so a timer-spaced tap turns into a hold; the ping smoke dispatches keydown and keyup in one task for the tap case.
+
+# P10 report: cosmetics, Arms Race and crosshair codes (SPEC 40, D-039)
+
+## Shipped
+- Cosmetics: `src/shared/cosmetics.js` catalog (7 badges, 6 accents, 5 tracers, one free item per slot), `resolveCosmetics` against the PlayerStats row the room loads through `hooks.statsFor` (actor `Persistence.statsFor`), `cosmetics` wish on `join` and as a message in both dispatchers, `{t:'cosmetics'}` answer, `cs` on snapshot rows. Client: menu picker (`cosmeticsUi.js`, `bca.cosmetics`), badge and accent on name tags and the scoreboard, shooter-coloured tracers.
+- Arms Race: mode `arms` (team, 10 min, bot fill 6, no pickups), `src/shared/armsRace.js` ladder (pistol to revolver, 3 kills per stage, final stage wins), `match.arms` in the snapshot, `stage` broadcast with feed line and banners, HUD line `STAGE 1/8  PISTOL  0/3   enemy 1/8`, stage loadout at join, respawn and on the spot for living teammates.
+- Crosshair share codes: `src/shared/crosshairCode.js` (`BCA-` prefix, check character, presets), Share code row in the crosshair settings with copy and paste.
+
+## Verification
+- Lint, unit 1150/1150, regression 7/7, build green; actor mirror synced (35 files).
+- Headless smokes: `p10-crosshair` round trip through the settings row; `p10-arms` (server `MODE=arms`) menu option present, HUD shows `STAGE 1/8  PISTOL  0/3   enemy 1/8` with `Blue 0  Red 0`; `p10-cosmetics` picker shows one open item per row, locked items disabled with unlock text, a click on a locked item changes nothing, guest join keeps the HUD clean.
+- Room-level: `gameRoomArms` lands three real shots through `handleShoot` and checks the re-arm and the `stage` message; `gameRoomCosmetics` covers guest, async row, re-resolution and a failing hook.
+
+## Cross-batch notes
+- Branch base is PR #44 (feat/pro-p9-modes-maps-comms). Tail-of-file appends only in SPEC, DESIGN and this file.
+- `GameRoom` snapshot entry gained `cs` and `match.arms`; new client message `cosmetics` (and `cosmetics` on `join`), new server messages `cosmetics` and `stage`; the contract test lists them.
+- `armsRace.js` imports `TEAM_NAMES` from `modes.js`, so the ladder state constructor lives in `modes.js` to avoid an import cycle.
+- Headless Chrome has no PlayerStats hook (Node dev server), so the cosmetics smoke verifies the guest path only; the signed-in path is covered at room level with a fake `statsFor`.
+

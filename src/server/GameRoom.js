@@ -30,6 +30,7 @@ import { newProgress, grantXp, pickPerk, recordDamage, assistsFor, progressSnaps
 // SPEC 22: match modes (DM / TDM), timer, end screen, restart.
 import { DEFAULT_MODE, newMatch, startMatch, assignTeam, sameTeam, scoreKill, endReason, endMatch, shouldRestart, matchSnapshot, updateIntroPhase, recordVote, tallyVotes, voteCandidatesFor, voteCounts } from '../shared/modes.js';
 import { MAP_IDS } from '../shared/maps.js'; // PRO-ceremony: SPEC 34.4 vote candidates
+import { resolveCosmetics, sanitizeWish, packCosmetics } from '../shared/cosmetics.js'; // SPEC 40.1
 import { armsKill, armsLoadoutIds, stageText } from '../shared/armsRace.js'; // SPEC 40.3
 import { newHillState, stepHill, hillSnapshot, newFlagState, stepFlags, flagsSnapshot, carrying, flagEventText } from '../shared/objectives.js'; // SPEC 39
 import { scoreObjective, TEAM_NAMES, modeDef } from '../shared/modes.js';
@@ -100,7 +101,7 @@ export class GameRoom {
     return this.#players.size;
   }
 
-  addPlayer({ send, name, kit, userId = null, bot = false } = {}) {
+  addPlayer({ send, name, kit, userId = null, bot = false, cosmetics = null } = {}) {
     if (typeof send !== 'function') throw new TypeError('addPlayer requires a send(obj) function');
     if (this.#players.size >= this.#maxPlayers) return null;
 
@@ -128,6 +129,9 @@ export class GameRoom {
       respawnAt: 0,
       // SPEC 20: two slots, one in hand; reload and switch arrive as intents and apply on the next tick
       loadout: newLoadout(), // SPEC 40.3: replaced by the stage weapon below once the team is known
+      stats: null, // SPEC 40.1: the PlayerStats row the server loaded itself, null until then (and for guests)
+      cosmeticsWish: sanitizeWish(cosmetics), // what the client asked for
+      cosmetics: resolveCosmetics(sanitizeWish(cosmetics), null), // what everyone sees: free items until the row arrives
       wantsReload: false,
       wantsSwitch: null,
       protectedUntil: -Infinity, // SPEC 21.2: set on respawn only; the first spawn is already the safest spot
@@ -151,6 +155,7 @@ export class GameRoom {
     this.#place(p);
     if (this.#match.arms && p.team >= 0) p.loadout = newLoadout(armsLoadoutIds(this.#match.arms, p.team)); // SPEC 40.3
     this.#players.set(id, p);
+    this.#loadStats(p); // SPEC 40.1: async, re-resolves the cosmetics when the row lands
     this.#sendTo(p, { t: 'welcome', id, tickRate: TICK_RATE, pickups: describePickups(this.#pickups), map: describeMap(this.#map), mode: this.#match.mode, team: p.team, kit: p.kitState.kit });
     if (this.#match.phase === 'waiting') this.#startMatch(this.#now());
     this.#log?.info('player joined', { id, players: this.#players.size });
@@ -395,6 +400,33 @@ export class GameRoom {
   handleAbility(id, slot) {
     const p = this.#players.get(id);
     if (p && (slot === 0 || slot === 1)) p.wantsAbility = slot;
+  }
+
+  // SPEC 40.1: a cosmetics change (lobby or in match). Resolved against the loaded row, never trusted.
+  handleCosmetics(id, wish) {
+    const p = this.#players.get(id);
+    if (!p || p.bot) return;
+    p.cosmeticsWish = sanitizeWish(wish);
+    p.cosmetics = resolveCosmetics(p.cosmeticsWish, p.stats);
+    this.#sendTo(p, { t: 'cosmetics', cosmetics: p.cosmetics });
+  }
+
+  // SPEC 40.1: the stats row comes from hooks.statsFor(userId) (sync or async). Without the hook or a user id
+  // the player is a guest and only free items resolve. A failing hook is logged and leaves the guest state.
+  #loadStats(p) {
+    const fn = this.#hooks?.statsFor;
+    if (typeof fn !== 'function' || !p.userId) return;
+    const done = (row) => {
+      if (!this.#players.has(p.id)) return; // left before the row arrived
+      p.stats = row && typeof row === 'object' ? row : null;
+      p.cosmetics = resolveCosmetics(p.cosmeticsWish, p.stats);
+      this.#sendTo(p, { t: 'cosmetics', cosmetics: p.cosmetics, stats: p.stats ? { kills: p.stats.kills | 0, matches: p.stats.matches | 0, wins: p.stats.wins | 0, best_kills: p.stats.best_kills | 0, xp: p.stats.xp | 0 } : null });
+    };
+    const fail = (err) => this.#log?.warn('statsFor failed', { user: p.userId, error: err?.message });
+    try {
+      const r = fn(p.userId);
+      if (r && typeof r.then === 'function') r.then(done, fail); else done(r);
+    } catch (err) { fail(err); }
   }
 
   handleKit(id, kitId) {
@@ -850,6 +882,7 @@ export class GameRoom {
       const ws = activeWeapon(p.loadout);
       players.push({
         id: p.id, name: p.name, ...(p.bot ? { bot: 1 } : {}), // PRO-audio: bots are marked for the scoreboard
+        ...(packCosmetics(p.cosmetics) ? { cs: packCosmetics(p.cosmetics) } : {}), // SPEC 40.1: packed cosmetics, absent when default
         x: round3(p.x), y: round3(p.y), z: round3(p.z), vy: round3(p.vy),
         g: p.onGround ? 1 : 0,
         h: round3(heightOf(p)), // SPEC 23: current hitbox height (crouch, slide)

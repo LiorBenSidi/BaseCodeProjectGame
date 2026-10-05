@@ -15,7 +15,7 @@ npm run dev:server   # http://localhost:3000  (PORT env var to change): Node gam
 npm run dev          # Vite only, no game server: what the Base44 sandbox preview runs (actor transport)
 ```
 Open it in two browser windows and press Play in each. Controls: WASD, Space, mouse, click to shoot, Tab
-scoreboard, Esc to release the mouse, middle mouse for the kit melee, Z to ping (hold for the wheel), T in the Practice Range for the reaction station (every key is rebindable in Settings). Modes: Deathmatch, Team Deathmatch, King of the Hill, Capture the Flag, Practice Range.
+scoreboard, Esc to release the mouse, middle mouse for the kit melee, Z to ping (hold for the wheel), T in the Practice Range for the reaction station (every key is rebindable in Settings). Modes: Deathmatch, Team Deathmatch, King of the Hill, Capture the Flag, Arms Race (three kills climb an eight-weapon ladder), Practice Range. Badges, name colours and tracers unlock from your lifetime stats under Cosmetics in the menu; a crosshair travels as a BCA- share code in Settings.
 
 ## Commands
 | Command | Does |

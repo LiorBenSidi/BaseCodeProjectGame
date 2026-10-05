@@ -73,6 +73,7 @@ export class MatchHost {
       ? {
         roster: (info) => persistence.roster({ ...info, roomId: instanceId, mode: modeForRoomId(instanceId) }),
         matchEnd: (info) => persistence.matchEnd({ ...info, roomId: instanceId }),
+        statsFor: (userId) => persistence.statsFor(userId), // SPEC 40.1
       }
       : null;
     const botCfg = botConfigFor(modeForRoomId(instanceId)); // PRO-audio: SPEC 35.3

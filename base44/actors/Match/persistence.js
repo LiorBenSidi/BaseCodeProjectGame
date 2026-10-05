@@ -53,6 +53,14 @@ export class Persistence {
     }
   }
 
+  // SPEC 40.1: the row the room validates cosmetics against. Read only; null for a guest or a missing row.
+  async statsFor(userId) {
+    const ents = this.#entities;
+    if (!ents || !userId) return null;
+    const rows = await ents.PlayerStats.filter({ user_id: userId }, undefined, 1);
+    return rows?.[0] ?? null;
+  }
+
   matchEnd(info) {
     if (!this.#entities) return;
     this.#writeMatch(info).catch((err) => this.#log?.warn('match persistence failed', { error: err?.message }));

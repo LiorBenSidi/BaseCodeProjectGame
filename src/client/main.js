@@ -1,6 +1,7 @@
 import { installDebugHarness } from './debugHarness.js';
 import { Game } from './game.js';
 import { loadKit, saveKit, renderKitPicker } from './kitUi.js';
+import { renderCosmeticsPicker, loadCosmetics, saveCosmetics } from './cosmeticsUi.js'; // SPEC 40.2
 import { Lobby, describeRoom, roomLink } from './lobby.js';
 import { roomIdFromLocation } from '../shared/rooms.js';
 import { bindSettingsPanel } from './settingsPanel.js';
@@ -18,6 +19,16 @@ bindSettingsPanel(document, game);
 // SPEC 24.6: kit picker, remembered across sessions.
 let kit = loadKit(window.localStorage);
 renderKitPicker(document.getElementById('kit-picker'), kit, (id) => { kit = id; saveKit(window.localStorage, id); game.selectKit(id); });
+
+// SPEC 40.2: cosmetics picker. The wish is remembered locally; the server resolves it against the stats row.
+const cosmeticsPicker = renderCosmeticsPicker(document.getElementById('cosmetics-picker'), loadCosmetics(window.localStorage), (cs) => { saveCosmetics(window.localStorage, cs); game.selectCosmetics(cs); });
+game.selectCosmetics(loadCosmetics(window.localStorage));
+document.addEventListener('bca:cosmetics', (e) => { // the server's answer: resolved set and (when signed in) the stats row
+  if (e.detail.stats !== undefined) cosmeticsPicker.setStats(e.detail.stats);
+  cosmeticsPicker.setResolved(e.detail.cosmetics);
+  const note = document.getElementById('cosmetics-note');
+  if (note) note.textContent = e.detail.stats ? `Unlocks follow your lifetime stats: ${e.detail.stats.kills} kills, ${e.detail.stats.matches} matches, ${e.detail.stats.wins} wins.` : 'Sign in to unlock badges, colours and tracers with your lifetime stats.';
+});
 
 // SPEC 26: rooms. The lobby exists only on the actor transport (Base44 build); the Node dev server has one room.
 let roomId = roomIdFromLocation(window.location.search);

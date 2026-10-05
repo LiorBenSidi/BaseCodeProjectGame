@@ -42,14 +42,14 @@ export class ActorNetwork {
     this.#client = client ?? createClient({ appId, requiresAuth: false });
   }
 
-  connect(name, kit) {
+  connect(name, kit, cosmetics = null) {
     const ref = this.#client.actors.Match(this.#roomId);
     this.#conn = ref.connect({ id: connectionId(globalThis.sessionStorage) });
     this.#conn.subscribe((msg) => {
       this.#lastMessage = performance.now();
       if (msg && typeof msg.t === 'string' && Object.hasOwn(this.#handlers, msg.t)) this.#handlers[msg.t](msg);
     });
-    this.send({ t: 'join', name, ...(kit ? { kit } : {}) });
+    this.send({ t: 'join', name, ...(kit ? { kit } : {}), ...(cosmetics ? { cosmetics } : {}) }); // SPEC 40.1
     this.#lastMessage = performance.now();
     this.#watchdog = setInterval(() => {
       if (performance.now() - this.#lastMessage > STALE_MS) this.#handlers.stale?.();
