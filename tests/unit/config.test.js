@@ -134,5 +134,6 @@ test('SPEC 37.7: MODE picks the dev server room mode and rejects unknown modes',
   const { loadConfig } = await import('../../src/server/config.js');
   assert.strictEqual(loadConfig({}).mode, 'dm');
   assert.strictEqual(loadConfig({ MODE: 'range' }).mode, 'range');
-  assert.throws(() => loadConfig({ MODE: 'ctf' }), /Invalid MODE/);
+  assert.strictEqual(loadConfig({ MODE: 'ctf' }).mode, 'ctf'); // SPEC 39
+  assert.throws(() => loadConfig({ MODE: 'nope' }), /Invalid MODE/);
 });

@@ -18,6 +18,7 @@ export const DEFAULT_BINDINGS = Object.freeze({
   weapon1: 'Digit1',
   weapon2: 'Digit2',
   grenade: 'KeyG',
+  mark: 'KeyZ', // SPEC 39.8: tap pings the aim point, hold opens the wheel
   melee: 'Mouse1', // SPEC 38.3: middle mouse, like the quick melee of most arena shooters (V stays the dive)
   ability1: 'KeyQ',
   ability2: 'KeyE',
@@ -41,7 +42,7 @@ export const ACTION_LABELS = Object.freeze({
   fire: ['Fire', 'combat'], ads: ['Aim down sights', 'combat'], reload: ['Reload', 'combat'], weapon1: ['Primary weapon', 'combat'], weapon2: ['Sidearm', 'combat'],
   nextWeapon: ['Next weapon', 'combat'], prevWeapon: ['Previous weapon', 'combat'], grenade: ['Grenade', 'combat'], melee: ['Melee (kit blade)', 'combat'], inspect: ['Inspect weapon', 'combat'],
   ability1: ['Ability 1', 'kit'], ability2: ['Ability 2', 'kit'], perk1: ['Pick perk 1', 'kit'], perk2: ['Pick perk 2', 'kit'],
-  scoreboard: ['Scoreboard', 'interface'], chat: ['Chat', 'interface'], station: ['Range reaction station', 'interface'],
+  scoreboard: ['Scoreboard', 'interface'], chat: ['Chat', 'interface'], station: ['Range reaction station', 'interface'], mark: ['Ping (hold: wheel)', 'interface'],
 });
 export const ACTION_GROUPS = Object.freeze(['movement', 'combat', 'kit', 'interface']);
 export const REBINDABLE = Object.freeze(Object.keys(ACTION_LABELS));

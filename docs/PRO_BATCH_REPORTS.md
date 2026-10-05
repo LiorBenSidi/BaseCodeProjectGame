@@ -129,3 +129,22 @@ Branch `feat/pro-p8-weapons-hands-melee` on `main`.
 ## Cross-batch notes
 - SPEC numbering: P7 (feat/pro-p7-valorant) owns section 37 and D-036; this branch appends 38 and D-037 after 36 / D-032 and will be rebased onto P7 at integration (tail-of-file conflicts only).
 - `GameRoom` snapshot entry gained `ml`; the contract test lists it. `input.js` edge lists gained `melee` and a mousedown edge loop for side buttons.
+
+# P9 report: objective modes, two maps and the ping wheel (SPEC 39, D-038)
+
+## Shipped
+- Modes: `koth` (150 points, 8 min) and `ctf` (3 captures, 10 min) with pure rules in `src/shared/objectives.js`; `scoreObjective` is the only score path, kills do not score; `match.obj` in every snapshot, `fl` on the carrier's row, `flag` events with text.
+- Maps: Summit (terraced plateau) and Canal (two shores, three bridges), both themed; hills and bases on arena, foundry and crossfire too.
+- Presentation: `ObjectiveView` (hill ring and post, base pads, flag poles), objective HUD line, minimap ring/squares/pennants, capture banner, menu options.
+- Bots: `objectiveGoal` roles (hill ring spots; CTF carrier runs home, recover, escort, take), hold-and-shuffle on arrival, shoot while walking to the objective, 2.5 s detour when stuck.
+- Comms: `src/shared/comms.js` ping wheel rules, `mark` in both dispatchers, team-only relay with a 700 ms per-player limit, `MarkView` beams, minimap crosses, feed lines; Z default (`mark` binding), `Input.onMouseDelta` lets the wheel borrow the mouse.
+
+## Verification
+- Lint, unit 1125/1125, regression 7/7, build green; actor mirror synced (32 files).
+- Headless smokes: `p9-koth` HILL HELD BY RED, Red 11 after 28 s; `p9-ctf` Red 1 capture after 68 s; `p9-ping` tap pings Watch, dead-zone release cancels, wheel pick sends Danger, feed shows You: Danger here.
+- Room-level: six medium bots on arena hold the hill 32% of the time (56 points in 3 min) and capture three flags in 4 min.
+
+## Cross-batch notes
+- Branch base is PR #43 (pro-stack-p7-p8). Tail-of-file appends only in SPEC, DESIGN and this file.
+- `GameRoom` snapshot entry gained `fl` and `match.obj`; the contract test lists both. New client message `mark`, new server messages `mark` and `flag`.
+- Headless Chrome renders a frame in about a second, so a timer-spaced tap turns into a hold; the ping smoke dispatches keydown and keyup in one task for the tap case.

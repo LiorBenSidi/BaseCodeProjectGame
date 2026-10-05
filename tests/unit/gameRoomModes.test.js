@@ -19,7 +19,7 @@ function join(room, name, x, z, yaw = 0) {
 const shoot = (room, j) => { room.handleShoot(j.p.id); room.tick(); };
 
 test('an unknown mode is refused at construction', () => {
-  assert.throws(() => new GameRoom({ mode: 'ctf' }), RangeError);
+  assert.throws(() => new GameRoom({ mode: 'nope' }), RangeError);
   assert.equal(new GameRoom().mode, 'dm');
 });
 
@@ -32,7 +32,7 @@ test('the first join starts the match; welcome carries mode and team; the snapsh
   assert.equal(a.of('matchStart').length, 1);
   assert.equal(a.of('matchStart')[0].number, 1);
   room.tick();
-  assert.deepEqual(a.lastSnap().match, { mode: 'dm', phase: 'playing', left: 300, ts: null });
+  assert.deepEqual(a.lastSnap().match, { mode: 'dm', phase: 'playing', left: 300, ts: null, obj: null });
   assert.equal(a.lastSnap().players[0].tm, -1);
   const b = join(room, 'B', -30, -30);
   assert.equal(b.of('matchStart').length, 0, 'a later join does not restart');

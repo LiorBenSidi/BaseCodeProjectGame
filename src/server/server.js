@@ -230,6 +230,8 @@ export async function startServer(options = {}) {
         room.handleSwitch(player.id, msg.slot);
       } else if (player && msg.t === 'chat') {
         room.handleChat(player.id, msg.text); // SPEC 29.1
+      } else if (player && msg.t === 'mark') {
+        room.handleMark(player.id, msg.kind, msg.at); // SPEC 39.8
       } else if (player && msg.t === 'vote') {
         room.handleVote(player.id, msg.mapId); // PRO-ceremony: SPEC 34.4
       } else if (player && msg.t === 'station') {

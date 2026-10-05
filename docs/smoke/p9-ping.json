@@ -1,0 +1,44 @@
+[
+ {
+  "goto": "/",
+  "wait": 2500
+ },
+ {
+  "name": "play (range: dummy bots do not shoot, so the pinger stays alive; run the server with MODE=range)",
+  "eval": "(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()",
+  "sleep": 5000
+ },
+ {
+  "name": "hooks: page errors, outgoing frames, pointer lock shim (headless Chrome never grants pointer lock)",
+  "eval": "(()=>{window.__errors=[]; window.addEventListener('error',(e)=>window.__errors.push(String(e.message))); window.__sent=[]; window.__recv=[]; const dd=Object.getOwnPropertyDescriptor(MessageEvent.prototype,'data'); Object.defineProperty(MessageEvent.prototype,'data',{get(){ const v=dd.get.call(this); if(typeof v==='string' && v.includes('\"mark\"')) window.__recv.push(v.slice(0,160)); return v; }, configurable:true}); const os=WebSocket.prototype.send; WebSocket.prototype.send=function(d){ if(typeof d==='string' && !d.includes('\"input\"') && !d.includes('\"ping\"')) window.__sent.push(d.slice(0,120)); return os.call(this,d); }; const c=document.querySelector('canvas'); Object.defineProperty(document,'pointerLockElement',{get:()=>c, configurable:true}); return 'locked:'+(document.pointerLockElement===c);})()",
+  "sleep": 2000
+ },
+ {
+  "name": "tap Z (down and up in one task: headless frames are slow, a timer-spaced tap turns into a hold)",
+  "eval": "(()=>{const k=(t,c)=>window.dispatchEvent(new KeyboardEvent(t,{code:c,key:'z',bubbles:true})); k('keydown','KeyZ'); k('keyup','KeyZ'); return 'tapped';})()",
+  "sleep": 4000
+ },
+ {
+  "name": "after tap",
+  "eval": "JSON.stringify({sent: window.__sent, recv: window.__recv, feed: document.getElementById('feed').textContent, wheelHidden: document.getElementById('ping-wheel').hidden, errors: window.__errors})"
+ },
+ {
+  "name": "hold Z and release inside the dead zone: the wheel closes and nothing is sent",
+  "eval": "(()=>{const k=(t,c)=>window.dispatchEvent(new KeyboardEvent(t,{code:c,key:'z',bubbles:true})); const n=window.__sent.length; k('keydown','KeyZ'); setTimeout(()=>{ window.__deadOpen=!document.getElementById('ping-wheel').hidden; k('keyup','KeyZ'); window.__deadSent=window.__sent.length-n; },600); return 'holding';})()",
+  "sleep": 3000
+ },
+ {
+  "name": "after dead-zone release",
+  "eval": "JSON.stringify({wheelWasOpen: window.__deadOpen, sentDuring: window.__deadSent, wheelHiddenNow: document.getElementById('ping-wheel').hidden})"
+ },
+ {
+  "name": "hold Z, move the mouse right, release (wheel pick)",
+  "eval": "(()=>{const k=(t,c)=>window.dispatchEvent(new KeyboardEvent(t,{code:c,key:'z',bubbles:true})); k('keydown','KeyZ'); setTimeout(()=>{ window.__wheelWasOpen = !document.getElementById('ping-wheel').hidden; window.dispatchEvent(new MouseEvent('mousemove',{movementX:90,movementY:0,bubbles:true})); window.__hot = document.querySelector('#ping-wheel .seg.hot')?.dataset.kind ?? null; },500); setTimeout(()=>k('keyup','KeyZ'),700); return 'holding';})()",
+  "sleep": 4500
+ },
+ {
+  "name": "after wheel",
+  "eval": "JSON.stringify({wheelWasOpen: window.__wheelWasOpen, hotKind: window.__hot, wheelHiddenNow: document.getElementById('ping-wheel').hidden, sent: window.__sent, recv: window.__recv, feedChildren: document.getElementById('feed').childElementCount, feed: document.getElementById('feed').textContent, errors: window.__errors})",
+  "shot": "p9-ping-wheel"
+ }
+]

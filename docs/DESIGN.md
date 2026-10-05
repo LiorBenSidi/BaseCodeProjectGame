@@ -351,3 +351,11 @@ _Anything the assistant discovered it needed to ask that is not in the bank yet.
 - Decision: Three new weapon types (burst rifle, LMG, revolver) as slot-aware pickups; a pure first person clip set (draw, idle, bob, sprint carry, reload with the hand leaving the weapon, inspect, fire, swing, clash) composed on procedural arms, mirrored in third person from the snapshot; kit-bound melee styles with the clash and riposte rule (two swings that meet deal no damage, both are thrown apart, the later swing recovers first). Research is reference only, timings and the clash are original.
 - Source: Lior, 2026-10-05 ~06:40 IL ("Implement all guns animations and designs and types and the actual hands... learn from games references like CS2 and others, but also make sure that our game is unique").
 - Affects: docs/SPEC.md section 38; `src/shared/{weapons,melee,rules,maps,pickups}.js`, `src/server/{GameRoom,protocol,server,matchSession}.js`, `src/client/{animClips,weaponView,weaponModels,remote,combatFx,audio,bindings,input,game,pickups,tutorial,touch}.js`, `index.html`.
+
+### D-038 (P9) Objective modes, Summit and Canal, ping wheel
+- Status: decided
+- Date: 2026-10-05
+- Decision: King of the Hill (rotating hill, 1 point per second held, contested scores nothing) and Capture the Flag (three captures, own flag must be home to score) as team modes where kills never score; two new maps (Summit, Canal) and hills plus bases on every existing map; bots that play the objective; a ping wheel (tap for a quick ping at the aim point, hold for eight kinds) relayed to the team only and never stored.
+- Source: Lior, 2026-10-05 ~20:45 IL, picked from the P9 candidates (KOTH/CTF, more maps, ping wheel); cosmetics from PlayerStats, TDM weapon stages and crosshair share codes stay on the roadmap.
+- Affects: docs/SPEC.md section 39; `src/shared/{objectives,modes,maps,bots,comms,rooms}.js`, `src/server/{GameRoom,protocol,server,matchSession,config}.js`, `src/client/{objectiveView,markView,hudModel,hud,ceremony,game,input,bindings,themes}.js`, `index.html`, `docs/smoke/p9-*.json`.
+- Alternatives: domination (three points) instead of a rotating hill: rejected for 16 seats, a single hill concentrates the fight; voice chat instead of a ping wheel: rejected, no media servers and no moderation surface in this project.

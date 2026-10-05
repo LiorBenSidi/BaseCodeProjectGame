@@ -48,6 +48,36 @@ export const THEMES = Object.freeze({
     accent: 0xffd27a,
     grid: { opacity: 0.0 },
   }),
+  // SPEC 39 (D-038) Summit: alpine dawn. Pale stone terraces, cold blue shadow, thin high-altitude fog.
+  summit: Object.freeze({
+    id: 'summit',
+    sky: { zenith: 0x10203a, horizon: 0x9fb8d8, sun: 0xfff0dc, sunDir: [-0.4, 0.55, 0.6] },
+    fog: { color: 0xb8c8dc, near: 50, far: 210 },
+    sun: { color: 0xfff3e0, intensity: 2.4, position: [-26, 52, 30] },
+    hemi: { sky: 0xcfe0ff, ground: 0x6b7482, intensity: 1.0 },
+    fill: { color: 0xa8c4ff, intensity: 0.5, position: [30, 16, -26] },
+    exposure: 1.05,
+    floor: { surface: 'concrete', color: 0x8d949c, tile: 4 },
+    wall: { surface: 'masonry', color: 0x7a8290, tile: 3 },
+    cover: { surface: 'masonry', color: 0x9aa3ad, tile: 2 },
+    accent: 0x8fd3ff,
+    grid: { opacity: 0.08 },
+  }),
+  // SPEC 39 (D-038) Canal: overcast harbour. Wet dark stone, mossy green water line, sodium lamps.
+  canal: Object.freeze({
+    id: 'canal',
+    sky: { zenith: 0x0b1118, horizon: 0x3b4a55, sun: 0xffc98a, sunDir: [0.2, 0.35, -0.9] },
+    fog: { color: 0x26323a, near: 30, far: 160 },
+    sun: { color: 0xffd4a3, intensity: 1.5, position: [12, 30, -40] },
+    hemi: { sky: 0x7b8f9c, ground: 0x1f2a24, intensity: 0.85 },
+    fill: { color: 0x5f8f7a, intensity: 0.5, position: [-28, 14, 26] },
+    exposure: 1.0,
+    floor: { surface: 'concrete', color: 0x3a4a48, tile: 4 },
+    wall: { surface: 'masonry', color: 0x4a5553, tile: 3 },
+    cover: { surface: 'metal', color: 0x55646a, tile: 2 },
+    accent: 0xffb45c,
+    grid: { opacity: 0.1 },
+  }),
 });
 
 export const DEFAULT_THEME = THEMES.arena;

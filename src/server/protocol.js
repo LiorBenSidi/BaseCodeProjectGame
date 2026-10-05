@@ -71,6 +71,10 @@ function validateObject(data) {
       // SPEC 34.4: next-map vote; the room checks the id against the open candidates
       if (typeof data.mapId !== 'string' || data.mapId.length === 0 || data.mapId.length > 32) return fail('bad_vote');
       return { ok: true, msg: { t: 'vote', mapId: data.mapId } };
+    case 'mark':
+      // SPEC 39.8: ping wheel mark; kind and point are checked here, the room rate-limits and relays to the team
+      if (typeof data.kind !== 'string' || data.kind.length > 16 || !Array.isArray(data.at) || data.at.length !== 3 || !data.at.every(isNum)) return fail('bad_mark');
+      return { ok: true, msg: { t: 'mark', kind: data.kind, at: data.at } };
     case 'chat':
       // SPEC 29.1: text only, length capped here so a 4 KB frame cannot carry a 4 KB line
       if (typeof data.text !== 'string' || data.text.length === 0 || data.text.length > 400) return fail('bad_chat');

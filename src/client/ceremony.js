@@ -1,6 +1,7 @@
 // Ceremony, medals, kill cam and minimap math (SPEC 34, D-031). Pure: hud.js and game.js apply the numbers.
 import { MEDALS, medalCount } from '../shared/medals.js';
 import { RESPAWN_MS } from '../shared/constants.js';
+import { MARK_KINDS } from '../shared/comms.js'; // SPEC 39.8
 
 // SPEC 34.1: intro countdown text from the seconds left in the snapshot.
 export function introText(left) {
@@ -80,7 +81,7 @@ export const MINIMAP_NEAR_M = 12;
 // zero at 60 m); at 24 m a step is still at half level, which is where a careful listener stops hearing it over the mix.
 export const MINIMAP_FOOTSTEP_M = 24;
 
-export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastShotAt = new Map(), radar = false, sprinting = false, fov = 0, footstepRing = true, visionCone = true } = {}) {
+export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastShotAt = new Map(), radar = false, sprinting = false, fov = 0, footstepRing = true, visionCone = true, objective = null, pings = [] } = {}) {
   const half = map?.half ?? 20;
   const s = size / (half * 2);
   const px = (x) => (x + half) * s;
@@ -100,5 +101,26 @@ export function minimapLayout(map, me, others, size, { now = 0, team = -1, lastS
   // SPEC 37.3: own footstep audibility while sprinting, and the field of view as a wedge (radians, 0 hides it)
   const ring = footstepRing && sprinting ? MINIMAP_FOOTSTEP_M * s : 0;
   const cone = visionCone && fov > 0 ? Math.min(Math.PI, fov) : 0;
-  return { size, boxes, me: { x: px(me.x), y: pz(me.z), yaw: me.yaw ?? 0 }, dots, ring, cone, radar: !!radar };
+  const marks = objectiveMarks(objective, px, pz, s, team); // SPEC 39
+  for (const m of pings) marks.push({ kind: 'ping', x: px(m.pos[0]), y: pz(m.pos[2]), color: MARK_KINDS[m.kind]?.color ?? '#e6edf3' }); // SPEC 39.8
+  return { size, boxes, me: { x: px(me.x), y: pz(me.z), yaw: me.yaw ?? 0 }, dots, ring, cone, radar: !!radar, marks };
+}
+
+// SPEC 39: objective marks for the minimap. Hill: a ring in the holder's colour (white when open, amber contested).
+// Flags: a square per base in the team colour and a pennant where each flag is (home, carried or dropped).
+export const TEAM_CSS = Object.freeze(['#5ce1ff', '#ff5252']);
+export function objectiveMarks(obj, px, pz, s, myTeam = -1) {
+  if (!obj) return [];
+  void myTeam;
+  if (obj.kind === 'hill') {
+    const color = obj.contested ? '#ffb347' : obj.holder < 0 ? 'rgba(230,237,243,0.8)' : TEAM_CSS[obj.holder];
+    const fill = obj.contested ? 'rgba(255,179,71,0.25)' : obj.holder < 0 ? 'rgba(230,237,243,0.12)' : obj.holder === 0 ? 'rgba(92,225,255,0.25)' : 'rgba(255,82,82,0.25)';
+    return [{ kind: 'hill', x: px(obj.x), y: pz(obj.z), r: Math.max(4, obj.r * s), color, fill }];
+  }
+  if (obj.kind === 'flags') {
+    const marks = obj.bases.map((b, t) => ({ kind: 'base', x: px(b.x), y: pz(b.z), color: TEAM_CSS[t] }));
+    for (const f of obj.flags) marks.push({ kind: 'flag', x: px(f.x), y: pz(f.z), color: TEAM_CSS[f.team], state: f.state });
+    return marks;
+  }
+  return [];
 }

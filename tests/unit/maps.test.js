@@ -34,7 +34,7 @@ test('registry: arena is the default and identical to MAP; every map is self-con
   assert.equal(isMap('foundry'), true);
   assert.equal(isMap('x'), false);
   const d = describeMap(MAPS.foundry);
-  assert.deepEqual(Object.keys(d), ['id', 'name', 'half', 'boxes']);
+  assert.deepEqual(Object.keys(d), ['id', 'name', 'half', 'boxes', 'hills', 'bases']);
 });
 
 test('rotation: match 1 is arena, then the registry order, wrapping', () => {
