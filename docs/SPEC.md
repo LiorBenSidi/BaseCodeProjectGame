@@ -1168,3 +1168,21 @@ Range mode only. The `station` key (default `T`) cycles off, easy, medium, hard,
 
 ### 37.9 Deferred from the Valorant research
 Crosshair share codes, TDM weapon stages, ping wheel, server side occlusion culling (see docs/ROADMAP.md).
+
+## 38. Weapons, hands and melee (Pro batch P8, D-037)
+
+Read-only research first (research/weapon-animation-references.md in the conversation workspace: CS2, Valorant, BO6, Apex, Titanfall 2, Overwatch 2, Chivalry 2 and Mordhau), then the implementation. Nothing is copied from those games; the timings and the clash are ours.
+
+### 38.1 New weapon types (`src/shared/weapons.js`, `src/shared/rules.js`, `src/shared/maps.js`)
+Three weapons join the five: the burst rifle (primary, three rounds per trigger pull 70 ms apart, 30 round magazine, 600 ms between pulls, low spread), the LMG (primary, 80 round belt, slow 4.6 s reload, wide hip spread that ADS tightens hard) and the revolver (sidearm, 6 rounds, 58 damage with a 2.2x head multiplier, long trigger interval). The burst is a state machine on the weapon slot (`burstLeft`, `burstNextAt`): `recordShot` queues the follow-up rounds, `burstDue` tells the room to fire them on its own ticks, `fireBlock` returns `burst` while one is in flight, and a reload, an empty magazine or a switch cancels it (`cancelBurst`). Each is a floor pickup (`PICKUP_TYPES` with a `weapon` id) on every map; a pickup replaces the weapon in its own slot (the revolver takes the sidearm slot, never the rifle) and is refused when that weapon is already in hand with a full magazine.
+
+### 38.2 First person arms and the clip set (`src/client/animClips.js`, `src/client/weaponView.js`)
+The view model is two procedural arms (sleeves and gloves) holding the shared weapon model from `weaponModels.js`. All motion is pure math in `animClips.js`, composed additively on the hip or ADS pose: idle breathing (never still), walk bob and a sprint carry (weapon lowered and angled, scaled by speed, faded out while aiming), the draw clip on every switch (rises from below the frame over the weapon's `switchMs`), the reload clip (dip, tilt toward the eye, the left hand leaves the weapon for the magazine and comes back), inspect (lift and roll over), the fire kick, the melee swing and the clash knock. The third person rig reads the same states from the snapshot: `rel` drops the remote figure's left hand off the weapon, `ml` swings the right arm and shows the kit blade, so what a spectator sees is what the player feels.
+
+### 38.3 Kit melee and the clash (`src/shared/melee.js`, `GameRoom.#stepMelee`)
+Each kit carries a melee style (`MELEE_STYLES`): the Vanguard shock baton (slow, 55 damage, big knockback), the Phantom energy blade (fast, 45, lunge), the Engineer tactical stun blade (40, widest cone), the Medic dual combat knives (35, shortest recovery). A swing is `windup -> active -> recovery`; during `active` every living enemy inside the style's cone (`range`, `angleRad`, 1.6 m height tolerance) is hit once, knocked back through the dash lane (fixed speed, locked direction, so the push survives the ground speed reset), and a kill carries `zone: 'melee'`. A swing cancels the reload and the burst, ends spawn protection, and blocks the trigger until it ends. The client message is `{t: 'melee'}` (both dispatchers), default bind middle mouse (V stays the dive); the room broadcasts `{t: 'melee', id, style}` at the start and `ml` (0 none, 1 windup, 2 active, 3 recovery, 4 clash) in every snapshot entry.
+
+The clash is the unique rule: when two enemies swing into each other and both cones hold the other during the active window, nobody takes damage. Both are thrown 2 m apart and staggered (no shooting, no swinging), and the player who swung LATER (the one who read the attack and answered) recovers first: 250 ms for the riposte against 600 ms for the attacker. The room broadcasts `{t: 'clash', a, b, riposte, at}`: a white-blue spark at the midpoint, a ring cue, a knock on both view models (shorter for the riposte) and a kill feed line for the two players. Close range becomes a read instead of a damage race.
+
+### 38.4 Sound
+New cues: `shot_burst_rifle`, `shot_lmg`, `shot_revolver`, `melee` (swing, placed at the swinger), `melee_hit`, `clash` (ducking, placed at the clash point).

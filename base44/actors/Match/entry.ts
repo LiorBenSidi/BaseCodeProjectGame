@@ -45,7 +45,7 @@ export const TIMER_EVIDENCE_MAX = 600; // ten minutes of evidence per object lif
 const CLOCK_KEY = "clock";
 // Bumped by hand with every actor change that ships; the diag probe reports it so a live room can be
 // matched to the code it runs after a Publish (Durable Objects give no other way to read that back).
-export const ACTOR_BUILD = "4.1"; // Pro: SPEC 30 to 37 (bots, range, ceremony, vote, radar, AFK, reaction station)
+export const ACTOR_BUILD = "4.2"; // Pro: SPEC 30 to 38 (bots, range, ceremony, vote, radar, AFK, reaction station, weapons, melee)
 
 interface ActorConn {
   id: string;

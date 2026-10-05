@@ -52,6 +52,8 @@ function validateObject(data) {
       if (data.slot !== 'primary' && data.slot !== 'sidearm') return fail('bad_switch');
       return { ok: true, msg: { t: 'switch', slot: data.slot } };
     // SPEC 24.1 / 25.3: kit, ability and perk intents. The room's state machine decides whether they take effect.
+    case 'melee': // SPEC 38.3: a swing with the kit's melee style
+      return { ok: true, msg: { t: 'melee' } };
     case 'ability':
       if (data.slot !== 0 && data.slot !== 1) return fail('bad_ability');
       return { ok: true, msg: { t: 'ability', slot: data.slot } };

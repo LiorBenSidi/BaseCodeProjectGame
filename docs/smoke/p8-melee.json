@@ -1,0 +1,13 @@
+[
+ {"goto":"/","wait":3000},
+ {"name":"play","eval":"(()=>{document.getElementById('name').value='Smoke'; document.querySelector('#menu button[type=submit]').click(); return 'submitted';})()"},
+ {"sleep":7000},
+ {"name":"live","eval":"JSON.stringify({menuHidden: document.getElementById('menu').hidden, hudHidden: document.getElementById('hud').hidden, ammo: document.getElementById('ammo-value').textContent, errors: (window.__errors||[]).length})"},
+ {"name":"melee via middle mouse","eval":"(()=>{const c=document.querySelector('canvas'); window.dispatchEvent(new MouseEvent('mousedown',{button:1,bubbles:true})); setTimeout(()=>window.dispatchEvent(new MouseEvent('mouseup',{button:1,bubbles:true})),80); return 'swung';})()"},
+ {"sleep":1500,"shot":"p8-after-melee"},
+ {"name":"switch weapon (2) then back (1)","eval":"(()=>{const k=(c)=>{window.dispatchEvent(new KeyboardEvent('keydown',{code:c,key:c,bubbles:true})); window.dispatchEvent(new KeyboardEvent('keyup',{code:c,key:c,bubbles:true}));}; k('Digit2'); setTimeout(()=>k('Digit1'),900); return 'switched';})()"},
+ {"sleep":2000},
+ {"name":"reload (R)","eval":"(()=>{window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyR',key:'r',bubbles:true})); return 'reload';})()"},
+ {"sleep":2500,"shot":"p8-after-reload"},
+ {"name":"state","eval":"JSON.stringify({ammo: document.getElementById('ammo-value').textContent, hp: document.getElementById('hp-value').textContent, feed: document.getElementById('killfeed')?.textContent?.slice(0,200), errors: (window.__errors||[]).length})"}
+]

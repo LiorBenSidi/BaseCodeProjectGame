@@ -236,6 +236,8 @@ export async function startServer(options = {}) {
         room.handleStation(player.id, msg.level); // SPEC 37.7
       } else if (player && msg.t === 'ability') {
         room.handleAbility(player.id, msg.slot);
+      } else if (player && msg.t === 'melee') {
+        room.handleMelee(player.id); // SPEC 38.3
       } else if (player && msg.t === 'kit') {
         room.handleKit(player.id, msg.id);
       } else if (player && msg.t === 'perk') {

@@ -1,6 +1,6 @@
 import { INPUT_DT, PLAYER, RESPAWN_MS } from '../shared/constants.js';
 import { killcamWindow, killcamSample } from './ceremony.js'; // PRO-ceremony: SPEC 34.5
-import { WEAPONS } from '../shared/weapons.js';
+import { WEAPONS, meleeStyle } from '../shared/weapons.js';
 import { stepPlayer, eyeOf } from '../shared/movement.js';
 import { ClockSync } from './clockSync.js';
 import { CombatHud } from './combatHud.js';
@@ -129,6 +129,7 @@ export class Game {
       if (isBound('scoreboard', e.code)) { e.preventDefault(); this.#hud.setScoreboardVisible(true); }
       if (isBound('station', e.code) && !e.repeat && this.#input.locked) this.cycleStation(); // SPEC 37.7
       if (isBound('grenade', e.code) && !e.repeat && this.#input.locked) this.throwGrenade();
+      if (isBound('melee', e.code) && !e.repeat && this.#input.locked) this.melee(); // SPEC 38.3
       // SPEC 20.3: weapon intents; the server's state machine decides whether they take effect.
       if (isBound('reload', e.code) && !e.repeat && this.#input.locked) this.reload();
       if (isBound('weapon1', e.code) && this.#input.locked) this.switchWeapon('primary');
@@ -155,6 +156,7 @@ export class Game {
     });
     this.#touch = new TouchControls(this.#input, {
       grenade: () => this.throwGrenade(),
+      melee: () => this.melee(), // SPEC 38.3
       reload: () => this.reload(),
       swap: () => this.switchWeapon(this.#weapon.slot === 'primary' ? 'sidearm' : 'primary'),
       scoreboard: (show) => this.#hud.setScoreboardVisible(show),
@@ -272,6 +274,15 @@ export class Game {
     this.#cue('switch'); this.#tut('switch'); // PRO-audio
   }
 
+  // SPEC 38.3: one swing with the kit's blade; the server resolves hits and clashes, the view model swings at once.
+  melee() {
+    if (!this.joined || !this.#me.alive) return false;
+    this.#net.send({ t: 'melee' });
+    this.#weaponView?.swing?.(meleeStyle(this.#kit));
+    this.#tut('melee');
+    return true;
+  }
+
   throwGrenade() {
     if (!this.joined || !this.#me.alive) return false;
     this.#net.send({ t: 'throw' });
@@ -342,9 +353,24 @@ export class Game {
       snap: (m) => { recordSnapshot(this.#tele, performance.now()); this.#onSnapshot(m); }, // SPEC 36.1
       shot: (m) => { this.#addTracer(m); this.#fx.shot(m.from, m.to, performance.now(), m.id === this.#id); // PRO-env
   if (m.id !== this.#id) { this.#threat(m.from[0], m.from[2]); this.#lastShotAt.set(m.id, performance.now()); this.#tip('firstShotHeard'); } this.#cue('shot', { w: m.w }, m.id === this.#id ? null : m.from); },
-      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0) { this.#cue('hit', { head: m.zone === 'head' }); this.#tut('hit'); this.#tip('firstHit'); if (m.target !== null) this.#remote.flash(m.target); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events; PRO-weapons: SPEC 31.3 hit flash
+      verdict: (m) => { this.#combat.verdict(m); if (m.dmg > 0 && m.zone === 'melee') this.#cue('melee_hit'); if (m.dmg > 0) { this.#cue('hit', { head: m.zone === 'head' }); this.#tut('hit'); this.#tip('firstHit'); if (m.target !== null) this.#remote.flash(m.target); eventBus.emit(m.kill ? 'killConfirm' : m.zone === 'head' ? 'headshot' : 'bodyHit', m); } }, // PRO-feel: SPEC 32.4 events; PRO-weapons: SPEC 31.3 hit flash
       boom: (m) => { this.#fx.boom(m.at, performance.now()); this.#combat.boom(m, this.#id); // PRO-env
   this.#grenades.explode(m.at, performance.now()); this.#threat(m.at[0], m.at[2]); this.#cue('boom', {}, m.at); },
+      // SPEC 38.3: a swing by anyone (the sound and the third person arm), a clash between two players (spark, ring, shake)
+      melee: (m) => {
+        const at = m.id === this.#id ? null : this.#remote.positionOf?.(m.id) ?? null;
+        this.#cue('melee', { mine: m.id === this.#id }, at);
+        if (m.id !== this.#id) this.#remote.swing?.(m.id, m.style);
+      },
+      clash: (m) => {
+        const mine = m.a === this.#id || m.b === this.#id;
+        this.#fx.clash?.(m.at, performance.now());
+        this.#cue('clash', { mine }, mine ? null : m.at);
+        if (mine) {
+          this.#weaponView?.clash?.(m.riposte === this.#id);
+          this.#hud.killFeed(m.riposte === this.#id ? 'Clash: riposte, you recover first' : 'Clash: staggered');
+        }
+      },
       kill: (m) => {
         this.#hud.killFeed(`${m.killerName} eliminated ${m.victimName}`);
         if (m.ended) this.#hud.killFeed(`${m.killerName} ended ${m.victimName}'s ${m.ended} kill streak`);
@@ -408,6 +434,7 @@ export class Game {
     if (this.#me.alive) for (const c of this.#pending) stepPlayer(this.#me, c, this.#map.boxes, this.#map.half);
     if (typeof mine.tm === 'number') this.#team = mine.tm; // PRO-feel
     if (mine.w && WEAPONS[mine.w]) this.#weapon = WEAPONS[mine.w];
+    this.#weaponView?.setDrawMs(this.#weapon.switchMs); // SPEC 38.2: the draw clip matches the server's switch time
     this.#weaponView?.setWeapon(this.#weapon.id);
     if (mine.rel === 1 && !this.#reloadSeen) { this.#reloadSeen = true; this.#cue('reload'); this.#weaponView?.reloading(this.#weapon.reloadMs, performance.now()); } else if (mine.rel !== 1) this.#reloadSeen = false;
     this.#onDamage(mine);
@@ -480,6 +507,7 @@ export class Game {
       else if (a === 'ability1') this.useAbility(0);
       else if (a === 'ability2') this.useAbility(1);
       else if (a === 'grenade') this.throwGrenade();
+      else if (a === 'melee') this.melee(); // SPEC 38.3
       else if (a === 'scoreboard') { this.#gpScoreboard = !this.#gpScoreboard; this.#hud.setScoreboardVisible(this.#gpScoreboard); }
     }
     // PRO-feel end
@@ -663,7 +691,7 @@ export class Game {
     const scoped = isScoped(this.#weapon.id, ads) && this.#fov < this.#baseFov * 0.6;
     this.#hud.setScoped(scoped);
     this.#weaponView?.setVisible(this.#me.alive && !scoped);
-    this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads });
+    this.#weaponView?.update(dt, performance.now(), { moving: this.#me.onGround ? speed : 0, ads, sprinting }); // SPEC 38.2 sprint lowers the weapon
     this.#footsteps(dt, speed);
     // PRO-audio begin (SPEC 35.1 / 35.4): ears follow the camera; jump, land and slide cues; movement tutorial steps
     this.#audio.setListener(this.#me.x, this.#me.z, this.#input.yaw);

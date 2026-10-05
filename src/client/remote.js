@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { thirdPersonMelee } from './animClips.js'; // SPEC 38.2
+import { KIT_IDS } from '../shared/abilities.js';
 import { NAME_TAG, nameTagLayout, teamColorHex } from './arenaStyle.js';
 import { OUTLINE_SCALE, outlineColorHex, isEnemyOf } from './outline.js'; // SPEC 37.5
 import { applyKitAccent } from './avatars.js';
@@ -119,6 +121,21 @@ export class RemotePlayers {
       const j = mesh.userData.joints;
       j.legL.rotation.x = cyc.legL; j.legR.rotation.x = cyc.legR;
       j.armL.rotation.x = -1.0 + cyc.armSwing * 0.3; j.armR.rotation.x = -1.2 - cyc.armSwing * 0.3;
+      // SPEC 38.2 / 38.3: reload drops the left hand off the weapon; a melee phase (ml) swings the right arm and shows the blade
+      const ud = mesh.userData;
+      if ((pb.rel === 1) !== ud.reloading) { ud.reloading = pb.rel === 1; ud.reloadAt = now; }
+      if (ud.reloading) j.armL.rotation.x = -0.35 - 0.2 * Math.sin(Math.min(1, (now - ud.reloadAt) / 600) * Math.PI);
+      const ml = pb.ml ?? 0;
+      if (ml !== ud.ml) { ud.ml = ml; ud.mlAt = now; }
+      const tp = ml ? thirdPersonMelee(KIT_IDS[pb.kt] ?? 'vanguard', ml, now - ud.mlAt) : null;
+      const blade = ud.body.getObjectByName('blade');
+      if (blade) blade.visible = !!tp && ml !== 4;
+      if (tp) {
+        j.armR.rotation.x = tp.armPitch;
+        j.armR.rotation.y = -tp.bladeAngle * 0.6;
+        if (blade) blade.rotation.set(0, tp.bladeAngle, 0);
+        if (tp.shake > 0) ud.body.rotation.z = Math.sin(now * 0.05) * 0.08 * tp.shake;
+      } else { j.armR.rotation.y = 0; if (ml === 0) ud.body.rotation.z = 0; }
       j.head.rotation.x = -(pb.pitch ?? 0) * 0.6;
       mesh.userData.body.rotation.x = cyc.lean;
       mesh.position.set(x, y + cyc.bob, z);
@@ -209,6 +226,12 @@ export class RemotePlayers {
     weapon.name = 'weapon';
     weapon.position.set(RIG.weaponHold.x, RIG.weaponHold.y, RIG.weaponHold.z);
     bodyGroup.add(weapon);
+    // SPEC 38.3: the kit blade in the right hand, shown only while the snapshot says a swing is in flight
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.5), new THREE.MeshStandardMaterial({ color: 0xdfe6ee, roughness: 0.25, metalness: 0.9, emissive: 0x223344 }));
+    blade.name = 'blade';
+    blade.position.set(RIG.shoulderX, RIG.shoulderY - 0.45, -0.35);
+    blade.visible = false;
+    bodyGroup.add(blade);
     group.add(bodyGroup);
     group.userData.body = bodyGroup;
     group.userData.joints = { legL, legR, armL, armR, torso, head };
@@ -250,6 +273,18 @@ export class RemotePlayers {
   #applyOutline(mesh) {
     const on = this.#outlineMode !== 'off' && isEnemyOf(mesh.userData.team ?? -1, this.#selfTeam);
     for (const hull of mesh.userData.outlines ?? []) hull.visible = on;
+
+  // SPEC 38.3: a melee broadcast arrives before the snapshot phase; it primes the clip so the swing starts on time
+  swing(id, style) {
+    const mesh = this.#meshes.get(id);
+    if (!mesh) return;
+    mesh.userData.ml = 1; mesh.userData.mlAt = performance.now(); mesh.userData.swingStyle = style;
+  }
+
+  // World position of a remote player as last rendered, or null (sound placement for melee and clash cues).
+  positionOf(id) {
+    const mesh = this.#meshes.get(id);
+    return mesh ? [mesh.position.x, mesh.position.y, mesh.position.z] : null;
   }
 
   flash(id, now = performance.now()) {

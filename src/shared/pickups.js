@@ -41,10 +41,11 @@ export function applyPickup(pk, p) {
     return added > 0 ? { kind: 'ammo', amount: added } : null;
   }
   if (type.weapon !== undefined) {
-    const current = p.loadout.primary;
+    const slot = weaponDef(type.weapon).slot; // SPEC 38.1: a sidearm pickup replaces the sidearm
+    const current = p.loadout[slot];
     if (current.id === type.weapon && current.mag >= weaponDef(current.id).magSize && current.reserve >= weaponDef(current.id).reserve) return null;
-    p.loadout.primary = newWeaponState(type.weapon);
-    if (p.loadout.active === 'primary') p.loadout.switchingUntil = -Infinity;
+    p.loadout[slot] = newWeaponState(type.weapon);
+    if (p.loadout.active === slot) p.loadout.switchingUntil = -Infinity;
     return { kind: 'weapon', amount: 0, weapon: type.weapon };
   }
   return null;

@@ -54,6 +54,7 @@ export const MAP = {
     { type: 'smg', x: -26, z: -26 },
     { type: 'shotgun', x: 26, z: 26 },
     { type: 'ammo', x: 26, z: -26 },
+    { type: 'burst_rifle', x: -26, z: 26 }, // SPEC 38.1
     { type: 'health', x: -26, z: 26 },
   ],
 };

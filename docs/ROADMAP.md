@@ -75,3 +75,4 @@ Weekly dependency PRs, monthly independent security review recorded in `docs/HAR
 - Server side snapshot occlusion culling (Valorant fog of war): visibility test per viewer in GameRoom snapshots; anti wallhack and bandwidth.
 - From the Valorant research, deferred after P7 (SPEC 37.8): TDM weapon stages and spawner orbs, ping wheel with world markers, crosshair share codes.
 - Node version matrix in CI once a second runtime target exists.
+- After P8 (SPEC 38): per weapon reload variants (shell by shell for the shotgun, bolt cycle for the sniper), a melee-only mode, third person weapon swap animation.

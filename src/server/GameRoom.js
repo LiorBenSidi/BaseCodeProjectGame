@@ -14,7 +14,8 @@ import { aimDir } from '../shared/hitscan.js';
 import { applyDamage, resolveShot } from '../shared/combat.js';
 import { GRENADE } from '../shared/combatData.js';
 // SPEC 20 weapons: table, loadout state machine, server-side spread.
-import { newLoadout, activeWeapon, weaponDef, fireBlock, recordShot, decaySpread, startReload, finishReloadIfDue, switchSlot, spreadDir, isReloading } from '../shared/weapons.js';
+import { newLoadout, activeWeapon, weaponDef, fireBlock, recordShot, decaySpread, startReload, finishReloadIfDue, switchSlot, spreadDir, isReloading, burstDue, cancelBurst, meleeStyle } from '../shared/weapons.js';
+import { startMelee, stepMelee, meleeTargets, clashes, applyClash, knockback, isSwinging, snapshotMelee, MELEE_PHASE } from '../shared/melee.js'; // SPEC 38.3
 import { blastDamage, launchGrenade, stepGrenade } from '../shared/projectile.js';
 import { sanitizeName } from './security.js';
 // SPEC 21: pickups, safest spawn, spawn protection.
@@ -134,6 +135,7 @@ export class GameRoom {
       kitState: newKitState(isKit(kit) ? kit : DEFAULT_KIT),
       nextKit: null,
       wantsAbility: null,
+      wantsMelee: false, melee: null, staggerUntil: -Infinity, // SPEC 38.3
       wantsPerk: null,
       grapple: null,
       scannedUntil: -Infinity,
@@ -363,6 +365,12 @@ export class GameRoom {
   }
 
   // SPEC 24.1: { t: 'ability', slot }, { t: 'kit', id } (next spawn), SPEC 25.3: { t: 'perk', id }.
+  // SPEC 38.3: one swing per message; the tick resolves it with the kit's style.
+  handleMelee(id) {
+    const p = this.#players.get(id);
+    if (p) p.wantsMelee = true;
+  }
+
   handleAbility(id, slot) {
     const p = this.#players.get(id);
     if (p && (slot === 0 || slot === 1)) p.wantsAbility = slot;
@@ -388,7 +396,9 @@ export class GameRoom {
     for (const p of this.#players.values()) this.#runCommands(p);
     this.#stepAbilities(now);
     for (const p of this.#players.values()) this.#stepWeapons(p, now);
+    this.#stepMelee(now); // SPEC 38.3: swings resolve before the trigger, so a clash cancels a shot in the same tick
     for (const p of this.#players.values()) {
+      if (p.alive && burstDue(activeWeapon(p.loadout), now)) this.#fire(p, now, true); // SPEC 38.1: burst follow-up rounds
       if (!p.wantsShot) continue;
       p.wantsShot = false;
       this.#fire(p, now);
@@ -563,12 +573,13 @@ export class GameRoom {
     this.#roster();
   }
 
-  #fire(p, now) {
-    if (!p.alive || this.#match.phase !== 'playing' || fireBlock(p.loadout, now) !== null) return;
+  #fire(p, now, burst = false) {
+    if (!p.alive || this.#match.phase !== 'playing' || fireBlock(p.loadout, now, burst) !== null) return;
+    if (isSwinging(p) || now < p.staggerUntil) return; // SPEC 38.3: no shooting through a swing or a stagger
     const ws = activeWeapon(p.loadout);
     const weapon = weaponDef(ws.id);
     const spread = ws.spread;
-    recordShot(ws, now);
+    recordShot(ws, now, burst);
     p.protectedUntil = -Infinity; // SPEC 21.2: shooting ends spawn protection
 
     const origin = [p.x, p.y + eyeOf(p), p.z];
@@ -618,6 +629,44 @@ export class GameRoom {
     }
     this.#sendTo(p, { t: 'verdict', target: best.victim.id, zone: best.zone, dmg: best.applied, dist: best.dist, kill: best.kill });
     for (const v of killed) this.#kill(p.id, p.name, v, now, { zone: best.victim === v ? best.zone : null, dist: best.dist }); // PRO-ceremony: medal inputs
+  }
+
+  // SPEC 38.3: starts requested swings, advances every swing, resolves clashes then hits during the active window.
+  #stepMelee(now) {
+    const all = [...this.#players.values()];
+    for (const p of all) {
+      if (p.wantsMelee) {
+        p.wantsMelee = false;
+        if (this.#match.phase !== 'playing') continue;
+        const style = startMelee(p, now);
+        if (!style) continue;
+        const ws = activeWeapon(p.loadout);
+        ws.reloadingUntil = -Infinity; // a swing cancels the reload and the burst
+        cancelBurst(ws);
+        p.protectedUntil = -Infinity; // SPEC 21.2: attacking ends spawn protection
+        this.#broadcast({ t: 'melee', id: p.id, style: style.id });
+      }
+      if (!p.alive) { p.melee = null; continue; }
+      if (stepMelee(p, now) !== MELEE_PHASE.active) continue;
+      const style = meleeStyle(p.melee.style);
+      for (const q of meleeTargets(p, all)) {
+        if (sameTeam(p, q)) continue;
+        if (clashes(p, q)) {
+          const { riposte } = applyClash(p, q, now);
+          const mid = [round3((p.x + q.x) / 2), round3((p.y + q.y) / 2 + 1.2), round3((p.z + q.z) / 2)];
+          this.#broadcast({ t: 'clash', a: p.id, b: q.id, riposte: riposte.id, at: mid });
+          break; // the clash ends this swing
+        }
+        p.melee.hit.push(q.id);
+        const r = this.#protected(q, now) ? { applied: 0, killed: false } : applyDamage(q, style.damage * q.progress.mods.dmgTakenMul);
+        if (r.applied > 0) knockback(p, q, style);
+        this.#award(p, recordDamage(p.progress, q.progress, p.id, q.id, r.applied, now));
+        this.#sendTo(p, { t: 'hit', id: q.id });
+        const dist = round3(Math.hypot(q.x - p.x, q.z - p.z));
+        this.#sendTo(p, { t: 'verdict', target: q.id, zone: 'melee', dmg: r.applied, dist, kill: r.killed });
+        if (r.killed) this.#kill(p.id, p.name, q, now, { zone: 'melee', dist });
+      }
+    }
   }
 
   #throw(p) {
@@ -693,6 +742,7 @@ export class GameRoom {
     p.protectedUntil = now + SPAWN.protectMs;
     p.hp = MAX_HP;
     p.alive = true;
+    p.melee = null; p.staggerUntil = -Infinity; // SPEC 38.3
     p.grenades = GRENADE.perLife + p.progress.mods.grenades; // SPEC 25.2 Grenadier
     p.loadout = newLoadout();
     if (p.nextKit) { p.kitState = newKitState(p.nextKit); p.nextKit = null; } // SPEC 24.1 kit change on spawn
@@ -737,6 +787,7 @@ export class GameRoom {
         kt: KIT_IDS.indexOf(p.kitState.kit), lv: p.progress.level, // SPEC 24 / 25: kit index into KIT_IDS, level
         sc: radar || now < p.scannedUntil ? 1 : 0, // SPEC 24.3 revealed by a scan, SPEC 37.1 or by the radar pulse
         ...(p.afk ? { afk: 1 } : {}), // SPEC 37.4
+        ml: snapshotMelee(p), // SPEC 38.3: melee phase (0 none, 1 windup, 2 active, 3 recovery, 4 clash)
       });
     }
     const nades = this.#grenades.map((g) => ({ id: g.id, x: round3(g.x), y: round3(g.y), z: round3(g.z) }));

@@ -138,6 +138,8 @@ export class MatchSession {
       this.#room.handleReload(s.player.id);
     } else if (s.player && msg.t === 'ability') {
       this.#room.handleAbility(s.player.id, msg.slot);
+    } else if (s.player && msg.t === 'melee') {
+      this.#room.handleMelee(s.player.id); // SPEC 38.3
     } else if (s.player && msg.t === 'kit') {
       this.#room.handleKit(s.player.id, msg.id);
     } else if (s.player && msg.t === 'perk') {
