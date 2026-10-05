@@ -396,13 +396,26 @@ export class Hud {
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.fillRect(0, 0, size, size);
     for (const b of lay.boxes) { ctx.fillStyle = b.tall ? 'rgba(230,237,243,0.55)' : 'rgba(230,237,243,0.3)'; ctx.fillRect(b.x, b.y, b.w, b.h); }
+    if (lay.radar) { // SPEC 37.1: a sweep ring while the pulse shows
+      ctx.strokeStyle = 'rgba(92,225,255,0.55)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(size / 2, size / 2, size * (0.2 + 0.3 * ((opts?.now ?? 0) % 1500) / 1500), 0, Math.PI * 2); ctx.stroke();
+    }
     for (const d of lay.dots) {
       ctx.fillStyle = d.kind === 'ally' ? '#5ce1ff' : '#ff5252';
       ctx.beginPath(); ctx.arc(d.x, d.y, 3.5, 0, Math.PI * 2); ctx.fill();
+      if (d.pulse) { ctx.strokeStyle = 'rgba(255,82,82,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(d.x, d.y, 6, 0, Math.PI * 2); ctx.stroke(); }
     }
     ctx.save();
     ctx.translate(lay.me.x, lay.me.y);
     ctx.rotate(-lay.me.yaw); // yaw 0 looks toward -Z, which is up on a north-up map
+    if (lay.cone > 0) { // SPEC 37.3: vision wedge
+      ctx.fillStyle = 'rgba(61,220,132,0.12)';
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, size * 0.45, -Math.PI / 2 - lay.cone / 2, -Math.PI / 2 + lay.cone / 2); ctx.closePath(); ctx.fill();
+    }
+    if (lay.ring > 0) { // SPEC 37.3: footstep audibility while sprinting
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, lay.ring, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
     ctx.fillStyle = '#3ddc84';
     ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 5); ctx.lineTo(0, 2); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
     ctx.restore();
@@ -456,7 +469,7 @@ export class Hud {
       const chipCell = document.createElement('span');
       chipCell.className = 'col-chip';
       chipCell.append(chip);
-      row.append(chipCell, cell('col-name', p.bot === 1 ? `${p.name} [BOT]` : p.name), cell('col-k', String(p.k)), cell('col-d', String(p.d))); // PRO-audio: SPEC 35.3
+      row.append(chipCell, cell('col-name', p.bot === 1 ? `${p.name} [BOT]` : p.afk === 1 ? `${p.name} [AFK]` : p.name), cell('col-k', String(p.k)), cell('col-d', String(p.d))); // PRO-audio: SPEC 35.3
       return row;
     });
     const head = document.createElement('div');

@@ -106,3 +106,21 @@ test('SPEC 37.1: no radar in tdm', () => {
   now = 4000; room.tick();
   assert.equal(seen.filter((m) => m.t === 'snap').at(-1).radar, undefined);
 });
+
+test('SPEC 37.3: the minimap layout exposes the footstep ring only while sprinting, the vision cone from the fov, and radar-revealed enemies', async () => {
+  const { minimapLayout, MINIMAP_FOOTSTEP_M } = await import('../../src/client/ceremony.js');
+  const map = { half: 20, boxes: [] };
+  const me = { x: 0, z: 0, yaw: 0 };
+  const far = [{ id: 7, x: 18, z: 18, alive: 1, team: -1, sc: 1 }, { id: 8, x: -18, z: 18, alive: 1, team: -1, sc: 0 }];
+  const lay = minimapLayout(map, me, far, 160, { now: 0, team: -1, sprinting: true, fov: Math.PI / 2, radar: true });
+  assert.equal(lay.ring, MINIMAP_FOOTSTEP_M * (160 / 40));
+  assert.equal(lay.cone, Math.PI / 2);
+  assert.equal(lay.radar, true);
+  assert.deepEqual(lay.dots.map((d) => d.id), [7]); // only the revealed one shows from far away
+  assert.equal(lay.dots[0].pulse, true);
+  const idle = minimapLayout(map, me, far, 160, { now: 0, team: -1, sprinting: false, fov: Math.PI / 2 });
+  assert.equal(idle.ring, 0);
+  const off = minimapLayout(map, me, far, 160, { now: 0, team: -1, sprinting: true, fov: Math.PI / 2, footstepRing: false, visionCone: false });
+  assert.equal(off.ring, 0);
+  assert.equal(off.cone, 0);
+});

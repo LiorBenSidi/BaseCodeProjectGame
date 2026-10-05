@@ -54,6 +54,9 @@ export class Game {
   #net = null;
   #name = '';
   #me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, alive: false };
+  #radarUntil = -Infinity; // SPEC 37.1: the last snapshot said the radar pulse is on
+  #sprinting = false; // SPEC 37.3: for the minimap footstep ring
+  #protectedSeen = false; // SPEC 37.2
   // PRO-ceremony begin (SPEC 34)
   #killcam = null; // { id, name, weapon, startedAt, from, to, duration }
   #lastShotAt = new Map(); // player id -> performance.now() of their last shot, for the minimap reveal
@@ -384,6 +387,10 @@ export class Game {
     const mine = snap.players.find((p) => p.id === this.#id);
     if (!mine) return;
     if (typeof mine.tm === 'number') this.#myTeam = mine.tm; // PRO-ceremony: minimap ally / enemy
+    if (snap.radar === 1) this.#radarUntil = performance.now() + 200; // SPEC 37.1: holds across the snapshot gap
+    // SPEC 37.2: a visible marker while spawn protection holds; shooting or an ability ends it on the server
+    const prot = mine.sp === 1 && mine.alive === 1;
+    if (prot !== this.#protectedSeen) { this.#protectedSeen = prot; this.#hud.protection(prot); }
 
     this.#pending = this.#pending.filter((c) => c.seq > snap.ack);
     Object.assign(this.#me, {
@@ -620,6 +627,7 @@ export class Game {
     this.#wasGround = !!this.#me.onGround;
     if (!this.#me.onGround) this.#lastVy = this.#me.vy ?? 0;
     const sprinting = this.#me.alive && this.#me.onGround && speed > PLAYER.speed + 0.3 && !(this.#me.slide > 0) && !(this.#me.dive > 0);
+    this.#sprinting = sprinting; // SPEC 37.3
     const feel = this.#feel.step(dt, {
       speed: this.#me.onGround ? speed : 0, baseSpeed: PLAYER.speed, isAds: ads,
       isSprinting: sprinting, isTacSprinting: sprinting && this.#me.tac > 0,
@@ -671,7 +679,11 @@ export class Game {
         }
       }
     }
-    this.#hud.minimap(this.#map, { x: this.#me.x, z: this.#me.z, yaw: this.#input.yaw }, this.#remote.lastPlayers(), { now, team: this.#myTeam, lastShotAt: this.#lastShotAt });
+    this.#hud.minimap(this.#map, { x: this.#me.x, z: this.#me.z, yaw: this.#input.yaw }, this.#remote.lastPlayers(), {
+      now, team: this.#myTeam, lastShotAt: this.#lastShotAt,
+      radar: this.#radarUntil > now, sprinting: this.#sprinting, fov: (this.#fov * Math.PI) / 180, // SPEC 37.1 / 37.3
+      footstepRing: this.#prefs.minimapFootsteps !== false, visionCone: this.#prefs.minimapCone !== false,
+    });
     // PRO-ceremony end
     if (frameDue(this.#lastRenderAt, now, this.#fpsCap)) { this.#lastRenderAt = now; this.#gfx.render(); } // PRO-env post pipeline; SPEC 36.4 frame cap
   }
