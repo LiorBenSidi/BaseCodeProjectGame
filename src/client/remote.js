@@ -259,7 +259,6 @@ export class RemotePlayers {
     }
   }
 
-  // SPEC 31.3: a verdict with damage flashes the victim for 120 ms so the shooter sees the hit land.
   // SPEC 37.5: enemy outline. `mode` is off / yellow / red / purple; allies never get one.
   #outlineMaterial = new THREE.MeshBasicMaterial({ color: 0xffd84a, side: THREE.BackSide, toneMapped: false });
   #outlineMode = 'off';
@@ -273,6 +272,7 @@ export class RemotePlayers {
   #applyOutline(mesh) {
     const on = this.#outlineMode !== 'off' && isEnemyOf(mesh.userData.team ?? -1, this.#selfTeam);
     for (const hull of mesh.userData.outlines ?? []) hull.visible = on;
+  }
 
   // SPEC 38.3: a melee broadcast arrives before the snapshot phase; it primes the clip so the swing starts on time
   swing(id, style) {
@@ -287,6 +287,7 @@ export class RemotePlayers {
     return mesh ? [mesh.position.x, mesh.position.y, mesh.position.z] : null;
   }
 
+  // SPEC 31.3: a verdict with damage flashes the victim for 120 ms so the shooter sees the hit land.
   flash(id, now = performance.now()) {
     const mesh = this.#meshes.get(id);
     if (mesh) mesh.userData.hitAt = now;
