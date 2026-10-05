@@ -200,6 +200,7 @@ export class Game {
     this.#audio.setLevel('ui', (prefs.uiVolume ?? 80) / 100);
     // SPEC 36: research polish, D-033
     this.#audio.setMix?.(prefs.audioMix ?? 'default');
+    this.#remote.setOutline(prefs.enemyOutline ?? 'off', this.#myTeam); // SPEC 37.5
     this.#gfx.setRenderScale?.(prefs.renderScale ?? 100);
     this.#fpsCap = prefs.fpsCap && prefs.fpsCap !== 'off' ? Number(prefs.fpsCap) : 0;
     if (prefs.telemetry) this.setShowFps(true);
@@ -386,7 +387,7 @@ export class Game {
     this.#combat.setPlayers(snap.players);
     const mine = snap.players.find((p) => p.id === this.#id);
     if (!mine) return;
-    if (typeof mine.tm === 'number') this.#myTeam = mine.tm; // PRO-ceremony: minimap ally / enemy
+    if (typeof mine.tm === 'number' && mine.tm !== this.#myTeam) { this.#myTeam = mine.tm; this.#remote.setOutline(this.#prefs.enemyOutline ?? 'off', mine.tm); } // PRO-ceremony: minimap ally / enemy; SPEC 37.5 outline side
     if (snap.radar === 1) this.#radarUntil = performance.now() + 200; // SPEC 37.1: holds across the snapshot gap
     // SPEC 37.2: a visible marker while spawn protection holds; shooting or an ability ends it on the server
     const prot = mine.sp === 1 && mine.alive === 1;

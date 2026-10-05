@@ -25,6 +25,7 @@ export const PREFS_SCHEMA = Object.freeze({
   aimAssist: { tab: 'controls', label: 'Aim assist (controller and touch only)', type: 'bool', def: true },
   // Video
   quality: { tab: 'video', label: 'Graphics quality', type: 'enum', values: ['auto', 'low', 'medium', 'high'], def: 'auto' },
+  enemyOutline: { tab: 'video', label: 'Enemy outline', type: 'enum', values: ['off', 'yellow', 'red', 'purple'], def: 'off' }, // SPEC 37.5
   renderScale: { tab: 'video', label: 'Render scale (%)', type: 'range', min: 50, max: 100, step: 5, def: 100 }, // SPEC 36.4
   fpsCap: { tab: 'video', label: 'Frame rate limit', type: 'enum', values: ['off', '30', '60', '120', '144'], def: 'off' }, // SPEC 36.4
   telemetry: { tab: 'video', label: 'Telemetry readout (fps, ping, jitter, loss)', type: 'bool', def: false }, // SPEC 36.1
@@ -52,6 +53,8 @@ export const PREFS_SCHEMA = Object.freeze({
   damageNumbers: { tab: 'hud', label: 'Damage numbers', type: 'bool', def: true },
   killFeed: { tab: 'hud', label: 'Kill feed', type: 'bool', def: true },
   minimap: { tab: 'hud', label: 'Minimap', type: 'bool', def: true },
+  minimapFootsteps: { tab: 'hud', label: 'Minimap footstep ring (while sprinting)', type: 'bool', def: true }, // SPEC 37.3
+  minimapCone: { tab: 'hud', label: 'Minimap vision cone', type: 'bool', def: true }, // SPEC 37.3
   hudScale: { tab: 'hud', label: 'HUD scale', type: 'range', min: 0.7, max: 1.3, step: 0.05, def: 1 },
   hudOpacity: { tab: 'hud', label: 'HUD opacity', type: 'range', min: 0.4, max: 1, step: 0.05, def: 1 },
   colorblind: { tab: 'hud', label: 'Team colors', type: 'enum', values: ['default', 'deuteranopia', 'tritanopia'], def: 'default' },

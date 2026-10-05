@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { NAME_TAG, nameTagLayout, teamColorHex } from './arenaStyle.js';
+import { OUTLINE_SCALE, outlineColorHex, isEnemyOf } from './outline.js'; // SPEC 37.5
 import { applyKitAccent } from './avatars.js';
 import { PLAYER } from '../shared/constants.js';
 import { RIG, walkCycle, advancePhase, hitFlash, deathPose } from './characterRig.js';
@@ -154,6 +155,7 @@ export class RemotePlayers {
   #setTeam(mesh, id, team) {
     mesh.userData.team = team;
     mesh.userData.bodyMaterial?.color.set(teamColorHex(id, team));
+    this.#applyOutline(mesh);
   }
 
   #setHeight(mesh, hk) {
@@ -171,7 +173,19 @@ export class RemotePlayers {
     const color = new THREE.Color(teamColorHex(id));
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1, emissive: 0x000000 });
     group.userData.bodyMaterial = mat;
-    const box = (dims, m = mat) => { const mesh = new THREE.Mesh(new THREE.BoxGeometry(dims[0], dims[1], dims[2]), m); mesh.castShadow = true; mesh.receiveShadow = true; return mesh; };
+    const outlines = [];
+    const box = (dims, m = mat) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(dims[0], dims[1], dims[2]), m);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      if (m === mat) { // SPEC 37.5: inverted hull on body parts only, hidden until the setting asks for it
+        const hull = new THREE.Mesh(mesh.geometry, this.#outlineMaterial);
+        hull.scale.setScalar(OUTLINE_SCALE);
+        hull.visible = false;
+        mesh.add(hull);
+        outlines.push(hull);
+      }
+      return mesh;
+    };
     const place = (mesh, dims) => { mesh.position.set(dims[3], dims[4], dims[5]); return mesh; };
     const bodyGroup = new THREE.Group();
     const torso = place(box(RIG.torso), RIG.torso);
@@ -198,6 +212,7 @@ export class RemotePlayers {
     group.add(bodyGroup);
     group.userData.body = bodyGroup;
     group.userData.joints = { legL, legR, armL, armR, torso, head };
+    group.userData.outlines = outlines;
     group.userData.phase = Math.random() * Math.PI * 2;
     group.userData.hitAt = -Infinity;
     group.userData.deadAt = null;
@@ -222,6 +237,21 @@ export class RemotePlayers {
   }
 
   // SPEC 31.3: a verdict with damage flashes the victim for 120 ms so the shooter sees the hit land.
+  // SPEC 37.5: enemy outline. `mode` is off / yellow / red / purple; allies never get one.
+  #outlineMaterial = new THREE.MeshBasicMaterial({ color: 0xffd84a, side: THREE.BackSide, toneMapped: false });
+  #outlineMode = 'off';
+  #selfTeam = -1;
+  setOutline(mode, selfTeam = this.#selfTeam) {
+    this.#outlineMode = outlineColorHex(mode) ? mode : 'off';
+    this.#selfTeam = selfTeam;
+    if (this.#outlineMode !== 'off') this.#outlineMaterial.color.setHex(outlineColorHex(this.#outlineMode));
+    for (const mesh of this.#meshes.values()) this.#applyOutline(mesh);
+  }
+  #applyOutline(mesh) {
+    const on = this.#outlineMode !== 'off' && isEnemyOf(mesh.userData.team ?? -1, this.#selfTeam);
+    for (const hull of mesh.userData.outlines ?? []) hull.visible = on;
+  }
+
   flash(id, now = performance.now()) {
     const mesh = this.#meshes.get(id);
     if (mesh) mesh.userData.hitAt = now;

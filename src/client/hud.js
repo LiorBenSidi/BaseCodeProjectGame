@@ -72,6 +72,7 @@ export class Hud {
   #cross = $('crosshair');
   #dead = $('dead');
   #notice = $('notice');
+  #protect = $('protect'); // SPEC 37.2
   #damageArc = $('damage-indicator');
   #damageFlash = $('damage-flash');
 
@@ -421,6 +422,11 @@ export class Hud {
     ctx.restore();
   }
   // PRO-ceremony end
+
+  // SPEC 37.2: spawn protection marker
+  protection(on) {
+    if (this.#protect) this.#protect.hidden = !on;
+  }
 
   notice(text) {
     this.#notice.textContent = text;
